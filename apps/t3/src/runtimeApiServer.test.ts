@@ -159,4 +159,68 @@ describe("runtimeApiServer", () => {
 
     secondClient.socket.close();
   });
+
+  it("returns a bootstrap payload even when codex cannot initialize", async () => {
+    const originalPath = process.env.PATH;
+    process.env.PATH = "";
+    try {
+      const server = await startRuntimeApiServer({
+        port: 0,
+        launchCwd: process.cwd(),
+      });
+      servers.push(server);
+
+      const client = await connectClient(server.wsUrl);
+      await client.nextMessage();
+
+      const response = await sendRequest(
+        client.socket,
+        client.nextMessage,
+        "bootstrap-1",
+        "app.bootstrap",
+      );
+      expect(response.ok).toBe(true);
+      if (!response.ok) {
+        throw new Error("Expected successful bootstrap response payload.");
+      }
+
+      const payload = response.result as {
+        session: { status: string };
+        bootstrapError?: string;
+      };
+      expect(payload.session.status).toBe("error");
+      expect(typeof payload.bootstrapError).toBe("string");
+      expect((payload.bootstrapError ?? "").length).toBeGreaterThan(0);
+
+      client.socket.close();
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
+  it("returns structured errors for unknown methods", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "unknown-1",
+      "unknown.method",
+    );
+    expect(response.ok).toBe(false);
+    if (response.ok) {
+      throw new Error("Expected unknown method to fail.");
+    }
+    expect(response.error?.code).toBe("request_failed");
+    expect(response.error?.message).toContain("Unknown API method");
+
+    client.socket.close();
+  });
 });

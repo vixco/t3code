@@ -85,6 +85,8 @@ interface JsonRpcErrorResult {
   message: string;
 }
 
+const BOOTSTRAP_SESSION_TIMEOUT_MS = 3_000;
+
 function responseSuccess(id: string, result: unknown): WsResponseMessage {
   return {
     type: "response",
@@ -303,13 +305,20 @@ export async function startRuntimeApiServer(
     }
 
     try {
-      const startedSession = await providerManager.startSession({
-        provider: "codex",
-        cwd: launchCwd,
-        model: DEFAULT_MODEL,
-        approvalPolicy: "never",
-        sandboxMode: "danger-full-access",
-      });
+      const startedSession = await Promise.race([
+        providerManager.startSession({
+          provider: "codex",
+          cwd: launchCwd,
+          model: DEFAULT_MODEL,
+          approvalPolicy: "never",
+          sandboxMode: "danger-full-access",
+        }),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error("Timed out starting launch session."));
+          }, BOOTSTRAP_SESSION_TIMEOUT_MS);
+        }),
+      ]);
       return {
         session: startedSession,
         bootstrapError: undefined,
