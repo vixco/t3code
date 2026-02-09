@@ -9,6 +9,7 @@ import { startRuntimeApiServer } from "./runtimeApiServer";
 
 const DEFAULT_BACKEND_PORT = 4317;
 const DEFAULT_WEB_PORT = 4318;
+const DEFAULT_CLI_VERSION = "0.1.0";
 
 function parsePort(value: string | undefined, fallback: number): number {
   if (!value) {
@@ -171,8 +172,32 @@ function openBrowser(url: string, noOpen: boolean): void {
   child.unref();
 }
 
-function readCliVersion(): string {
-  return process.env.npm_package_version ?? "0.1.0";
+export function readCliVersion(
+  packageJsonPath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "..",
+    "..",
+    "package.json",
+  ),
+  env = process.env,
+): string {
+  const envVersion = env.npm_package_version;
+  if (typeof envVersion === "string" && envVersion.length > 0) {
+    return envVersion;
+  }
+
+  try {
+    const raw = fs.readFileSync(packageJsonPath, "utf8");
+    const parsed = JSON.parse(raw) as { version?: unknown };
+    if (typeof parsed.version === "string" && parsed.version.length > 0) {
+      return parsed.version;
+    }
+  } catch {
+    // Ignore read/parse failures and return fallback.
+  }
+
+  return DEFAULT_CLI_VERSION;
 }
 
 async function runCli(options: CliOptions): Promise<void> {

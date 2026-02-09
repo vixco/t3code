@@ -1,7 +1,9 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { parseCliOptions } from "./cli";
+import { parseCliOptions, readCliVersion } from "./cli";
 
 describe("parseCliOptions", () => {
   it("reads defaults from environment variables", () => {
@@ -61,5 +63,27 @@ describe("parseCliOptions", () => {
     expect(() => parseCliOptions(["--wat"], {}, "/workspace")).toThrow(
       "Unknown argument: --wat",
     );
+  });
+});
+
+describe("readCliVersion", () => {
+  it("prefers npm_package_version from environment", () => {
+    const value = readCliVersion("/tmp/does-not-matter.json", {
+      npm_package_version: "9.9.9",
+    });
+    expect(value).toBe("9.9.9");
+  });
+
+  it("falls back to package json version when env is missing", () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-version-test-"));
+    const packageJsonPath = path.join(tempDir, "package.json");
+    writeFileSync(packageJsonPath, JSON.stringify({ version: "1.2.3" }), "utf8");
+    const value = readCliVersion(packageJsonPath, {});
+    expect(value).toBe("1.2.3");
+  });
+
+  it("returns default when env and package file are unavailable", () => {
+    const value = readCliVersion("/tmp/no-such-package.json", {});
+    expect(value).toBe("0.1.0");
   });
 });
