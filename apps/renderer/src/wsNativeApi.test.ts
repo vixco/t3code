@@ -444,6 +444,145 @@ describe("wsNativeApi", () => {
     ]);
   });
 
+  it("sends provider turn-control requests with expected payloads", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4419");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const startRequest = api.providers.startSession({
+      provider: "codex",
+      cwd: "/workspace",
+      model: "gpt-5-codex",
+      approvalPolicy: "never",
+      sandboxMode: "danger-full-access",
+    });
+    const socket = await waitForSocket();
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) >= 1);
+    const startEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as {
+      id: string;
+      method: string;
+      params: { provider: string; cwd: string; model: string };
+    };
+    expect(startEnvelope.method).toBe("providers.startSession");
+    expect(startEnvelope.params).toMatchObject({
+      provider: "codex",
+      cwd: "/workspace",
+      model: "gpt-5-codex",
+    });
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: startEnvelope.id,
+        ok: true,
+        result: {
+          sessionId: "sess-1",
+          provider: "codex",
+          status: "ready",
+          cwd: "/workspace",
+          model: "gpt-5-codex",
+          createdAt: "2026-02-01T00:00:00.000Z",
+          updatedAt: "2026-02-01T00:00:00.000Z",
+        },
+      }),
+    );
+    await expect(startRequest).resolves.toMatchObject({ sessionId: "sess-1" });
+
+    const sendTurnRequest = api.providers.sendTurn({
+      sessionId: "sess-1",
+      input: "hello",
+    });
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) >= 2);
+    const sendTurnEnvelope = JSON.parse(socket?.sentMessages[1] ?? "{}") as {
+      id: string;
+      method: string;
+      params: { sessionId: string; input: string };
+    };
+    expect(sendTurnEnvelope.method).toBe("providers.sendTurn");
+    expect(sendTurnEnvelope.params).toEqual({ sessionId: "sess-1", input: "hello" });
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: sendTurnEnvelope.id,
+        ok: true,
+        result: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+        },
+      }),
+    );
+    await expect(sendTurnRequest).resolves.toMatchObject({ turnId: "turn-1" });
+
+    const interruptRequest = api.providers.interruptTurn({
+      sessionId: "sess-1",
+      turnId: "turn-1",
+    });
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) >= 3);
+    const interruptEnvelope = JSON.parse(socket?.sentMessages[2] ?? "{}") as {
+      id: string;
+      method: string;
+      params: { sessionId: string; turnId: string };
+    };
+    expect(interruptEnvelope.method).toBe("providers.interruptTurn");
+    expect(interruptEnvelope.params).toEqual({ sessionId: "sess-1", turnId: "turn-1" });
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: interruptEnvelope.id,
+        ok: true,
+        result: null,
+      }),
+    );
+    await expect(interruptRequest).resolves.toBeUndefined();
+
+    const respondRequest = api.providers.respondToRequest({
+      sessionId: "sess-1",
+      requestId: "req-1",
+      decision: "accept",
+    });
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) >= 4);
+    const respondEnvelope = JSON.parse(socket?.sentMessages[3] ?? "{}") as {
+      id: string;
+      method: string;
+      params: { sessionId: string; requestId: string; decision: string };
+    };
+    expect(respondEnvelope.method).toBe("providers.respondToRequest");
+    expect(respondEnvelope.params).toEqual({
+      sessionId: "sess-1",
+      requestId: "req-1",
+      decision: "accept",
+    });
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: respondEnvelope.id,
+        ok: true,
+        result: null,
+      }),
+    );
+    await expect(respondRequest).resolves.toBeUndefined();
+
+    const stopRequest = api.providers.stopSession({
+      sessionId: "sess-1",
+    });
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) >= 5);
+    const stopEnvelope = JSON.parse(socket?.sentMessages[4] ?? "{}") as {
+      id: string;
+      method: string;
+      params: { sessionId: string };
+    };
+    expect(stopEnvelope.method).toBe("providers.stopSession");
+    expect(stopEnvelope.params).toEqual({ sessionId: "sess-1" });
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: stopEnvelope.id,
+        ok: true,
+        result: null,
+      }),
+    );
+    await expect(stopRequest).resolves.toBeUndefined();
+  });
+
   it("sends todo mutation requests with expected payloads", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4416");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
