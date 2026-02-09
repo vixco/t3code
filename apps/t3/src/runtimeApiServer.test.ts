@@ -199,6 +199,52 @@ describe("runtimeApiServer", () => {
     }
   });
 
+  it("handles repeated bootstrap requests under failure conditions", async () => {
+    const originalPath = process.env.PATH;
+    process.env.PATH = "";
+    try {
+      const server = await startRuntimeApiServer({
+        port: 0,
+        launchCwd: process.cwd(),
+        bootstrapSessionTimeoutMs: 100,
+      });
+      servers.push(server);
+
+      const client = await connectClient(server.wsUrl);
+      await client.nextMessage();
+
+      const first = await sendRequest(
+        client.socket,
+        client.nextMessage,
+        "bootstrap-repeat-1",
+        "app.bootstrap",
+      );
+      const second = await sendRequest(
+        client.socket,
+        client.nextMessage,
+        "bootstrap-repeat-2",
+        "app.bootstrap",
+      );
+
+      expect(first.ok).toBe(true);
+      expect(second.ok).toBe(true);
+      if (!first.ok || !second.ok) {
+        throw new Error("Expected both bootstrap responses to succeed.");
+      }
+
+      const firstSession = first.result as { session: { sessionId: string; status: string } };
+      const secondSession = second.result as { session: { sessionId: string; status: string } };
+      expect(firstSession.session.status).toBe("error");
+      expect(firstSession.session.sessionId.length).toBeGreaterThan(0);
+      expect(secondSession.session.sessionId.length).toBeGreaterThan(0);
+      expect(secondSession.session.status).not.toBe("closed");
+
+      client.socket.close();
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
   it("returns structured errors for unknown methods", async () => {
     const server = await startRuntimeApiServer({
       port: 0,

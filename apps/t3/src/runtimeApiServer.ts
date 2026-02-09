@@ -89,6 +89,11 @@ interface JsonRpcErrorResult {
 
 const BOOTSTRAP_SESSION_TIMEOUT_MS = 3_000;
 
+interface BootstrapSessionResult {
+  session: ProviderSession;
+  bootstrapError: string | undefined;
+}
+
 function responseSuccess(id: string, result: unknown): WsResponseMessage {
   return {
     type: "response",
@@ -260,6 +265,8 @@ export async function startRuntimeApiServer(
   await todoStore.init();
 
   let activeClient: WebSocket | null = null;
+  let launchSessionPromise: Promise<BootstrapSessionResult> | null = null;
+  let bootstrapFallbackSession: ProviderSession | null = null;
 
   const emitEvent = (channel: string, payload: unknown) => {
     if (!activeClient) {
@@ -297,46 +304,80 @@ export async function startRuntimeApiServer(
     };
   };
 
-  const ensureLaunchSession = async () => {
+  const ensureLaunchSession = async (): Promise<BootstrapSessionResult> => {
     const existingSession = providerManager
       .listSessions()
       .find((session) => session.cwd === launchCwd && session.status !== "closed");
     if (existingSession) {
+      bootstrapFallbackSession = null;
       return {
         session: existingSession,
         bootstrapError: undefined,
       };
     }
 
-    try {
-      const startedSession = await Promise.race([
-        providerManager.startSession({
-          provider: "codex",
-          cwd: launchCwd,
-          model: DEFAULT_MODEL,
-          approvalPolicy: "never",
-          sandboxMode: "danger-full-access",
-        }),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => {
-            reject(new Error("Timed out starting launch session."));
-          }, bootstrapSessionTimeoutMs);
-        }),
-      ]);
+    if (bootstrapFallbackSession) {
       return {
-        session: startedSession,
-        bootstrapError: undefined,
-      };
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Failed to initialize Codex launch session.";
-      return {
-        session: createBootstrapErrorSession(message),
-        bootstrapError: message,
+        session: bootstrapFallbackSession,
+        bootstrapError: bootstrapFallbackSession.lastError,
       };
     }
+
+    if (launchSessionPromise) {
+      return launchSessionPromise;
+    }
+
+    launchSessionPromise = (async () => {
+      try {
+        const startedSession = await Promise.race([
+          providerManager.startSession({
+            provider: "codex",
+            cwd: launchCwd,
+            model: DEFAULT_MODEL,
+            approvalPolicy: "never",
+            sandboxMode: "danger-full-access",
+          }),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => {
+              reject(new Error("Timed out starting launch session."));
+            }, bootstrapSessionTimeoutMs);
+          }),
+        ]);
+        bootstrapFallbackSession = null;
+        return {
+          session: startedSession,
+          bootstrapError: undefined,
+        };
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to initialize Codex launch session.";
+        const fallbackSession = (() => {
+          if (!bootstrapFallbackSession) {
+            return createBootstrapErrorSession(message);
+          }
+
+          return Object.assign({}, bootstrapFallbackSession, {
+            lastError: message,
+            updatedAt: new Date().toISOString(),
+          }) as ProviderSession;
+        })();
+        bootstrapFallbackSession = fallbackSession;
+        return {
+          session: fallbackSession,
+          bootstrapError: message,
+        };
+      } finally {
+        launchSessionPromise = null;
+      }
+    })();
+
+    const pendingLaunchSessionPromise = launchSessionPromise;
+    if (!pendingLaunchSessionPromise) {
+      throw new Error("Could not initialize launch session promise.");
+    }
+    return pendingLaunchSessionPromise;
   };
 
   const wss = new WebSocketServer({
@@ -392,7 +433,11 @@ export async function startRuntimeApiServer(
     }
 
     if (method === "providers.startSession") {
-      return providerManager.startSession(providerSessionStartInputSchema.parse(params));
+      const session = await providerManager.startSession(
+        providerSessionStartInputSchema.parse(params),
+      );
+      bootstrapFallbackSession = null;
+      return session;
     }
     if (method === "providers.sendTurn") {
       return providerManager.sendTurn(providerSendTurnInputSchema.parse(params));
