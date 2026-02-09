@@ -175,6 +175,52 @@ function readCliVersion(): string {
   return process.env.npm_package_version ?? "0.1.0";
 }
 
+async function runCli(options: CliOptions): Promise<void> {
+  const runtimeServer = await startRuntimeApiServer({
+    port: options.backendPort,
+    launchCwd: options.launchCwd,
+  });
+
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const rendererRoot = path.resolve(__dirname, "../../renderer");
+  ensureRendererBuild(rendererRoot);
+
+  let staticServer:
+    | {
+        close: () => Promise<void>;
+      }
+    | undefined;
+  try {
+    staticServer = await startStaticWebServer(path.join(rendererRoot, "dist"), options.webPort);
+  } catch (error) {
+    await runtimeServer.close();
+    throw error;
+  }
+
+  const wsParam = encodeURIComponent(runtimeServer.wsUrl);
+  const appUrl = `http://127.0.0.1:${options.webPort}?ws=${wsParam}`;
+  openBrowser(appUrl, options.noOpen);
+
+  process.stdout.write(`CodeThing is running at ${appUrl}\n`);
+
+  let shutdownStarted = false;
+  const shutdown = async () => {
+    if (shutdownStarted) {
+      return;
+    }
+    shutdownStarted = true;
+    await Promise.all([staticServer.close(), runtimeServer.close()]);
+    process.exit(0);
+  };
+
+  process.on("SIGINT", () => {
+    void shutdown();
+  });
+  process.on("SIGTERM", () => {
+    void shutdown();
+  });
+}
+
 function ensureRendererBuild(rendererRoot: string): void {
   const distPath = path.join(rendererRoot, "dist", "index.html");
   if (fs.existsSync(distPath)) {
@@ -275,33 +321,14 @@ async function main() {
     return;
   }
 
-  const runtimeServer = await startRuntimeApiServer({
-    port: options.backendPort,
-    launchCwd: options.launchCwd,
-  });
-
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const rendererRoot = path.resolve(__dirname, "../../renderer");
-  ensureRendererBuild(rendererRoot);
-  const staticServer = await startStaticWebServer(path.join(rendererRoot, "dist"), options.webPort);
-
-  const wsParam = encodeURIComponent(runtimeServer.wsUrl);
-  const appUrl = `http://127.0.0.1:${options.webPort}?ws=${wsParam}`;
-  openBrowser(appUrl, options.noOpen);
-
-  process.stdout.write(`CodeThing is running at ${appUrl}\n`);
-
-  const shutdown = async () => {
-    await Promise.all([staticServer.close(), runtimeServer.close()]);
-    process.exit(0);
-  };
-
-  process.on("SIGINT", () => {
-    void shutdown();
-  });
-  process.on("SIGTERM", () => {
-    void shutdown();
-  });
+  try {
+    await runCli(options);
+  } catch (error) {
+    process.stderr.write(
+      `${error instanceof Error ? error.message : "Failed to start t3 runtime."}\n`,
+    );
+    process.exit(1);
+  }
 }
 
 const entrypoint = process.argv[1];
