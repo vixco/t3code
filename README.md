@@ -26,6 +26,7 @@ CLI flags:
 - `--backend-port <port>` — set WebSocket runtime port.
 - `--web-port <port>` — set web UI port.
 - `--cwd <path>` — choose launch project directory (defaults to current directory).
+- `<path>` — shorthand positional argument equivalent to `--cwd <path>`.
 - `--version` — print CLI version.
 - `--help` — print CLI usage.
 

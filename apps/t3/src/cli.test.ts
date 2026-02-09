@@ -47,6 +47,17 @@ describe("parseCliOptions", () => {
     expect(options.webPortLocked).toBe(true);
   });
 
+  it("accepts a positional cwd argument", () => {
+    const options = parseCliOptions(["apps/renderer"], {}, "/workspace");
+    expect(options.launchCwd).toBe(path.resolve("apps/renderer"));
+  });
+
+  it("rejects multiple positional cwd arguments", () => {
+    expect(() => parseCliOptions(["apps/renderer", "apps/t3"], {}, "/workspace")).toThrow(
+      "Unexpected positional argument: apps/t3",
+    );
+  });
+
   it("keeps ports unlocked when using defaults", () => {
     const options = parseCliOptions([], {}, "/workspace");
     expect(options.backendPortLocked).toBe(false);

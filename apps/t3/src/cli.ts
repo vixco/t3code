@@ -88,6 +88,7 @@ export function parseCliOptions(
   let backendPortLocked = Boolean(env.T3_BACKEND_PORT);
   let webPortLocked = Boolean(env.T3_WEB_PORT);
   let launchCwd = cwd;
+  let usedPositionalCwd = false;
   let noOpen = env.T3_NO_OPEN === "1";
   let showHelp = false;
   let showVersion = false;
@@ -151,6 +152,15 @@ export function parseCliOptions(
       continue;
     }
 
+    if (!arg.startsWith("-")) {
+      if (usedPositionalCwd) {
+        throw new Error(`Unexpected positional argument: ${arg}`);
+      }
+      launchCwd = path.resolve(arg);
+      usedPositionalCwd = true;
+      continue;
+    }
+
     throw new Error(`Unknown argument: ${arg}`);
   }
 
@@ -176,6 +186,7 @@ function printHelp(): void {
       "  --backend-port <port>   Override WebSocket API port (default: 4317)",
       "  --web-port <port>       Override web UI port (default: 4318)",
       "  --cwd <path>            Launch project directory (default: current directory)",
+      "  [path]                  Positional shorthand for --cwd <path>",
       "  -v, --version           Print CLI version",
       "  -h, --help              Show this help message",
       "",
