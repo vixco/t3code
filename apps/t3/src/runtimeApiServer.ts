@@ -73,6 +73,7 @@ const agentWriteInputSchema = z.object({
 interface RuntimeApiServerOptions {
   port: number;
   launchCwd: string;
+  bootstrapSessionTimeoutMs?: number;
 }
 
 interface RuntimeApiServer {
@@ -250,6 +251,8 @@ export async function startRuntimeApiServer(
   options: RuntimeApiServerOptions,
 ): Promise<RuntimeApiServer> {
   const launchCwd = path.resolve(options.launchCwd);
+  const bootstrapSessionTimeoutMs =
+    options.bootstrapSessionTimeoutMs ?? BOOTSTRAP_SESSION_TIMEOUT_MS;
   const providerManager = new ProviderManager();
   const processManager = new ProcessManager();
   const todoStore = new TodoStore(path.join(os.homedir(), ".t3", "todos.json"));
@@ -316,7 +319,7 @@ export async function startRuntimeApiServer(
         new Promise<never>((_, reject) => {
           setTimeout(() => {
             reject(new Error("Timed out starting launch session."));
-          }, BOOTSTRAP_SESSION_TIMEOUT_MS);
+          }, bootstrapSessionTimeoutMs);
         }),
       ]);
       return {

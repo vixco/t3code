@@ -167,6 +167,7 @@ describe("runtimeApiServer", () => {
       const server = await startRuntimeApiServer({
         port: 0,
         launchCwd: process.cwd(),
+        bootstrapSessionTimeoutMs: 100,
       });
       servers.push(server);
 
