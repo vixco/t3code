@@ -3,7 +3,6 @@
   "ignorePatterns": [
     ".plans",
     "dist",
-    "dist-electron",
     "node_modules",
     "bun.lock",
     "*.tsbuildinfo"

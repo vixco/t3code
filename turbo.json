@@ -1,10 +1,10 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalEnv": ["ELECTRON_RENDERER_PORT"],
+  "globalEnv": ["T3_BACKEND_PORT", "T3_WEB_PORT"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", "dist-electron/**"]
+      "outputs": ["dist/**"]
     },
     "dev": {
       "cache": false,
@@ -16,11 +16,6 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "smoke-test": {
-      "dependsOn": ["build"],
-      "cache": false,
       "outputs": []
     }
   }

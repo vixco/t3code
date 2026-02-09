@@ -12,7 +12,7 @@ export default defineConfig({
     tailwindcss(),
   ],
   server: {
-    port: Number(process.env.ELECTRON_RENDERER_PORT ?? 5173),
+    port: Number(process.env.T3_WEB_PORT ?? 5173),
     strictPort: true,
   },
   build: {

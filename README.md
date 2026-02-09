@@ -8,6 +8,18 @@ Current implementation is:
 2. Provider-ready: renderer speaks a provider abstraction so Claude Code can plug in later.
 3. Typed end-to-end: contracts validate payloads across the WebSocket boundary.
 
+## Quickstart
+
+```bash
+npx t3
+```
+
+On launch, `t3`:
+
+1. starts a local WebSocket runtime (`127.0.0.1`),
+2. serves the web UI in your browser,
+3. auto-connects to your current working directory as the default project.
+
 ## Workspace layout
 
 - `/apps/t3`: CLI launcher + local WebSocket runtime server.

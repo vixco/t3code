@@ -1,5 +1,5 @@
 {
-  "name": "t3",
+  "name": "@acme/t3-runtime",
   "version": "0.0.0",
   "private": true,
   "bin": {
@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/cli.ts",
-    "build": "tsup src/cli.ts --format esm --dts --clean",
+    "build": "tsup --config tsup.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },
