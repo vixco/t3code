@@ -26,6 +26,7 @@ export interface AppBootstrapResult {
   provider: ProviderKind;
   model: string;
   session: ProviderSession;
+  bootstrapError?: string;
 }
 
 export interface NativeApi {

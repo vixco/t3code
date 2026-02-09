@@ -339,7 +339,11 @@ export default function ChatView() {
 
   const ensureSession = async (): Promise<EnsuredSessionInfo | null> => {
     if (!api || !activeThread || !activeProject) return null;
-    if (activeThread.session && activeThread.session.status !== "closed") {
+    if (
+      activeThread.session &&
+      activeThread.session.status !== "closed" &&
+      activeThread.session.status !== "error"
+    ) {
       const sessionThreadId = activeThread.session.threadId ?? null;
       const continuityState: SessionContinuityState =
         activeThread.codexThreadId === null

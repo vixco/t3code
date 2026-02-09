@@ -341,7 +341,7 @@ export function reducer(state: AppState, action: Action): AppState {
           session: bootstrap.session,
           messages: [],
           events: [],
-          error: null,
+          error: bootstrap.bootstrapError ?? null,
           createdAt: new Date().toISOString(),
         } satisfies Thread);
 
@@ -364,6 +364,7 @@ export function reducer(state: AppState, action: Action): AppState {
                   ...entry,
                   session: bootstrap.session,
                   codexThreadId: bootstrap.session.threadId ?? entry.codexThreadId,
+                  error: bootstrap.bootstrapError ?? entry.error,
                 }
               : entry,
           )

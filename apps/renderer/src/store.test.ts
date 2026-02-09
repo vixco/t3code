@@ -93,6 +93,33 @@ describe("store reducer thread continuity", () => {
     expect(next.activeThreadId).toBe(next.threads[0]?.id ?? null);
   });
 
+  it("surfaces bootstrap errors on the active thread", () => {
+    const state: AppState = {
+      projects: [],
+      threads: [],
+      activeThreadId: null,
+      runtimeMode: "full-access",
+      diffOpen: false,
+    };
+
+    const next = reducer(state, {
+      type: "BOOTSTRAP_FROM_SERVER",
+      bootstrap: {
+        launchCwd: "/workspace",
+        projectName: "workspace",
+        provider: "codex",
+        model: "gpt-5.3-codex",
+        session: makeSession({
+          sessionId: "sess-bootstrap-error",
+          status: "error",
+        }),
+        bootstrapError: "Timed out waiting for initialize.",
+      },
+    });
+
+    expect(next.threads[0]?.error).toBe("Timed out waiting for initialize.");
+  });
+
   it("stores codexThreadId from UPDATE_SESSION", () => {
     const state = makeState(
       makeThread({

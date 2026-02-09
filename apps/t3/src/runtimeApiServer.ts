@@ -8,6 +8,7 @@ import {
   EDITORS,
   DEFAULT_MODEL,
   type AppBootstrapResult,
+  type ProviderSession,
   type WsClientMessage,
   type WsResponseMessage,
   WS_EVENT_CHANNELS,
@@ -273,21 +274,53 @@ export async function startRuntimeApiServer(
     emitEvent(WS_EVENT_CHANNELS.providerEvent, payload);
   });
 
+  const createBootstrapErrorSession = (message: string): ProviderSession => {
+    const timestamp = new Date().toISOString();
+    return {
+      sessionId: `bootstrap-error-${Date.now()}`,
+      provider: "codex",
+      status: "error",
+      cwd: launchCwd,
+      model: DEFAULT_MODEL,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      lastError: message,
+    };
+  };
+
   const ensureLaunchSession = async () => {
     const existingSession = providerManager
       .listSessions()
       .find((session) => session.cwd === launchCwd && session.status !== "closed");
     if (existingSession) {
-      return existingSession;
+      return {
+        session: existingSession,
+        bootstrapError: undefined,
+      };
     }
 
-    return providerManager.startSession({
-      provider: "codex",
-      cwd: launchCwd,
-      model: DEFAULT_MODEL,
-      approvalPolicy: "never",
-      sandboxMode: "danger-full-access",
-    });
+    try {
+      const startedSession = await providerManager.startSession({
+        provider: "codex",
+        cwd: launchCwd,
+        model: DEFAULT_MODEL,
+        approvalPolicy: "never",
+        sandboxMode: "danger-full-access",
+      });
+      return {
+        session: startedSession,
+        bootstrapError: undefined,
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to initialize Codex launch session.";
+      return {
+        session: createBootstrapErrorSession(message),
+        bootstrapError: message,
+      };
+    }
   };
 
   const wss = new WebSocketServer({
@@ -297,13 +330,16 @@ export async function startRuntimeApiServer(
 
   const resolveMethod = async (method: string, params: unknown) => {
     if (method === "app.bootstrap") {
-      const session = await ensureLaunchSession();
+      const bootstrap = await ensureLaunchSession();
       const payload: AppBootstrapResult = {
         launchCwd,
         projectName: path.basename(launchCwd) || launchCwd,
         provider: "codex",
-        model: session.model ?? DEFAULT_MODEL,
-        session,
+        model: bootstrap.session.model ?? DEFAULT_MODEL,
+        session: bootstrap.session,
+        ...(bootstrap.bootstrapError
+          ? { bootstrapError: bootstrap.bootstrapError }
+          : {}),
       };
       return payload;
     }
