@@ -80,6 +80,18 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("throws when backend port value is missing", () => {
+    expect(() => parseCliOptions(["--backend-port"], {}, "/workspace")).toThrow(
+      "Missing value for --backend-port",
+    );
+  });
+
+  it("throws when web port value is missing", () => {
+    expect(() => parseCliOptions(["--web-port"], {}, "/workspace")).toThrow(
+      "Missing value for --web-port",
+    );
+  });
+
   it("throws for invalid environment port values", () => {
     expect(() => parseCliOptions([], { T3_WEB_PORT: "nope" }, "/workspace")).toThrow(
       "Invalid value for T3_WEB_PORT",
