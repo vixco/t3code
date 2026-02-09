@@ -116,6 +116,27 @@ describe("runtimeApiServer", () => {
     ).rejects.toThrow("Invalid runtime auth token");
   });
 
+  it("accepts websocket connections without token when auth is disabled", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    const hello = await client.nextMessage();
+    expect(hello.type).toBe("hello");
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "todos-no-auth-1",
+      "todos.list",
+    );
+    expect(response.ok).toBe(true);
+    client.socket.close();
+  });
+
   it("responds to todos.list over websocket RPC", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
