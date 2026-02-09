@@ -323,6 +323,93 @@ describe("wsNativeApi", () => {
     await expect(request).resolves.toBeUndefined();
   });
 
+  it("sends terminal.run requests with expected payload", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4414");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.terminal.run({
+      command: "pwd",
+      cwd: "/workspace",
+      timeoutMs: 5_000,
+    });
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as {
+      id: string;
+      method: string;
+      params: { command: string; cwd: string; timeoutMs: number };
+    };
+    expect(requestEnvelope.method).toBe("terminal.run");
+    expect(requestEnvelope.params).toEqual({
+      command: "pwd",
+      cwd: "/workspace",
+      timeoutMs: 5_000,
+    });
+
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: {
+          stdout: "/workspace\n",
+          stderr: "",
+          code: 0,
+          signal: null,
+          timedOut: false,
+        },
+      }),
+    );
+
+    await expect(request).resolves.toMatchObject({
+      stdout: "/workspace\n",
+      code: 0,
+      timedOut: false,
+    });
+  });
+
+  it("sends providers.listSessions requests and resolves payload", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4415");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.providers.listSessions();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as {
+      id: string;
+      method: string;
+    };
+    expect(requestEnvelope.method).toBe("providers.listSessions");
+
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: [
+          {
+            sessionId: "sess-1",
+            provider: "codex",
+            status: "ready",
+            cwd: "/workspace",
+            model: "gpt-5-codex",
+            createdAt: "2026-02-01T00:00:00.000Z",
+            updatedAt: "2026-02-01T00:00:00.000Z",
+          },
+        ],
+      }),
+    );
+
+    await expect(request).resolves.toMatchObject([
+      {
+        sessionId: "sess-1",
+        provider: "codex",
+      },
+    ]);
+  });
+
   it("rejects requests when websocket connection fails", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4405");
     MockWebSocket.failOpen = true;
