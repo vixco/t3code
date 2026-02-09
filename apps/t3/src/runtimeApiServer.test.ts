@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 
-import type { WsResponseMessage, WsServerMessage } from "@acme/contracts";
+import { WS_EVENT_CHANNELS, type WsResponseMessage, type WsServerMessage } from "@acme/contracts";
 import { startRuntimeApiServer } from "./runtimeApiServer";
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs = 5_000): Promise<T> {
@@ -873,6 +873,69 @@ describe("runtimeApiServer", () => {
     }
     const afterRemove = removeResponse.result as Array<{ id: string }>;
     expect(afterRemove.some((todo) => todo.id === createdTodo.id)).toBe(false);
+
+    client.socket.close();
+  });
+
+  it("streams agent output and exit events for spawned commands", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const spawnResponse = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "agent-spawn-1",
+      "agent.spawn",
+      {
+        command: "bash",
+        args: ["-lc", "printf runtime-agent-test"],
+        cwd: process.cwd(),
+      },
+    );
+    expect(spawnResponse.ok).toBe(true);
+    if (!spawnResponse.ok) {
+      throw new Error("Expected agent.spawn response to succeed.");
+    }
+    const sessionId = String(spawnResponse.result);
+
+    const waitForAgentEvent = async (channel: string) => {
+      const message = await client.nextMessage();
+      if (message.type !== "event") {
+        return waitForAgentEvent(channel);
+      }
+      if (message.channel !== channel) {
+        return waitForAgentEvent(channel);
+      }
+
+      const payload = message.payload as {
+        sessionId?: string;
+      };
+      if (payload.sessionId !== sessionId) {
+        return waitForAgentEvent(channel);
+      }
+
+      return message;
+    };
+
+    const outputEvent = await waitForAgentEvent(WS_EVENT_CHANNELS.agentOutput);
+    const outputPayload = outputEvent.payload as {
+      stream: string;
+      data: string;
+    };
+    expect(outputPayload.stream).toBe("stdout");
+    expect(outputPayload.data).toContain("runtime-agent-test");
+
+    const exitEvent = await waitForAgentEvent(WS_EVENT_CHANNELS.agentExit);
+    const exitPayload = exitEvent.payload as {
+      code: number | null;
+    };
+    expect(exitPayload.code).toBe(0);
 
     client.socket.close();
   });
