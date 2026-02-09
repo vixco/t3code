@@ -6,7 +6,10 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run build:contracts && turbo run dev --parallel",
+    "dev": "bun run build:contracts && VITE_WS_URL=ws://localhost:3773 turbo run dev --filter=@acme/renderer --filter=t3 --parallel",
+    "dev:server": "bun run build:contracts && bun run --cwd apps/server dev",
+    "dev:web": "VITE_WS_URL=ws://localhost:3773 bun run --cwd apps/renderer dev",
+    "start": "node apps/server/dist/index.js",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "lint": "oxlint --report-unused-disable-directives",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalEnv": ["ELECTRON_RENDERER_PORT"],
+  "globalEnv": ["ELECTRON_RENDERER_PORT", "VITE_WS_URL", "VITE_DEV_SERVER_URL", "WS_SERVER_PORT"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
