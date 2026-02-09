@@ -142,7 +142,11 @@ function sendMessage(socket: WebSocket, message: unknown): void {
     return;
   }
 
-  socket.send(JSON.stringify(message));
+  try {
+    socket.send(JSON.stringify(message));
+  } catch {
+    // Best-effort event delivery. Socket may have transitioned states.
+  }
 }
 
 function decodeClientMessage(raw: RawData): string | null {
