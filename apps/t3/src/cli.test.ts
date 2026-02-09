@@ -58,6 +58,17 @@ describe("parseCliOptions", () => {
     expect(options.noOpen).toBe(true);
   });
 
+  it("accepts 'yes' as T3_NO_OPEN truthy value", () => {
+    const options = parseCliOptions(
+      [],
+      {
+        T3_NO_OPEN: "yes",
+      },
+      "/workspace",
+    );
+    expect(options.noOpen).toBe(true);
+  });
+
   it("treats non-truthy T3_NO_OPEN values as disabled", () => {
     const options = parseCliOptions(
       [],
