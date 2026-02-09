@@ -84,17 +84,32 @@ async function sendRequest(
 
   const waitForMatchingResponse = async (): Promise<WsResponseMessage> => {
     const message = await nextMessage();
-    if (message.type !== "response") {
+    if (message.type !== "response" || message.id !== id) {
       return waitForMatchingResponse();
     }
-    if (message.id !== id) {
-      return waitForMatchingResponse();
-    }
-
     return message;
   };
 
   return waitForMatchingResponse();
+}
+
+async function waitForAgentEvent(
+  nextMessage: () => Promise<WsServerMessage>,
+  channel: string,
+  sessionId: string,
+) {
+  const message = await nextMessage();
+  if (message.type !== "event" || message.channel !== channel) {
+    return waitForAgentEvent(nextMessage, channel, sessionId);
+  }
+  const payload = message.payload as {
+    sessionId?: string;
+  };
+  if (payload.sessionId !== sessionId) {
+    return waitForAgentEvent(nextMessage, channel, sessionId);
+  }
+
+  return message;
 }
 
 const servers: Array<{ close: () => Promise<void> }> = [];
@@ -910,26 +925,11 @@ describe("runtimeApiServer", () => {
     }
     const sessionId = String(spawnResponse.result);
 
-    const waitForAgentEvent = async (channel: string) => {
-      const message = await client.nextMessage();
-      if (message.type !== "event") {
-        return waitForAgentEvent(channel);
-      }
-      if (message.channel !== channel) {
-        return waitForAgentEvent(channel);
-      }
-
-      const payload = message.payload as {
-        sessionId?: string;
-      };
-      if (payload.sessionId !== sessionId) {
-        return waitForAgentEvent(channel);
-      }
-
-      return message;
-    };
-
-    const outputEvent = await waitForAgentEvent(WS_EVENT_CHANNELS.agentOutput);
+    const outputEvent = await waitForAgentEvent(
+      client.nextMessage,
+      WS_EVENT_CHANNELS.agentOutput,
+      sessionId,
+    );
     const outputPayload = outputEvent.payload as {
       stream: string;
       data: string;
@@ -937,7 +937,11 @@ describe("runtimeApiServer", () => {
     expect(outputPayload.stream).toBe("stdout");
     expect(outputPayload.data).toContain("runtime-agent-test");
 
-    const exitEvent = await waitForAgentEvent(WS_EVENT_CHANNELS.agentExit);
+    const exitEvent = await waitForAgentEvent(
+      client.nextMessage,
+      WS_EVENT_CHANNELS.agentExit,
+      sessionId,
+    );
     const exitPayload = exitEvent.payload as {
       code: number | null;
     };
@@ -973,25 +977,6 @@ describe("runtimeApiServer", () => {
     }
     const sessionId = String(spawnResponse.result);
 
-    const waitForAgentEvent = async (channel: string) => {
-      const message = await client.nextMessage();
-      if (message.type !== "event") {
-        return waitForAgentEvent(channel);
-      }
-      if (message.channel !== channel) {
-        return waitForAgentEvent(channel);
-      }
-
-      const payload = message.payload as {
-        sessionId?: string;
-      };
-      if (payload.sessionId !== sessionId) {
-        return waitForAgentEvent(channel);
-      }
-
-      return message;
-    };
-
     const writeResponse = await sendRequest(
       client.socket,
       client.nextMessage,
@@ -1004,7 +989,11 @@ describe("runtimeApiServer", () => {
     );
     expect(writeResponse.ok).toBe(true);
 
-    const outputEvent = await waitForAgentEvent(WS_EVENT_CHANNELS.agentOutput);
+    const outputEvent = await waitForAgentEvent(
+      client.nextMessage,
+      WS_EVENT_CHANNELS.agentOutput,
+      sessionId,
+    );
     const outputPayload = outputEvent.payload as {
       data: string;
     };
@@ -1019,7 +1008,11 @@ describe("runtimeApiServer", () => {
     );
     expect(killResponse.ok).toBe(true);
 
-    const exitEvent = await waitForAgentEvent(WS_EVENT_CHANNELS.agentExit);
+    const exitEvent = await waitForAgentEvent(
+      client.nextMessage,
+      WS_EVENT_CHANNELS.agentExit,
+      sessionId,
+    );
     const exitPayload = exitEvent.payload as {
       code: number | null;
       signal: string | null;
