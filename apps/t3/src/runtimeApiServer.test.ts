@@ -164,6 +164,40 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("accepts arraybuffer-encoded websocket request payloads", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const encoded = new TextEncoder().encode(
+      JSON.stringify({
+        type: "request",
+        id: "arraybuffer-todos-1",
+        method: "todos.list",
+      }),
+    );
+    client.socket.send(encoded.buffer);
+
+    const response = await withTimeout(
+      (async (): Promise<WsResponseMessage> => {
+        const message = await client.nextMessage();
+        if (message.type === "response" && message.id === "arraybuffer-todos-1") {
+          return message;
+        }
+        return Promise.reject(new Error("Expected matching todos response."));
+      })(),
+    );
+    expect(response.ok).toBe(true);
+    expect(Array.isArray(response.result)).toBe(true);
+
+    client.socket.close();
+  });
+
   it("replaces an existing websocket client with a new one", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
