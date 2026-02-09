@@ -168,7 +168,12 @@ class WsNativeApiClient {
   }
 
   private async handleMessage(raw: unknown) {
-    const decoded = await this.decodeIncomingMessage(raw);
+    let decoded: string | null;
+    try {
+      decoded = await this.decodeIncomingMessage(raw);
+    } catch {
+      return;
+    }
     if (!decoded) {
       return;
     }
