@@ -807,6 +807,76 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("supports todo mutation lifecycle over websocket RPC", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const addResponse = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "todo-add-1",
+      "todos.add",
+      { title: "test todo" },
+    );
+    expect(addResponse.ok).toBe(true);
+    if (!addResponse.ok) {
+      throw new Error("Expected todos.add response to succeed.");
+    }
+
+    const afterAdd = addResponse.result as Array<{
+      id: string;
+      title: string;
+      completed: boolean;
+    }>;
+    expect(afterAdd.length).toBeGreaterThan(0);
+    const createdTodo = afterAdd[0];
+    expect(createdTodo?.title).toBe("test todo");
+    expect(createdTodo?.completed).toBe(false);
+    if (!createdTodo?.id) {
+      throw new Error("Expected created todo id.");
+    }
+
+    const toggleResponse = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "todo-toggle-1",
+      "todos.toggle",
+      createdTodo.id,
+    );
+    expect(toggleResponse.ok).toBe(true);
+    if (!toggleResponse.ok) {
+      throw new Error("Expected todos.toggle response to succeed.");
+    }
+    const afterToggle = toggleResponse.result as Array<{
+      id: string;
+      completed: boolean;
+    }>;
+    const toggled = afterToggle.find((todo) => todo.id === createdTodo.id);
+    expect(toggled?.completed).toBe(true);
+
+    const removeResponse = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "todo-remove-1",
+      "todos.remove",
+      createdTodo.id,
+    );
+    expect(removeResponse.ok).toBe(true);
+    if (!removeResponse.ok) {
+      throw new Error("Expected todos.remove response to succeed.");
+    }
+    const afterRemove = removeResponse.result as Array<{ id: string }>;
+    expect(afterRemove.some((todo) => todo.id === createdTodo.id)).toBe(false);
+
+    client.socket.close();
+  });
+
   it("reports runtime health metadata", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
