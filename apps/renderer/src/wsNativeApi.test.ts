@@ -197,4 +197,14 @@ describe("wsNativeApi", () => {
 
     await expect(request).rejects.toThrow("websocket disconnected");
   });
+
+  it("returns a stable cached native API instance", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4404");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+
+    const first = getOrCreateWsNativeApi();
+    const second = getOrCreateWsNativeApi();
+
+    expect(second).toBe(first);
+  });
 });
