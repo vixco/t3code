@@ -131,6 +131,11 @@ export default function Sidebar() {
         <span className="flex-1 text-sm font-semibold tracking-tight text-foreground">
           CodeThing
         </span>
+        {state.runtimeError && (
+          <span className="rounded-full border border-rose-400/30 bg-rose-500/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider text-rose-100">
+            Offline
+          </span>
+        )}
         <button
           type="button"
           className="rounded-md p-1.5 text-muted-foreground/80 transition-colors duration-150 hover:bg-accent hover:text-muted-foreground"

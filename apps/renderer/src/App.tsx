@@ -60,6 +60,45 @@ function BootstrapRouter() {
   return null;
 }
 
+function RuntimeHealthRouter() {
+  const api = readNativeApi();
+  const { dispatch } = useStore();
+
+  useEffect(() => {
+    if (!api) return;
+    let cancelled = false;
+
+    const checkHealth = async () => {
+      try {
+        await api.app.health();
+        if (cancelled) return;
+        dispatch({ type: "SET_RUNTIME_ERROR", error: null });
+      } catch (error) {
+        if (cancelled) return;
+        dispatch({
+          type: "SET_RUNTIME_ERROR",
+          error:
+            error instanceof Error
+              ? error.message
+              : "Could not connect to the local t3 runtime.",
+        });
+      }
+    };
+
+    void checkHealth();
+    const interval = window.setInterval(() => {
+      void checkHealth();
+    }, 8_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [api, dispatch]);
+
+  return null;
+}
+
 function Layout() {
   const api = readNativeApi();
   const { state } = useStore();
@@ -78,6 +117,7 @@ function Layout() {
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <BootstrapRouter />
+      <RuntimeHealthRouter />
       <EventRouter />
       {state.runtimeError && state.projects.length === 0 && (
         <div className="pointer-events-none fixed right-4 top-4 z-50 max-w-[440px] rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
