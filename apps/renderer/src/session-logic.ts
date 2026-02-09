@@ -97,11 +97,7 @@ function normalizeItemType(raw: string | undefined): string {
 }
 
 function shouldDropItemType(type: string): boolean {
-  if (
-    type.includes("preamble") ||
-    type.includes("reasoning") ||
-    type.includes("thought")
-  ) {
+  if (type.includes("preamble") || type.includes("reasoning") || type.includes("thought")) {
     return true;
   }
 
@@ -109,11 +105,7 @@ function shouldDropItemType(type: string): boolean {
 }
 
 function shouldShowItemLifecycle(type: string): boolean {
-  return (
-    type.includes("tool") ||
-    type.includes("command") ||
-    type.includes("file change")
-  );
+  return type.includes("tool") || type.includes("command") || type.includes("file change");
 }
 
 function shouldDropMethod(method: string): boolean {
@@ -225,10 +217,7 @@ function entryFromRequest(event: ProviderEvent): WorkLogEntry | null {
   };
 }
 
-function entryFromNotification(
-  event: ProviderEvent,
-  turnStartedAt: number,
-): WorkLogEntry | null {
+function entryFromNotification(event: ProviderEvent, turnStartedAt: number): WorkLogEntry | null {
   if (event.kind !== "notification") return null;
   if (shouldDropMethod(event.method)) return null;
   if (event.method === "item/agentMessage/delta") return null;
@@ -246,9 +235,7 @@ function entryFromNotification(
     const turnErrorDetail = normalizeDetail(turnErrorMessage);
     const eventAt = Date.parse(event.createdAt);
     const durationMs =
-      Number.isNaN(turnStartedAt) ||
-      Number.isNaN(eventAt) ||
-      eventAt < turnStartedAt
+      Number.isNaN(turnStartedAt) || Number.isNaN(eventAt) || eventAt < turnStartedAt
         ? undefined
         : eventAt - turnStartedAt;
 

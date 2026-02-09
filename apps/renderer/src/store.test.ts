@@ -4,9 +4,7 @@ import { describe, expect, it } from "vitest";
 import { type AppState, reducer } from "./store";
 import type { Thread } from "./types";
 
-function makeSession(
-  overrides: Partial<ProviderSession> = {},
-): ProviderSession {
+function makeSession(overrides: Partial<ProviderSession> = {}): ProviderSession {
   return {
     sessionId: "sess-1",
     provider: "codex",

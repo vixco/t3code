@@ -89,23 +89,17 @@ function approvalDetail(event: ProviderEvent): string | undefined {
   return asString(payload?.reason);
 }
 
-function derivePendingApprovals(
-  events: ProviderEvent[],
-): PendingApprovalCard[] {
+function derivePendingApprovals(events: ProviderEvent[]): PendingApprovalCard[] {
   const pending = new Map<string, PendingApprovalCard>();
   const ordered = [...events].reverse();
 
   for (const event of ordered) {
-    if (
-      event.method === "session/closed" ||
-      event.method === "session/exited"
-    ) {
+    if (event.method === "session/closed" || event.method === "session/exited") {
       pending.clear();
       continue;
     }
 
-    const requestId =
-      event.requestId ?? asString(asRecord(event.payload)?.requestId);
+    const requestId = event.requestId ?? asString(asRecord(event.payload)?.requestId);
     if (!requestId) continue;
 
     if (
@@ -140,16 +134,11 @@ export default function ChatView() {
   const [isEditorMenuOpen, setIsEditorMenuOpen] = useState(false);
   const [lastEditor, setLastEditor] = useState<EditorId>(() => {
     const stored = localStorage.getItem(LAST_EDITOR_KEY);
-    return EDITORS.some((e) => e.id === stored)
-      ? (stored as EditorId)
-      : EDITORS[0].id;
+    return EDITORS.some((e) => e.id === stored) ? (stored as EditorId) : EDITORS[0].id;
   });
-  const [selectedEffort, setSelectedEffort] =
-    useState<string>(DEFAULT_REASONING);
+  const [selectedEffort, setSelectedEffort] = useState<string>(DEFAULT_REASONING);
   const [isSwitchingRuntimeMode, setIsSwitchingRuntimeMode] = useState(false);
-  const [respondingRequestIds, setRespondingRequestIds] = useState<string[]>(
-    [],
-  );
+  const [respondingRequestIds, setRespondingRequestIds] = useState<string[]>([]);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -243,18 +232,14 @@ export default function ChatView() {
           sandboxMode: "workspace-write",
         } as const);
 
-  const handleRuntimeModeChange = async (
-    mode: "approval-required" | "full-access",
-  ) => {
+  const handleRuntimeModeChange = async (mode: "approval-required" | "full-access") => {
     if (mode === state.runtimeMode) return;
     dispatch({ type: "SET_RUNTIME_MODE", mode });
     if (!api) return;
 
     const sessionIds = state.threads
       .map((t) => t.session)
-      .filter(
-        (s): s is NonNullable<typeof s> => s !== null && s.status !== "closed",
-      )
+      .filter((s): s is NonNullable<typeof s> => s !== null && s.status !== "closed")
       .map((s) => s.sessionId);
 
     if (sessionIds.length === 0) return;
@@ -262,9 +247,7 @@ export default function ChatView() {
     setIsSwitchingRuntimeMode(true);
     try {
       await Promise.all(
-        sessionIds.map((id) =>
-          api.providers.stopSession({ sessionId: id }).catch(() => undefined),
-        ),
+        sessionIds.map((id) => api.providers.stopSession({ sessionId: id }).catch(() => undefined)),
       );
     } finally {
       setIsSwitchingRuntimeMode(false);
@@ -321,10 +304,7 @@ export default function ChatView() {
 
     const handleClickOutside = (event: MouseEvent) => {
       if (!editorMenuRef.current) return;
-      if (
-        event.target instanceof Node &&
-        !editorMenuRef.current.contains(event.target)
-      ) {
+      if (event.target instanceof Node && !editorMenuRef.current.contains(event.target)) {
         setIsEditorMenuOpen(false);
       }
     };
@@ -451,14 +431,9 @@ export default function ChatView() {
     try {
       const shouldBootstrap =
         previousMessages.length > 0 &&
-        (sessionInfo.continuityState === "new" ||
-          sessionInfo.continuityState === "fallback_new");
+        (sessionInfo.continuityState === "new" || sessionInfo.continuityState === "fallback_new");
       const input = shouldBootstrap
-        ? buildBootstrapInput(
-            previousMessages,
-            trimmed,
-            PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
-          ).text
+        ? buildBootstrapInput(previousMessages, trimmed, PROVIDER_SEND_TURN_MAX_INPUT_CHARS).text
         : trimmed;
       await api.providers.sendTurn({
         sessionId: sessionInfo.sessionId,
@@ -485,10 +460,7 @@ export default function ChatView() {
     });
   };
 
-  const onRespondToApproval = async (
-    requestId: string,
-    decision: ProviderApprovalDecision,
-  ) => {
+  const onRespondToApproval = async (requestId: string, decision: ProviderApprovalDecision) => {
     if (!api || !activeThread?.session) return;
 
     setRespondingRequestIds((existing) =>
@@ -504,15 +476,10 @@ export default function ChatView() {
       dispatch({
         type: "SET_ERROR",
         threadId: activeThread.id,
-        error:
-          err instanceof Error
-            ? err.message
-            : "Failed to submit approval decision.",
+        error: err instanceof Error ? err.message : "Failed to submit approval decision.",
       });
     } finally {
-      setRespondingRequestIds((existing) =>
-        existing.filter((id) => id !== requestId),
-      );
+      setRespondingRequestIds((existing) => existing.filter((id) => id !== requestId));
     }
   };
 
@@ -552,9 +519,7 @@ export default function ChatView() {
       {/* Top bar */}
       <header className="drag-region flex items-center justify-between border-b border-border px-5 pt-[28px] pb-3">
         <div className="flex items-center gap-3">
-          <h2 className="text-sm font-medium text-foreground">
-            {activeThread.title}
-          </h2>
+          <h2 className="text-sm font-medium text-foreground">{activeThread.title}</h2>
         </div>
         <div className="flex items-center gap-3">
           {/* Open in editor */}
@@ -579,9 +544,7 @@ export default function ChatView() {
                       {editorLabel(editor)}
                       {editor.id === lastEditor && (
                         <kbd className="ml-auto text-[9px] text-muted-foreground/40">
-                          {navigator.platform.includes("Mac")
-                            ? "\u2318O"
-                            : "Ctrl+O"}
+                          {navigator.platform.includes("Mac") ? "\u2318O" : "Ctrl+O"}
                         </kbd>
                       )}
                     </button>
@@ -615,9 +578,7 @@ export default function ChatView() {
       {pendingApprovals.length > 0 && (
         <div className="mx-4 mt-3 space-y-2">
           {pendingApprovals.map((approval) => {
-            const isResponding = respondingRequestIds.includes(
-              approval.requestId,
-            );
+            const isResponding = respondingRequestIds.includes(approval.requestId);
             return (
               <div
                 key={approval.requestId}
@@ -641,9 +602,7 @@ export default function ChatView() {
                     type="button"
                     className="rounded-md border border-border bg-accent px-2 py-1 text-[11px] text-foreground transition-colors duration-150 hover:bg-accent/80 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={isResponding}
-                    onClick={() =>
-                      void onRespondToApproval(approval.requestId, "accept")
-                    }
+                    onClick={() => void onRespondToApproval(approval.requestId, "accept")}
                   >
                     Approve once
                   </button>
@@ -651,12 +610,7 @@ export default function ChatView() {
                     type="button"
                     className="rounded-md border border-sky-300/30 bg-sky-500/[0.15] px-2 py-1 text-[11px] text-sky-100 transition-colors duration-150 hover:bg-sky-500/[0.22] disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={isResponding}
-                    onClick={() =>
-                      void onRespondToApproval(
-                        approval.requestId,
-                        "acceptForSession",
-                      )
-                    }
+                    onClick={() => void onRespondToApproval(approval.requestId, "acceptForSession")}
                   >
                     Always allow this session
                   </button>
@@ -664,9 +618,7 @@ export default function ChatView() {
                     type="button"
                     className="rounded-md border border-border px-2 py-1 text-[11px] text-foreground/90 transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={isResponding}
-                    onClick={() =>
-                      void onRespondToApproval(approval.requestId, "decline")
-                    }
+                    onClick={() => void onRespondToApproval(approval.requestId, "decline")}
                   >
                     Decline
                   </button>
@@ -674,9 +626,7 @@ export default function ChatView() {
                     type="button"
                     className="rounded-md border border-rose-300/30 bg-rose-500/[0.12] px-2 py-1 text-[11px] text-rose-100 transition-colors duration-150 hover:bg-rose-500/[0.2] disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={isResponding}
-                    onClick={() =>
-                      void onRespondToApproval(approval.requestId, "cancel")
-                    }
+                    onClick={() => void onRespondToApproval(approval.requestId, "cancel")}
                   >
                     Cancel turn
                   </button>
@@ -691,7 +641,9 @@ export default function ChatView() {
       <div className="flex-1 overflow-y-auto px-5 py-4">
         {activeThread.messages.length === 0 && !isWorking ? (
           <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-muted-foreground/30">Send a message to start the conversation.</p>
+            <p className="text-sm text-muted-foreground/30">
+              Send a message to start the conversation.
+            </p>
           </div>
         ) : (
           <div className="mx-auto max-w-3xl space-y-4">
@@ -704,9 +656,7 @@ export default function ChatView() {
                     <div className="my-3 flex items-center gap-3">
                       <span className="h-px flex-1 bg-border" />
                       <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/80">
-                        {completionSummary
-                          ? `Response • ${completionSummary}`
-                          : "Response"}
+                        {completionSummary ? `Response • ${completionSummary}` : "Response"}
                       </span>
                       <span className="h-px flex-1 bg-border" />
                     </div>
@@ -748,9 +698,7 @@ export default function ChatView() {
                     <ChatMarkdown
                       text={
                         timelineEntry.message.text ||
-                        (timelineEntry.message.streaming
-                          ? ""
-                          : "(empty response)")
+                        (timelineEntry.message.streaming ? "" : "(empty response)")
                       }
                     />
                     {timelineEntry.message.streaming && (
@@ -769,15 +717,10 @@ export default function ChatView() {
                       {formatMessageMeta(
                         timelineEntry.message.createdAt,
                         timelineEntry.message.streaming
-                          ? formatElapsed(
-                              timelineEntry.message.createdAt,
-                              nowIso,
-                            )
+                          ? formatElapsed(timelineEntry.message.createdAt, nowIso)
                           : formatElapsed(
                               timelineEntry.message.createdAt,
-                              assistantCompletionByItemId.get(
-                                timelineEntry.message.id,
-                              ),
+                              assistantCompletionByItemId.get(timelineEntry.message.id),
                             ),
                       )}
                     </p>
@@ -933,9 +876,7 @@ export default function ChatView() {
                   disabled={isSwitchingRuntimeMode}
                   onClick={() =>
                     void handleRuntimeModeChange(
-                      state.runtimeMode === "full-access"
-                        ? "approval-required"
-                        : "full-access",
+                      state.runtimeMode === "full-access" ? "approval-required" : "full-access",
                     )
                   }
                   title={
@@ -945,13 +886,7 @@ export default function ChatView() {
                   }
                 >
                   {state.runtimeMode === "full-access" ? (
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 14 14"
-                      fill="none"
-                      aria-hidden="true"
-                    >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
                       <rect
                         x="2"
                         y="5.5"
@@ -969,13 +904,7 @@ export default function ChatView() {
                       />
                     </svg>
                   ) : (
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 14 14"
-                      fill="none"
-                      aria-hidden="true"
-                    >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
                       <rect
                         x="2"
                         y="5.5"
@@ -993,11 +922,7 @@ export default function ChatView() {
                       />
                     </svg>
                   )}
-                  <span>
-                    {state.runtimeMode === "full-access"
-                      ? "Full access"
-                      : "Supervised"}
-                  </span>
+                  <span>{state.runtimeMode === "full-access" ? "Full access" : "Supervised"}</span>
                 </button>
               </div>
 

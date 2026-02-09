@@ -1,16 +1,19 @@
-# CodeThing (Electron + Vite + Bun)
+# CodeThing (`t3`: Node + WebSocket + Browser)
 
-CodeThing is a desktop shell for coding agents. This first implementation is:
+CodeThing now runs as a local Node.js runtime that serves a browser UI and exposes a local WebSocket API.
+
+Current implementation is:
 
 1. Codex-first: connects to `codex app-server` and streams turn/item events.
 2. Provider-ready: renderer speaks a provider abstraction so Claude Code can plug in later.
-3. Typed end-to-end: contracts validate payloads at preload/main boundaries.
+3. Typed end-to-end: contracts validate payloads across the WebSocket boundary.
 
 ## Workspace layout
 
-- `/apps/desktop`: Electron main + preload process, includes provider and Codex session managers.
+- `/apps/t3`: CLI launcher + local WebSocket runtime server.
+- `/apps/desktop`: Runtime internals used by `t3` (no Electron app shell).
 - `/apps/renderer`: React + Vite UI for session control, conversation, and protocol event stream.
-- `/packages/contracts`: shared Zod schemas + TypeScript types for IPC and provider events.
+- `/packages/contracts`: shared Zod schemas + TypeScript types for WS protocol, provider events, and API contracts.
 
 ## Codex prerequisites
 
@@ -18,15 +21,12 @@ CodeThing is a desktop shell for coding agents. This first implementation is:
 - Authenticate Codex before running CodeThing (for example via API key or ChatGPT auth supported by Codex).
 - CodeThing starts the server via `codex app-server` per session.
 
-## Security and boundary model
+## Runtime boundary model
 
-- `nodeIntegration: false`
-- `contextIsolation: true`
-- `sandbox: true`
-- Renderer talks only to `window.nativeApi` exposed by preload.
-- Preload and main both validate inputs using shared Zod schemas.
-
-`sandbox: true` above is Electron renderer sandboxing. It is separate from Codex execution sandbox policy (`read-only`, `workspace-write`, `danger-full-access`) used when starting provider sessions.
+- `t3` starts a localhost-only WebSocket server.
+- Browser renderer talks through a typed `NativeApi` adapter over that WebSocket.
+- Runtime validates request payloads with shared Zod contracts.
+- Codex execution sandbox policy (`read-only`, `workspace-write`, `danger-full-access`) is still selected per session startup options.
 
 ## Runtime modes
 
@@ -39,22 +39,15 @@ Mode changes apply across all threads. Existing live sessions are restarted so o
 
 ## Scripts
 
-- `bun run dev`: starts contract build/watch, renderer dev server, and Electron process.
-- `bun run build`: builds contracts, renderer, and desktop bundles through Turbo.
+- `bun run dev`: builds contracts, starts `t3` runtime, opens browser UI.
+- `bun run build`: builds contracts, renderer static assets, and `t3` CLI bundle.
 - `bun run typecheck`: strict TypeScript checks for all packages.
 - `bun run test`: runs workspace tests.
-
-## CI quality gates
-
-- `.github/workflows/ci.yml` runs `bun run lint`, `bun run typecheck`, and `bun run test` on pull requests and pushes to `main`.
-
-Optional:
-
-- `ELECTRON_RENDERER_PORT=5180 bun run dev` if `5173` is already in use.
+- `bun run --cwd apps/t3 dev`: run the CLI directly in dev mode.
 
 ## Provider architecture
 
-The renderer now depends on `nativeApi.providers.*`:
+The renderer depends on `nativeApi.providers.*`:
 
 1. `startSession`
 2. `sendTurn`

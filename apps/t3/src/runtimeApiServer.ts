@@ -23,9 +23,46 @@ import {
   terminalCommandInputSchema,
   wsClientMessageSchema,
 } from "@acme/contracts";
-import { ProcessManager } from "../../desktop/src/processManager";
-import { ProviderManager } from "../../desktop/src/providerManager";
-import { TodoStore } from "../../desktop/src/todoStore";
+import * as processManagerModule from "../../desktop/src/processManager";
+import * as providerManagerModule from "../../desktop/src/providerManager";
+import * as todoStoreModule from "../../desktop/src/todoStore";
+
+function resolveModuleExport<TValue>(
+  moduleRecord: Record<string, unknown>,
+  namedExport: string,
+): TValue {
+  const named = moduleRecord[namedExport];
+  if (named) {
+    return named as TValue;
+  }
+
+  const defaultExport = moduleRecord.default;
+  if (defaultExport && typeof defaultExport === "object") {
+    const nestedNamed = (defaultExport as Record<string, unknown>)[namedExport];
+    if (nestedNamed) {
+      return nestedNamed as TValue;
+    }
+  }
+
+  if (defaultExport) {
+    return defaultExport as TValue;
+  }
+
+  throw new Error(`Could not resolve export '${namedExport}' from module.`);
+}
+
+const ProcessManager = resolveModuleExport<typeof processManagerModule.ProcessManager>(
+  processManagerModule as Record<string, unknown>,
+  "ProcessManager",
+);
+const ProviderManager = resolveModuleExport<typeof providerManagerModule.ProviderManager>(
+  providerManagerModule as Record<string, unknown>,
+  "ProviderManager",
+);
+const TodoStore = resolveModuleExport<typeof todoStoreModule.TodoStore>(
+  todoStoreModule as Record<string, unknown>,
+  "TodoStore",
+);
 
 const agentWriteInputSchema = z.object({
   sessionId: z.string().min(1),
@@ -75,11 +112,7 @@ function sendMessage(socket: WebSocket, message: unknown): void {
 
 function openPathInFileManager(targetPath: string): void {
   const command =
-    process.platform === "win32"
-      ? "explorer"
-      : process.platform === "darwin"
-        ? "open"
-        : "xdg-open";
+    process.platform === "win32" ? "explorer" : process.platform === "darwin" ? "open" : "xdg-open";
 
   const child = spawn(command, [targetPath], {
     detached: true,
@@ -132,11 +165,7 @@ async function pickFolder(): Promise<string | null> {
       "  Write-Output $dialog.SelectedPath",
       "}",
     ].join("; ");
-    const result = await tryCommand("powershell", [
-      "-NoProfile",
-      "-Command",
-      powershellScript,
-    ]);
+    const result = await tryCommand("powershell", ["-NoProfile", "-Command", powershellScript]);
     return result && result.length > 0 ? result : null;
   }
 
@@ -159,9 +188,7 @@ async function runTerminalCommand(parsed: z.infer<typeof terminalCommandInputSch
       ? (process.env.ComSpec ?? "cmd.exe")
       : (process.env.SHELL ?? "/bin/sh");
   const args =
-    process.platform === "win32"
-      ? ["/d", "/s", "/c", parsed.command]
-      : ["-lc", parsed.command];
+    process.platform === "win32" ? ["/d", "/s", "/c", parsed.command] : ["-lc", parsed.command];
 
   return new Promise<{
     stdout: string;
@@ -273,7 +300,7 @@ export async function startRuntimeApiServer(
       const session = await ensureLaunchSession();
       const payload: AppBootstrapResult = {
         launchCwd,
-        projectName: path.basename(launchCwd),
+        projectName: path.basename(launchCwd) || launchCwd,
         provider: "codex",
         model: session.model ?? DEFAULT_MODEL,
         session,
@@ -313,9 +340,7 @@ export async function startRuntimeApiServer(
       return null;
     }
     if (method === "providers.respondToRequest") {
-      await providerManager.respondToRequest(
-        providerRespondToRequestInputSchema.parse(params),
-      );
+      await providerManager.respondToRequest(providerRespondToRequestInputSchema.parse(params));
       return null;
     }
     if (method === "providers.stopSession") {

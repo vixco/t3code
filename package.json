@@ -1,18 +1,20 @@
 {
-  "name": "ct-round-5",
-  "private": true,
+  "name": "t3",
+  "private": false,
+  "bin": {
+    "t3": "apps/t3/dist/cli.js"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run build:contracts && turbo run dev --parallel",
-    "build": "turbo run build",
+    "dev": "bun run build:contracts && bun run --cwd apps/t3 dev",
+    "build": "bun run build:contracts && bun run --cwd apps/renderer build && bun run --cwd apps/t3 build",
     "typecheck": "turbo run typecheck",
     "lint": "oxlint --report-unused-disable-directives",
     "test": "turbo run test",
     "fmt": "oxfmt",
-    "smoke-test": "turbo run smoke-test",
     "build:contracts": "bun run --cwd packages/contracts build"
   },
   "devDependencies": {

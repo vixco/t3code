@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  WS_EVENT_CHANNELS,
-  wsClientMessageSchema,
-  wsServerMessageSchema,
-} from "./ws";
+import { WS_EVENT_CHANNELS, wsClientMessageSchema, wsServerMessageSchema } from "./ws";
 
 describe("wsClientMessageSchema", () => {
   it("accepts request messages", () => {

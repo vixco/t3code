@@ -11,18 +11,8 @@ import {
 import type { AppBootstrapResult, ProviderEvent, ProviderSession } from "@acme/contracts";
 import { resolveModelSlug } from "./model-logic";
 import { hydratePersistedState, toPersistedState } from "./persistenceSchema";
-import {
-  applyEventToMessages,
-  asObject,
-  asString,
-  evolveSession,
-} from "./session-logic";
-import {
-  DEFAULT_RUNTIME_MODE,
-  type Project,
-  type RuntimeMode,
-  type Thread,
-} from "./types";
+import { applyEventToMessages, asObject, asString, evolveSession } from "./session-logic";
+import { DEFAULT_RUNTIME_MODE, type Project, type RuntimeMode, type Thread } from "./types";
 
 // ── Actions ──────────────────────────────────────────────────────────
 
@@ -99,10 +89,7 @@ function persistState(state: AppState): void {
   if (typeof window === "undefined") return;
 
   try {
-    window.localStorage.setItem(
-      PERSISTED_STATE_KEY,
-      JSON.stringify(toPersistedState(state)),
-    );
+    window.localStorage.setItem(PERSISTED_STATE_KEY, JSON.stringify(toPersistedState(state)));
     for (const legacyKey of LEGACY_PERSISTED_STATE_KEYS) {
       window.localStorage.removeItem(legacyKey);
     }
@@ -146,10 +133,7 @@ function durationMs(startIso: string, endIso: string): number | undefined {
   return end - start;
 }
 
-function updateTurnFields(
-  thread: Thread,
-  event: ProviderEvent,
-): Partial<Thread> {
+function updateTurnFields(thread: Thread, event: ProviderEvent): Partial<Thread> {
   if (event.method === "turn/started") {
     return {
       latestTurnId: getEventTurnId(event) ?? thread.latestTurnId,
@@ -166,9 +150,7 @@ function updateTurnFields(
         ? thread.latestTurnStartedAt
         : undefined;
     const elapsed =
-      startedAt && startedAt.length > 0
-        ? durationMs(startedAt, event.createdAt)
-        : undefined;
+      startedAt && startedAt.length > 0 ? durationMs(startedAt, event.createdAt) : undefined;
 
     return {
       latestTurnId: completedTurnId ?? thread.latestTurnId,
@@ -245,17 +227,11 @@ export function reducer(state: AppState, action: Action): AppState {
               codexThreadId: t.codexThreadId ?? eventThreadId ?? null,
               error:
                 threadMismatchError ??
-                (event.kind === "error" && event.message
-                  ? event.message
-                  : t.error),
+                (event.kind === "error" && event.message ? event.message : t.error),
             };
           })(),
           session: t.session ? evolveSession(t.session, event) : t.session,
-          messages: applyEventToMessages(
-            t.messages,
-            event,
-            activeAssistantItemRef,
-          ),
+          messages: applyEventToMessages(t.messages, event, activeAssistantItemRef),
           events: [event, ...t.events],
           ...updateTurnFields(t, event),
         })),
@@ -345,9 +321,7 @@ export function reducer(state: AppState, action: Action): AppState {
 
       const projectThreads = state.threads.filter((thread) => thread.projectId === projectId);
       const existingThread =
-        state.threads.find(
-          (thread) => thread.session?.sessionId === bootstrap.session.sessionId,
-        ) ??
+        state.threads.find((thread) => thread.session?.sessionId === bootstrap.session.sessionId) ??
         projectThreads.find(
           (thread) =>
             bootstrap.session.threadId !== undefined &&
@@ -383,15 +357,17 @@ export function reducer(state: AppState, action: Action): AppState {
                 : entry,
             )
           : [project, ...state.projects],
-        threads: state.threads.map((entry) =>
-          entry.id === thread.id
-            ? {
-                ...entry,
-                session: bootstrap.session,
-                codexThreadId: bootstrap.session.threadId ?? entry.codexThreadId,
-              }
-            : entry,
-        ).concat(existingThread ? [] : [thread]),
+        threads: state.threads
+          .map((entry) =>
+            entry.id === thread.id
+              ? {
+                  ...entry,
+                  session: bootstrap.session,
+                  codexThreadId: bootstrap.session.threadId ?? entry.codexThreadId,
+                }
+              : entry,
+          )
+          .concat(existingThread ? [] : [thread]),
         activeThreadId,
       };
     }

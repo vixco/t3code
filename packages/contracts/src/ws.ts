@@ -59,11 +59,7 @@ const wsHelloSchema = z.object({
 });
 
 export const wsClientMessageSchema = wsRequestSchema;
-export const wsServerMessageSchema = z.union([
-  wsResponseSchema,
-  wsEventSchema,
-  wsHelloSchema,
-]);
+export const wsServerMessageSchema = z.union([wsResponseSchema, wsEventSchema, wsHelloSchema]);
 
 export type WsEventChannel = z.infer<typeof wsEventSchema>["channel"];
 export type WsRequestMessage = z.infer<typeof wsRequestSchema>;

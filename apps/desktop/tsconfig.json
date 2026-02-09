@@ -2,8 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
-    "types": ["node", "electron"],
+    "types": ["node"],
     "lib": ["ES2023", "DOM"]
   },
-  "include": ["src", "tsup.config.ts"]
+  "include": ["src"]
 }

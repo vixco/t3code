@@ -62,9 +62,7 @@ function Layout() {
       <div className="flex h-screen flex-col bg-background text-foreground">
         <div className="drag-region h-[52px] shrink-0" />
         <div className="flex flex-1 items-center justify-center">
-          <p className="text-sm text-muted-foreground">
-            Local t3 runtime unavailable.
-          </p>
+          <p className="text-sm text-muted-foreground">Local t3 runtime unavailable.</p>
         </div>
       </div>
     );

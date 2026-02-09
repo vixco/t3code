@@ -157,13 +157,22 @@ class WsNativeApiClient {
           this.request("app.bootstrap").then((value) => value as AppBootstrapResult),
       },
       todos: {
-        list: async () => this.request("todos.list").then((value) => value as Awaited<ReturnType<NativeApi["todos"]["list"]>>),
+        list: async () =>
+          this.request("todos.list").then(
+            (value) => value as Awaited<ReturnType<NativeApi["todos"]["list"]>>,
+          ),
         add: async (input) =>
-          this.request("todos.add", input).then((value) => value as Awaited<ReturnType<NativeApi["todos"]["add"]>>),
+          this.request("todos.add", input).then(
+            (value) => value as Awaited<ReturnType<NativeApi["todos"]["add"]>>,
+          ),
         toggle: async (id) =>
-          this.request("todos.toggle", id).then((value) => value as Awaited<ReturnType<NativeApi["todos"]["toggle"]>>),
+          this.request("todos.toggle", id).then(
+            (value) => value as Awaited<ReturnType<NativeApi["todos"]["toggle"]>>,
+          ),
         remove: async (id) =>
-          this.request("todos.remove", id).then((value) => value as Awaited<ReturnType<NativeApi["todos"]["remove"]>>),
+          this.request("todos.remove", id).then(
+            (value) => value as Awaited<ReturnType<NativeApi["todos"]["remove"]>>,
+          ),
       },
       dialogs: {
         pickFolder: async () =>
@@ -171,7 +180,9 @@ class WsNativeApiClient {
       },
       terminal: {
         run: async (input) =>
-          this.request("terminal.run", input).then((value) => value as Awaited<ReturnType<NativeApi["terminal"]["run"]>>),
+          this.request("terminal.run", input).then(
+            (value) => value as Awaited<ReturnType<NativeApi["terminal"]["run"]>>,
+          ),
       },
       agent: {
         spawn: async (config) =>
@@ -197,9 +208,13 @@ class WsNativeApiClient {
       },
       providers: {
         startSession: async (input) =>
-          this.request("providers.startSession", input).then((value) => value as Awaited<ReturnType<NativeApi["providers"]["startSession"]>>),
+          this.request("providers.startSession", input).then(
+            (value) => value as Awaited<ReturnType<NativeApi["providers"]["startSession"]>>,
+          ),
         sendTurn: async (input) =>
-          this.request("providers.sendTurn", input).then((value) => value as Awaited<ReturnType<NativeApi["providers"]["sendTurn"]>>),
+          this.request("providers.sendTurn", input).then(
+            (value) => value as Awaited<ReturnType<NativeApi["providers"]["sendTurn"]>>,
+          ),
         interruptTurn: async (input) => {
           await this.request("providers.interruptTurn", input);
         },
@@ -210,7 +225,9 @@ class WsNativeApiClient {
           await this.request("providers.stopSession", input);
         },
         listSessions: async () =>
-          this.request("providers.listSessions").then((value) => value as Awaited<ReturnType<NativeApi["providers"]["listSessions"]>>),
+          this.request("providers.listSessions").then(
+            (value) => value as Awaited<ReturnType<NativeApi["providers"]["listSessions"]>>,
+          ),
         onEvent: (callback) => {
           this.providerEventListeners.add(callback);
           return () => {

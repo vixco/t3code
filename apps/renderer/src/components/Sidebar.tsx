@@ -58,9 +58,7 @@ export default function Sidebar() {
           codexThreadId: null,
           projectId,
           title: "New thread",
-          model:
-            state.projects.find((p) => p.id === projectId)?.model ??
-            DEFAULT_MODEL,
+          model: state.projects.find((p) => p.id === projectId)?.model ?? DEFAULT_MODEL,
           session: null,
           messages: [],
           events: [],
@@ -107,9 +105,7 @@ export default function Sidebar() {
         }
       }
 
-      const activeThread = state.threads.find(
-        (t) => t.id === state.activeThreadId,
-      );
+      const activeThread = state.threads.find((t) => t.id === state.activeThreadId);
       const projectId = activeThread?.projectId ?? state.projects[0]?.id;
       if (!projectId) return;
 
@@ -177,9 +173,7 @@ export default function Sidebar() {
           const threads = state.threads
             .filter((t) => t.projectId === project.id)
             .sort((a, b) => {
-              const byDate =
-                new Date(b.createdAt).getTime() -
-                new Date(a.createdAt).getTime();
+              const byDate = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
               if (byDate !== 0) return byDate;
               return b.id.localeCompare(a.id);
             });
@@ -205,15 +199,15 @@ export default function Sidebar() {
                 <div className="ml-2 border-l border-border/80 pl-2">
                   {threads.map((thread) => {
                     const isActive = state.activeThreadId === thread.id;
-                    const threadStatus = threadStatusLabel(
-                      thread.session?.status,
-                    );
+                    const threadStatus = threadStatusLabel(thread.session?.status);
                     return (
                       <button
                         key={thread.id}
                         type="button"
                         className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-150 ${
-                          isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-secondary"
+                          isActive
+                            ? "bg-accent text-foreground"
+                            : "text-muted-foreground hover:bg-secondary"
                         }`}
                         onClick={() =>
                           dispatch({
@@ -226,14 +220,10 @@ export default function Sidebar() {
                           {threadStatus && (
                             <span className="inline-flex items-center gap-1 text-[10px] text-sky-600 dark:text-sky-300/80">
                               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-500 dark:bg-sky-300/80" />
-                              <span className="hidden xl:inline">
-                                {threadStatus}
-                              </span>
+                              <span className="hidden xl:inline">{threadStatus}</span>
                             </span>
                           )}
-                          <span className="min-w-0 flex-1 truncate text-xs">
-                            {thread.title}
-                          </span>
+                          <span className="min-w-0 flex-1 truncate text-xs">{thread.title}</span>
                         </div>
                         <span className="shrink-0 text-[10px] text-muted-foreground/40">
                           {formatRelativeTime(thread.createdAt)}
