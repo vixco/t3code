@@ -197,9 +197,15 @@ describe("runtimeApiServer", () => {
     }
 
     const payload = response.result as {
+      status: string;
       launchCwd: string;
+      sessionCount: number;
+      activeClientConnected: boolean;
     };
+    expect(payload.status).toBe("ok");
     expect(payload.launchCwd).toBe(process.cwd());
+    expect(payload.sessionCount).toBeGreaterThanOrEqual(0);
+    expect(payload.activeClientConnected).toBe(true);
     client.socket.close();
   });
 
