@@ -169,6 +169,7 @@ describe("runtimeApiServer", () => {
     servers.push(server);
 
     const authorizedUrl = new URL(server.wsUrl);
+    expect(authorizedUrl.searchParams.get("token")).toBe("secret-token");
     const unauthorizedUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}`;
     const unauthorizedClient = new WebSocket(unauthorizedUrl);
     const unauthorizedClose = await withTimeout(
