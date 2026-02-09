@@ -29,6 +29,8 @@ CLI flags:
 - `--version` — print CLI version.
 - `--help` — print CLI usage.
 
+If default ports are busy, `t3` will automatically retry with the next available port pair unless ports are explicitly pinned via CLI flags or environment variables.
+
 Optional environment variables:
 
 - `T3_NO_OPEN=1` — start runtime without auto-opening a browser window.
