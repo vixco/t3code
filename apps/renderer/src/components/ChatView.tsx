@@ -65,9 +65,12 @@ export default function ChatView() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [isEditorMenuOpen, setIsEditorMenuOpen] = useState(false);
-  const [lastEditor, setLastEditor] = useState<EditorId>(
-    () => (localStorage.getItem(LAST_EDITOR_KEY) as EditorId) ?? EDITORS[0].id,
-  );
+  const [lastEditor, setLastEditor] = useState<EditorId>(() => {
+    const stored = localStorage.getItem(LAST_EDITOR_KEY);
+    return EDITORS.some((e) => e.id === stored)
+      ? (stored as EditorId)
+      : EDITORS[0].id;
+  });
   const [selectedEffort, setSelectedEffort] =
     useState<string>(DEFAULT_REASONING);
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -185,8 +188,8 @@ export default function ChatView() {
   useEffect(() => {
     const handler = (e: globalThis.KeyboardEvent) => {
       if (e.key === "o" && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
-        e.preventDefault();
         if (api && activeProject) {
+          e.preventDefault();
           void api.shell.openInEditor(activeProject.cwd, lastEditor);
         }
       }
