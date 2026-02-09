@@ -398,7 +398,9 @@ export default function ChatView() {
                       {editorLabel(editor)}
                       {editor.id === lastEditor && (
                         <kbd className="ml-auto text-[9px] text-[#a0a0a0]/40">
-                          {navigator.platform.includes("Mac") ? "\u2318" : "Ctrl+"}O
+                          {navigator.platform.includes("Mac")
+                            ? "\u2318O"
+                            : "Ctrl+O"}
                         </kbd>
                       )}
                     </button>

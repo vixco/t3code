@@ -3,14 +3,7 @@ fixPath();
 
 import { spawn } from "node:child_process";
 import path from "node:path";
-import {
-  BrowserWindow,
-  app,
-  dialog,
-  ipcMain,
-  session,
-  shell,
-} from "electron";
+import { BrowserWindow, app, dialog, ipcMain, session, shell } from "electron";
 
 import {
   EDITORS,
