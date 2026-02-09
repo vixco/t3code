@@ -46,6 +46,17 @@ describe("parseCliOptions", () => {
     expect(options.showHelp).toBe(true);
   });
 
+  it("supports version flag", () => {
+    const options = parseCliOptions(["--version"], {}, "/workspace");
+    expect(options.showVersion).toBe(true);
+  });
+
+  it("throws for invalid explicit port values", () => {
+    expect(() => parseCliOptions(["--web-port", "nope"], {}, "/workspace")).toThrow(
+      "Invalid value for --web-port",
+    );
+  });
+
   it("throws for unknown arguments", () => {
     expect(() => parseCliOptions(["--wat"], {}, "/workspace")).toThrow(
       "Unknown argument: --wat",

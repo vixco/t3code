@@ -23,12 +23,22 @@ function parsePort(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
+function parseExplicitPort(value: string, key: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid value for ${key}: '${value}'. Expected a positive integer.`);
+  }
+
+  return parsed;
+}
+
 interface CliOptions {
   backendPort: number;
   webPort: number;
   launchCwd: string;
   noOpen: boolean;
   showHelp: boolean;
+  showVersion: boolean;
 }
 
 function readArgValue(args: string[], index: number, key: string): string {
@@ -50,6 +60,7 @@ export function parseCliOptions(
   let launchCwd = cwd;
   let noOpen = env.T3_NO_OPEN === "1";
   let showHelp = false;
+  let showVersion = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -60,32 +71,37 @@ export function parseCliOptions(
       continue;
     }
 
+    if (arg === "--version" || arg === "-v") {
+      showVersion = true;
+      continue;
+    }
+
     if (arg === "--no-open") {
       noOpen = true;
       continue;
     }
 
     if (arg.startsWith("--backend-port=")) {
-      backendPort = parsePort(arg.split("=")[1], DEFAULT_BACKEND_PORT);
+      backendPort = parseExplicitPort(arg.split("=")[1] ?? "", "--backend-port");
       continue;
     }
 
     if (arg === "--backend-port") {
-      backendPort = parsePort(
+      backendPort = parseExplicitPort(
         readArgValue(argv, index, "--backend-port"),
-        DEFAULT_BACKEND_PORT,
+        "--backend-port",
       );
       index += 1;
       continue;
     }
 
     if (arg.startsWith("--web-port=")) {
-      webPort = parsePort(arg.split("=")[1], DEFAULT_WEB_PORT);
+      webPort = parseExplicitPort(arg.split("=")[1] ?? "", "--web-port");
       continue;
     }
 
     if (arg === "--web-port") {
-      webPort = parsePort(readArgValue(argv, index, "--web-port"), DEFAULT_WEB_PORT);
+      webPort = parseExplicitPort(readArgValue(argv, index, "--web-port"), "--web-port");
       index += 1;
       continue;
     }
@@ -110,6 +126,7 @@ export function parseCliOptions(
     launchCwd,
     noOpen,
     showHelp,
+    showVersion,
   };
 }
 
@@ -123,6 +140,7 @@ function printHelp(): void {
       "  --backend-port <port>   Override WebSocket API port (default: 4317)",
       "  --web-port <port>       Override web UI port (default: 4318)",
       "  --cwd <path>            Launch project directory (default: current directory)",
+      "  -v, --version           Print CLI version",
       "  -h, --help              Show this help message",
       "",
       "Environment variables:",
@@ -151,6 +169,10 @@ function openBrowser(url: string, noOpen: boolean): void {
     // Best-effort browser launch; keep runtime alive even when opener is unavailable.
   });
   child.unref();
+}
+
+function readCliVersion(): string {
+  return process.env.npm_package_version ?? "0.1.0";
 }
 
 function ensureRendererBuild(rendererRoot: string): void {
@@ -243,6 +265,12 @@ async function main() {
 
   if (options.showHelp) {
     printHelp();
+    process.exit(0);
+    return;
+  }
+
+  if (options.showVersion) {
+    process.stdout.write(`${readCliVersion()}\n`);
     process.exit(0);
     return;
   }
