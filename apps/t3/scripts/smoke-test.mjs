@@ -32,6 +32,27 @@ function waitForProcessExit(processRef) {
   });
 }
 
+async function terminateProcess(processRef, timeoutMs = 5_000) {
+  if (processRef.exitCode !== null || processRef.signalCode !== null) {
+    return;
+  }
+
+  processRef.kill("SIGTERM");
+  const exited = await Promise.race([
+    waitForProcessExit(processRef).then(() => true),
+    new Promise((resolve) => {
+      setTimeout(() => resolve(false), timeoutMs);
+    }),
+  ]);
+
+  if (exited) {
+    return;
+  }
+
+  processRef.kill("SIGKILL");
+  await waitForProcessExit(processRef);
+}
+
 function waitForStartupUrl(readOutput, processRef, timeoutMs = 20_000) {
   return new Promise((resolve, reject) => {
     const finish = (callback, value) => {
@@ -160,8 +181,7 @@ async function main() {
     process.stderr.write(output);
     process.exitCode = 1;
   } finally {
-    child.kill();
-    await waitForProcessExit(child);
+    await terminateProcess(child);
   }
 }
 
