@@ -940,6 +940,90 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("supports agent.write and agent.kill lifecycle", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const spawnResponse = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "agent-spawn-2",
+      "agent.spawn",
+      {
+        command: "bash",
+        args: ["-lc", "cat"],
+        cwd: process.cwd(),
+      },
+    );
+    expect(spawnResponse.ok).toBe(true);
+    if (!spawnResponse.ok) {
+      throw new Error("Expected agent.spawn response to succeed.");
+    }
+    const sessionId = String(spawnResponse.result);
+
+    const waitForAgentEvent = async (channel: string) => {
+      const message = await client.nextMessage();
+      if (message.type !== "event") {
+        return waitForAgentEvent(channel);
+      }
+      if (message.channel !== channel) {
+        return waitForAgentEvent(channel);
+      }
+
+      const payload = message.payload as {
+        sessionId?: string;
+      };
+      if (payload.sessionId !== sessionId) {
+        return waitForAgentEvent(channel);
+      }
+
+      return message;
+    };
+
+    const writeResponse = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "agent-write-1",
+      "agent.write",
+      {
+        sessionId,
+        data: "runtime-write-test\n",
+      },
+    );
+    expect(writeResponse.ok).toBe(true);
+
+    const outputEvent = await waitForAgentEvent(WS_EVENT_CHANNELS.agentOutput);
+    const outputPayload = outputEvent.payload as {
+      data: string;
+    };
+    expect(outputPayload.data).toContain("runtime-write-test");
+
+    const killResponse = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "agent-kill-1",
+      "agent.kill",
+      sessionId,
+    );
+    expect(killResponse.ok).toBe(true);
+
+    const exitEvent = await waitForAgentEvent(WS_EVENT_CHANNELS.agentExit);
+    const exitPayload = exitEvent.payload as {
+      code: number | null;
+      signal: string | null;
+    };
+    expect(exitPayload.code === null || typeof exitPayload.code === "number").toBe(true);
+    expect(exitPayload.signal === null || typeof exitPayload.signal === "string").toBe(true);
+
+    client.socket.close();
+  });
+
   it("reports runtime health metadata", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
