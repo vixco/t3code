@@ -8,7 +8,7 @@ import {
   useReducer,
 } from "react";
 
-import type { ProviderEvent, ProviderSession } from "@acme/contracts";
+import type { AppBootstrapResult, ProviderEvent, ProviderSession } from "@acme/contracts";
 import { resolveModelSlug } from "./model-logic";
 import { hydratePersistedState, toPersistedState } from "./persistenceSchema";
 import {
@@ -42,7 +42,8 @@ type Action =
   | { type: "SET_ERROR"; threadId: string; error: string | null }
   | { type: "SET_THREAD_TITLE"; threadId: string; title: string }
   | { type: "SET_THREAD_MODEL"; threadId: string; model: string }
-  | { type: "SET_RUNTIME_MODE"; mode: RuntimeMode };
+  | { type: "SET_RUNTIME_MODE"; mode: RuntimeMode }
+  | { type: "BOOTSTRAP_FROM_SERVER"; bootstrap: AppBootstrapResult };
 
 // ── State ────────────────────────────────────────────────────────────
 
@@ -327,6 +328,73 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         runtimeMode: action.mode,
       };
+
+    case "BOOTSTRAP_FROM_SERVER": {
+      const { bootstrap } = action;
+      const existingProject = state.projects.find((project) => project.cwd === bootstrap.launchCwd);
+      const projectId = existingProject?.id ?? crypto.randomUUID();
+      const project =
+        existingProject ??
+        ({
+          id: projectId,
+          name: bootstrap.projectName,
+          cwd: bootstrap.launchCwd,
+          model: resolveModelSlug(bootstrap.model),
+          expanded: true,
+        } satisfies Project);
+
+      const projectThreads = state.threads.filter((thread) => thread.projectId === projectId);
+      const existingThread =
+        state.threads.find(
+          (thread) => thread.session?.sessionId === bootstrap.session.sessionId,
+        ) ??
+        projectThreads.find(
+          (thread) =>
+            bootstrap.session.threadId !== undefined &&
+            thread.codexThreadId === bootstrap.session.threadId,
+        ) ??
+        projectThreads[0];
+
+      const activeThreadId = existingThread?.id ?? crypto.randomUUID();
+      const thread =
+        existingThread ??
+        ({
+          id: activeThreadId,
+          codexThreadId: bootstrap.session.threadId ?? null,
+          projectId,
+          title: "New thread",
+          model: resolveModelSlug(bootstrap.model),
+          session: bootstrap.session,
+          messages: [],
+          events: [],
+          error: null,
+          createdAt: new Date().toISOString(),
+        } satisfies Thread);
+
+      return {
+        ...state,
+        projects: existingProject
+          ? state.projects.map((entry) =>
+              entry.id === existingProject.id
+                ? {
+                    ...entry,
+                    model: resolveModelSlug(bootstrap.model),
+                  }
+                : entry,
+            )
+          : [project, ...state.projects],
+        threads: state.threads.map((entry) =>
+          entry.id === thread.id
+            ? {
+                ...entry,
+                session: bootstrap.session,
+                codexThreadId: bootstrap.session.threadId ?? entry.codexThreadId,
+              }
+            : entry,
+        ).concat(existingThread ? [] : [thread]),
+        activeThreadId,
+      };
+    }
 
     default:
       return state;

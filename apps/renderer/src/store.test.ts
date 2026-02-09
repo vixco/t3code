@@ -64,6 +64,37 @@ function makeState(thread: Thread): AppState {
 }
 
 describe("store reducer thread continuity", () => {
+  it("bootstraps project and active thread from runtime response", () => {
+    const state: AppState = {
+      projects: [],
+      threads: [],
+      activeThreadId: null,
+      runtimeMode: "full-access",
+      diffOpen: false,
+    };
+    const session = makeSession({
+      sessionId: "sess-bootstrap",
+      threadId: "thr-bootstrap",
+    });
+
+    const next = reducer(state, {
+      type: "BOOTSTRAP_FROM_SERVER",
+      bootstrap: {
+        launchCwd: "/workspace",
+        projectName: "workspace",
+        provider: "codex",
+        model: "gpt-5.3-codex",
+        session,
+      },
+    });
+
+    expect(next.projects).toHaveLength(1);
+    expect(next.projects[0]?.cwd).toBe("/workspace");
+    expect(next.threads).toHaveLength(1);
+    expect(next.threads[0]?.session?.sessionId).toBe("sess-bootstrap");
+    expect(next.activeThreadId).toBe(next.threads[0]?.id ?? null);
+  });
+
   it("stores codexThreadId from UPDATE_SESSION", () => {
     const state = makeState(
       makeThread({

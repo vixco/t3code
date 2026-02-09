@@ -1,5 +1,6 @@
 import type { ProviderEvent, ProviderKind, ProviderSession } from "@acme/contracts";
 import type { ChatMessage, SessionPhase } from "./types";
+import { getOrCreateWsNativeApi } from "./wsNativeApi";
 
 export const PROVIDER_OPTIONS: Array<{
   value: ProviderKind;
@@ -12,7 +13,7 @@ export const PROVIDER_OPTIONS: Array<{
 
 export function readNativeApi() {
   if (typeof window === "undefined") return undefined;
-  return window.nativeApi;
+  return window.nativeApi ?? getOrCreateWsNativeApi();
 }
 
 export function asObject(value: unknown): Record<string, unknown> | undefined {
