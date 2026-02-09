@@ -86,6 +86,12 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("throws for empty cwd flag values", () => {
+    expect(() => parseCliOptions(["--cwd="], {}, "/workspace")).toThrow(
+      "Invalid value for --cwd",
+    );
+  });
+
   it("throws for unknown arguments", () => {
     expect(() => parseCliOptions(["--wat"], {}, "/workspace")).toThrow(
       "Unknown argument: --wat",

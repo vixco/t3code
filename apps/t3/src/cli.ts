@@ -36,6 +36,15 @@ function parseEnvPort(
   };
 }
 
+function parseExplicitPath(value: string, key: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw new Error(`Invalid value for ${key}: expected a non-empty path.`);
+  }
+
+  return path.resolve(trimmed);
+}
+
 interface CliOptions {
   backendPort: number;
   webPort: number;
@@ -152,12 +161,12 @@ export function parseCliOptions(
     }
 
     if (arg.startsWith("--cwd=")) {
-      launchCwd = path.resolve(arg.split("=")[1] ?? cwd);
+      launchCwd = parseExplicitPath(arg.split("=")[1] ?? "", "--cwd");
       continue;
     }
 
     if (arg === "--cwd") {
-      launchCwd = path.resolve(readArgValue(argv, index, "--cwd"));
+      launchCwd = parseExplicitPath(readArgValue(argv, index, "--cwd"), "--cwd");
       index += 1;
       continue;
     }
