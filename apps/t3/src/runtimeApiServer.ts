@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
-import { WebSocketServer, type WebSocket } from "ws";
+import { WebSocketServer, type RawData, type WebSocket } from "ws";
 
 import {
   EDITORS,
@@ -119,6 +119,26 @@ function sendMessage(socket: WebSocket, message: unknown): void {
   }
 
   socket.send(JSON.stringify(message));
+}
+
+function decodeClientMessage(raw: RawData): string | null {
+  if (typeof raw === "string") {
+    return raw;
+  }
+
+  if (raw instanceof Buffer) {
+    return raw.toString("utf8");
+  }
+
+  if (raw instanceof ArrayBuffer) {
+    return Buffer.from(raw).toString("utf8");
+  }
+
+  if (Array.isArray(raw)) {
+    return Buffer.concat(raw).toString("utf8");
+  }
+
+  return null;
 }
 
 function openPathInFileManager(targetPath: string): void {
@@ -523,9 +543,14 @@ export async function startRuntimeApiServer(
     });
 
     socket.on("message", async (raw) => {
+      const decoded = decodeClientMessage(raw);
+      if (!decoded) {
+        return;
+      }
+
       const maybeParsed = (() => {
         try {
-          return JSON.parse(raw.toString()) as unknown;
+          return JSON.parse(decoded) as unknown;
         } catch {
           return null;
         }
