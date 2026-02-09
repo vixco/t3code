@@ -13,6 +13,7 @@ import {
 } from "electron";
 
 import {
+  EDITORS,
   IPC_CHANNELS,
   type TerminalCommandInput,
   type TerminalCommandResult,
@@ -136,16 +137,13 @@ function registerIpcHandlers(): void {
   ipcMain.handle(
     IPC_CHANNELS.shellOpenInEditor,
     async (_event, cwd: string, editor: string) => {
-      if (editor === "file-manager") {
+      const editorDef = EDITORS.find((e) => e.id === editor);
+      if (!editorDef) throw new Error(`Unknown editor: ${editor}`);
+      if (!editorDef.command) {
         await shell.openPath(cwd);
         return;
       }
-      const EDITOR_COMMANDS: Record<string, { command: string; args: (cwd: string) => string[] }> = {
-        cursor: { command: "cursor", args: (p) => [p] },
-      };
-      const entry = EDITOR_COMMANDS[editor];
-      if (!entry) throw new Error(`Unknown editor: ${editor}`);
-      const child = spawn(entry.command, entry.args(cwd), {
+      const child = spawn(editorDef.command, [cwd], {
         detached: true,
         stdio: "ignore",
       });

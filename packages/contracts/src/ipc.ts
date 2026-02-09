@@ -11,6 +11,13 @@ import type {
 import type { TerminalCommandInput, TerminalCommandResult } from "./terminal";
 import type { NewTodoInput, Todo } from "./todo";
 
+export const EDITORS = [
+  { id: "cursor", label: "Cursor", command: "cursor" },
+  { id: "file-manager", label: "File Manager", command: null },
+] as const;
+
+export type EditorId = (typeof EDITORS)[number]["id"];
+
 export const IPC_CHANNELS = {
   todosList: "todos:list",
   todosAdd: "todos:add",
@@ -65,6 +72,6 @@ export interface NativeApi {
     onEvent: (callback: (event: ProviderEvent) => void) => () => void;
   };
   shell: {
-    openInEditor: (cwd: string, editor: string) => Promise<void>;
+    openInEditor: (cwd: string, editor: EditorId) => Promise<void>;
   };
 }

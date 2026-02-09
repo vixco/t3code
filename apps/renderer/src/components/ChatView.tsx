@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 
+import { EDITORS, type EditorId } from "@acme/contracts";
 import {
   DEFAULT_MODEL,
   DEFAULT_REASONING,
@@ -36,10 +37,10 @@ const FILE_MANAGER_LABEL = navigator.platform.includes("Mac")
     ? "Explorer"
     : "Files";
 
-const EDITORS = [
-  { id: "cursor", label: "Cursor" },
-  { id: "file-manager", label: FILE_MANAGER_LABEL },
-] as const;
+function editorLabel(editor: (typeof EDITORS)[number]): string {
+  return editor.command ? editor.label : FILE_MANAGER_LABEL;
+}
+
 const LAST_EDITOR_KEY = "codething:last-editor";
 
 function statusLabel(phase: string): string {
@@ -64,8 +65,8 @@ export default function ChatView() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [isEditorMenuOpen, setIsEditorMenuOpen] = useState(false);
-  const [lastEditor, setLastEditor] = useState(
-    () => localStorage.getItem(LAST_EDITOR_KEY) ?? EDITORS[0].id,
+  const [lastEditor, setLastEditor] = useState<EditorId>(
+    () => (localStorage.getItem(LAST_EDITOR_KEY) as EditorId) ?? EDITORS[0].id,
   );
   const [selectedEffort, setSelectedEffort] =
     useState<string>(DEFAULT_REASONING);
@@ -194,7 +195,7 @@ export default function ChatView() {
     return () => window.removeEventListener("keydown", handler);
   }, [api, activeProject, lastEditor]);
 
-  const openInEditor = (editorId: string) => {
+  const openInEditor = (editorId: EditorId) => {
     if (!api || !activeProject) return;
     void api.shell.openInEditor(activeProject.cwd, editorId);
     setLastEditor(editorId);
@@ -394,7 +395,7 @@ export default function ChatView() {
                       className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-[#e0e0e0] hover:bg-white/[0.06]"
                       onClick={() => openInEditor(editor.id)}
                     >
-                      {editor.label}
+                      {editorLabel(editor)}
                       {editor.id === lastEditor && (
                         <kbd className="ml-auto text-[9px] text-[#a0a0a0]/40">
                           {navigator.platform.includes("Mac") ? "\u2318" : "Ctrl+"}O
