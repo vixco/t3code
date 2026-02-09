@@ -224,4 +224,39 @@ describe("runtimeApiServer", () => {
 
     client.socket.close();
   });
+
+  it("reports runtime health metadata", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "health-1",
+      "app.health",
+    );
+    expect(response.ok).toBe(true);
+    if (!response.ok) {
+      throw new Error("Expected health response to succeed.");
+    }
+
+    const payload = response.result as {
+      status: string;
+      launchCwd: string;
+      sessionCount: number;
+      activeClientConnected: boolean;
+    };
+    expect(payload.status).toBe("ok");
+    expect(payload.launchCwd).toBe(process.cwd());
+    expect(typeof payload.sessionCount).toBe("number");
+    expect(payload.activeClientConnected).toBe(true);
+
+    client.socket.close();
+  });
 });

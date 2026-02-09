@@ -1,5 +1,6 @@
 import type {
   AppBootstrapResult,
+  AppHealthResult,
   NativeApi,
   ProviderEvent,
   WsClientMessage,
@@ -182,6 +183,8 @@ class WsNativeApiClient {
       app: {
         bootstrap: async () =>
           this.request("app.bootstrap").then((value) => value as AppBootstrapResult),
+        health: async () =>
+          this.request("app.health").then((value) => value as AppHealthResult),
       },
       todos: {
         list: async () =>

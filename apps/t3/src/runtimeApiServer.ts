@@ -8,6 +8,7 @@ import {
   EDITORS,
   DEFAULT_MODEL,
   type AppBootstrapResult,
+  type AppHealthResult,
   type ProviderSession,
   type WsClientMessage,
   type WsResponseMessage,
@@ -355,6 +356,16 @@ export async function startRuntimeApiServer(
         ...(bootstrap.bootstrapError
           ? { bootstrapError: bootstrap.bootstrapError }
           : {}),
+      };
+      return payload;
+    }
+
+    if (method === "app.health") {
+      const payload: AppHealthResult = {
+        status: "ok",
+        launchCwd,
+        sessionCount: providerManager.listSessions().length,
+        activeClientConnected: activeClient !== null,
       };
       return payload;
     }

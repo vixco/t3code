@@ -86,13 +86,18 @@ async function main() {
           JSON.stringify({
             type: "request",
             id: "smoke",
-            method: "todos.list",
+            method: "app.health",
           }),
         );
       });
       ws.addEventListener("message", (event) => {
         const message = JSON.parse(String(event.data));
-        if (message.type === "response" && message.id === "smoke" && message.ok === true) {
+        if (
+          message.type === "response" &&
+          message.id === "smoke" &&
+          message.ok === true &&
+          message.result?.status === "ok"
+        ) {
           clearTimeout(timer);
           resolve();
         }

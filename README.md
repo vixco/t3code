@@ -85,3 +85,8 @@ The renderer depends on `nativeApi.providers.*`:
 7. `onEvent`
 
 Codex is the only implemented provider right now. `claudeCode` is reserved in contracts/UI but currently returns a not-implemented runtime error.
+
+Runtime app utilities exposed via `nativeApi.app.*`:
+
+1. `bootstrap`
+2. `health`

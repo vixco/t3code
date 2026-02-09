@@ -29,9 +29,17 @@ export interface AppBootstrapResult {
   bootstrapError?: string;
 }
 
+export interface AppHealthResult {
+  status: "ok";
+  launchCwd: string;
+  sessionCount: number;
+  activeClientConnected: boolean;
+}
+
 export interface NativeApi {
   app: {
     bootstrap: () => Promise<AppBootstrapResult>;
+    health: () => Promise<AppHealthResult>;
   };
   todos: {
     list: () => Promise<Todo[]>;
