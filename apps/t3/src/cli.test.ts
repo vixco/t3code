@@ -98,6 +98,12 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("throws for whitespace-only cwd flag values", () => {
+    expect(() => parseCliOptions(["--cwd", "   "], {}, "/workspace")).toThrow(
+      "Invalid value for --cwd",
+    );
+  });
+
   it("trims cwd flag values before resolving path", () => {
     const options = parseCliOptions(["--cwd", "  apps/renderer  "], {}, "/workspace");
     expect(options.launchCwd).toBe(path.resolve("apps/renderer"));
