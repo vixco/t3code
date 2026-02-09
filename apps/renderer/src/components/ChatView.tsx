@@ -82,18 +82,15 @@ export default function ChatView() {
   // Auto-scroll on new messages
   const messageCount = activeThread?.messages.length ?? 0;
   const workLogCount = workLogEntries.length;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: trigger on message count change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messageCount]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: auto-scroll while active work-log events stream in
   useEffect(() => {
     if (phase !== "running") return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [phase, workLogCount]);
 
   // Auto-resize textarea
-  // biome-ignore lint/correctness/useExhaustiveDependencies: trigger on prompt change
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -251,11 +248,11 @@ export default function ChatView() {
   return (
     <div className="flex flex-1 flex-col bg-[#0c0c0c]">
       {/* Top bar */}
-      <header className="drag-region flex items-center justify-between border-b border-white/[0.08] px-5 pt-[28px] pb-3">
+      <header className="drag-region flex items-center justify-between border-b border-white/8 px-5 pt-[28px] pb-3">
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-medium text-[#e0e0e0]">{activeThread.title}</h2>
           {activeProject && (
-            <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] text-[#a0a0a0]/50">
+            <span className="rounded-full bg-white/6 px-2 py-0.5 text-[10px] text-[#a0a0a0]/50">
               {activeProject.name}
             </span>
           )}
@@ -265,12 +262,12 @@ export default function ChatView() {
           <div
             className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] ${
               phase === "running"
-                ? "border-sky-400/35 bg-sky-500/[0.08] text-sky-100"
+                ? "border-sky-400/35 bg-sky-500/8 text-sky-100"
                 : phase === "connecting"
-                  ? "border-amber-400/35 bg-amber-500/[0.08] text-amber-100"
+                  ? "border-amber-400/35 bg-amber-500/8 text-amber-100"
                   : phase === "ready"
-                    ? "border-emerald-400/35 bg-emerald-500/[0.08] text-emerald-100"
-                    : "border-white/[0.08] bg-white/[0.04] text-[#a0a0a0]/70"
+                    ? "border-emerald-400/35 bg-emerald-500/8 text-emerald-100"
+                    : "border-white/8 bg-white/4 text-[#a0a0a0]/70"
             }`}
           >
             <span className="relative inline-flex h-2.5 w-2.5">
@@ -327,7 +324,7 @@ export default function ChatView() {
           <div className="mx-auto max-w-3xl space-y-4">
             {timelineEntries.map((timelineEntry) =>
               timelineEntry.kind === "work" ? (
-                <div key={timelineEntry.id} className="border-l-2 border-white/[0.05] pl-4 py-1">
+                <div key={timelineEntry.id} className="border-l-2 border-white/5 pl-4 py-1">
                   <p
                     className={`py-[2px] text-[12px] leading-relaxed ${workToneClass(timelineEntry.entry.tone)}`}
                   >
@@ -347,8 +344,8 @@ export default function ChatView() {
                 <div key={timelineEntry.id}>
                   {timelineEntry.message.role === "user" ? (
                     <div className="flex justify-end">
-                      <div className="max-w-[80%] rounded-2xl rounded-br-sm border border-white/[0.08] bg-white/[0.05] px-4 py-3">
-                        <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-[#e0e0e0]">
+                      <div className="max-w-[80%] rounded-2xl rounded-br-sm border border-white/8 bg-white/5 px-4 py-3">
+                        <pre className="whitespace-pre-wrap wrap-break-word font-mono text-sm leading-relaxed text-[#e0e0e0]">
                           {timelineEntry.message.text}
                         </pre>
                         <p className="mt-1.5 text-right text-[10px] text-[#a0a0a0]/30">
@@ -357,7 +354,7 @@ export default function ChatView() {
                       </div>
                     </div>
                   ) : (
-                    <div className="border-l-2 border-white/[0.15] pl-4">
+                    <div className="border-l-2 border-white/15 pl-4">
                       <ChatMarkdown
                         text={
                           timelineEntry.message.text ||
@@ -366,7 +363,7 @@ export default function ChatView() {
                       />
                       {timelineEntry.message.streaming && (
                         <div className="pt-1.5">
-                          <span className="inline-flex items-center gap-2 rounded-full border border-sky-400/25 bg-sky-500/[0.08] px-2 py-0.5 text-[10px] text-sky-100/90">
+                          <span className="inline-flex items-center gap-2 rounded-full border border-sky-400/25 bg-sky-500/8 px-2 py-0.5 text-[10px] text-sky-100/90">
                             <span className="inline-flex gap-1">
                               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80" />
                               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-100/80 [animation-delay:150ms]" />
@@ -393,7 +390,7 @@ export default function ChatView() {
               ),
             )}
             {isWorking && (
-              <div className="border-l-2 border-white/[0.05] pl-4 py-1">
+              <div className="border-l-2 border-white/5 pl-4 py-1">
                 <div className="flex items-center pt-1">
                   <span className="inline-flex items-center gap-[3px]">
                     <span className="h-1 w-1 rounded-full bg-white/20 animate-pulse" />
@@ -411,7 +408,7 @@ export default function ChatView() {
       {/* Input bar */}
       <div className="px-5 pb-4 pt-2">
         <form onSubmit={onSend} className="mx-auto max-w-3xl">
-          <div className="group rounded-[20px] border border-white/[0.08] bg-[#141416] transition-colors duration-200 focus-within:border-white/[0.16]">
+          <div className="group rounded-[20px] border border-white/8 bg-[#141416] transition-colors duration-200 focus-within:border-white/16">
             {/* Textarea area */}
             <div className="px-4 pt-4 pb-2">
               <textarea
@@ -435,7 +432,7 @@ export default function ChatView() {
                 <div className="relative" ref={modelMenuRef}>
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-[#a0a0a0]/70 transition-colors duration-150 hover:bg-white/[0.06] hover:text-[#d0d0d0]"
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-[#a0a0a0]/70 transition-colors duration-150 hover:bg-white/6 hover:text-[#d0d0d0]"
                     onClick={() => setIsModelMenuOpen((open) => !open)}
                   >
                     <span className="max-w-[180px] truncate">{selectedModel}</span>
@@ -457,7 +454,7 @@ export default function ChatView() {
                     </svg>
                   </button>
                   {isModelMenuOpen && (
-                    <div className="absolute bottom-full left-0 z-20 mb-2 w-[320px] rounded-2xl border border-white/[0.1] bg-[#1b1b1d]/95 p-2 shadow-[0_16px_40px_rgba(0,0,0,0.55)] backdrop-blur">
+                    <div className="absolute bottom-full left-0 z-20 mb-2 w-[320px] rounded-2xl border border-white/10 bg-[#1b1b1d]/95 p-2 shadow-[0_16px_40px_rgba(0,0,0,0.55)] backdrop-blur">
                       <p className="px-2 py-1 text-[11px] text-[#a0a0a0]/70">Select model</p>
                       <div className="max-h-72 overflow-y-auto">
                         {modelOptions.map((model) => {
@@ -468,8 +465,8 @@ export default function ChatView() {
                               type="button"
                               className={`mb-0.5 flex w-full items-center justify-between gap-2 rounded-xl px-2 py-2 text-left font-mono text-sm transition-colors duration-150 ${
                                 isSelected
-                                  ? "bg-white/[0.08] text-white"
-                                  : "text-[#d4d4d4] hover:bg-white/[0.05]"
+                                  ? "bg-white/8 text-white"
+                                  : "text-[#d4d4d4] hover:bg-white/5"
                               }`}
                               onClick={() => onModelSelect(model)}
                             >
@@ -490,11 +487,11 @@ export default function ChatView() {
                 </div>
 
                 {/* Divider */}
-                <div className="mx-0.5 h-4 w-px bg-white/[0.08]" />
+                <div className="mx-0.5 h-4 w-px bg-white/8" />
 
                 {/* Reasoning effort */}
                 <label
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-[#a0a0a0]/70 transition-colors duration-150 hover:bg-white/[0.06] hover:text-[#d0d0d0]"
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-[#a0a0a0]/70 transition-colors duration-150 hover:bg-white/6 hover:text-[#d0d0d0]"
                   htmlFor="reasoning-effort"
                 >
                   <span>{selectedEffort.charAt(0).toUpperCase() + selectedEffort.slice(1)}</span>
