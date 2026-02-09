@@ -222,4 +222,29 @@ describe("wsNativeApi", () => {
 
     await expect(api.todos.list()).rejects.toThrow("Failed to connect to local t3 runtime.");
   });
+
+  it("accepts arraybuffer server messages", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4406");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as {
+      id: string;
+    };
+
+    const encoded = new TextEncoder().encode(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: [],
+      }),
+    );
+    socket?.emitMessage(encoded.buffer);
+
+    await expect(request).resolves.toEqual([]);
+  });
 });
