@@ -19,28 +19,6 @@ export const EDITORS = [
 
 export type EditorId = (typeof EDITORS)[number]["id"];
 
-export const IPC_CHANNELS = {
-  todosList: "todos:list",
-  todosAdd: "todos:add",
-  todosToggle: "todos:toggle",
-  todosRemove: "todos:remove",
-  dialogPickFolder: "dialog:pick-folder",
-  terminalRun: "terminal:run",
-  agentSpawn: "agent:spawn",
-  agentKill: "agent:kill",
-  agentWrite: "agent:write",
-  agentOutput: "agent:output",
-  agentExit: "agent:exit",
-  providerSessionStart: "provider:session:start",
-  providerTurnStart: "provider:turn:start",
-  providerTurnInterrupt: "provider:turn:interrupt",
-  providerSessionStop: "provider:session:stop",
-  providerSessionList: "provider:session:list",
-  providerRequestRespond: "provider:request:respond",
-  providerEvent: "provider:event",
-  shellOpenInEditor: "shell:open-in-editor",
-} as const;
-
 export interface NativeApi {
   todos: {
     list: () => Promise<Todo[]>;
