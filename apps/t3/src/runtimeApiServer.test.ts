@@ -621,6 +621,32 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("returns structured errors for invalid todos.toggle payloads", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "todo-invalid-1",
+      "todos.toggle",
+      "",
+    );
+    expect(response.ok).toBe(false);
+    if (response.ok) {
+      throw new Error("Expected invalid todo id payload to fail.");
+    }
+    expect(response.error?.code).toBe("request_failed");
+
+    client.socket.close();
+  });
+
   it("reports runtime health metadata", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
