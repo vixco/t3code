@@ -13,9 +13,11 @@ import { WS_EVENT_CHANNELS, wsServerMessageSchema } from "@acme/contracts";
 type PendingRequest = {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
 };
 
 type SubscriptionSet<TValue> = Set<(value: TValue) => void>;
+const REQUEST_TIMEOUT_MS = 30_000;
 
 class WsNativeApiClient {
   private socket: WebSocket | null = null;
@@ -39,6 +41,7 @@ class WsNativeApiClient {
 
     this.connectPromise = new Promise<WebSocket>((resolve, reject) => {
       const socket = new WebSocket(this.wsUrl);
+      socket.binaryType = "arraybuffer";
       this.socket = socket;
 
       socket.addEventListener("open", () => {
@@ -52,12 +55,13 @@ class WsNativeApiClient {
       });
 
       socket.addEventListener("message", (event) => {
-        this.handleMessage(event.data);
+        void this.handleMessage(event.data);
       });
 
       socket.addEventListener("close", () => {
         this.socket = null;
         for (const [id, pending] of this.pending.entries()) {
+          clearTimeout(pending.timeout);
           pending.reject(new Error(`Request ${id} failed: websocket disconnected.`));
         }
         this.pending.clear();
@@ -80,7 +84,11 @@ class WsNativeApiClient {
     };
 
     const requestPromise = new Promise<unknown>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timeout = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`Request timed out for method '${method}'.`));
+      }, REQUEST_TIMEOUT_MS);
+      this.pending.set(id, { resolve, reject, timeout });
     });
 
     socket.send(JSON.stringify(requestMessage));
@@ -94,6 +102,7 @@ class WsNativeApiClient {
     }
 
     this.pending.delete(message.id);
+    clearTimeout(pending.timeout);
     if (message.ok) {
       pending.resolve(message.result);
       return;
@@ -124,13 +133,31 @@ class WsNativeApiClient {
     }
   }
 
-  private handleMessage(raw: unknown) {
+  private async decodeIncomingMessage(raw: unknown): Promise<string | null> {
+    if (typeof raw === "string") {
+      return raw;
+    }
+
+    if (raw instanceof ArrayBuffer) {
+      return new TextDecoder().decode(raw);
+    }
+
+    if (raw instanceof Blob) {
+      return raw.text();
+    }
+
+    return null;
+  }
+
+  private async handleMessage(raw: unknown) {
+    const decoded = await this.decodeIncomingMessage(raw);
+    if (!decoded) {
+      return;
+    }
+
     let parsedRaw: unknown;
     try {
-      parsedRaw =
-        typeof raw === "string"
-          ? JSON.parse(raw)
-          : JSON.parse(new TextDecoder().decode(raw as ArrayBuffer));
+      parsedRaw = JSON.parse(decoded);
     } catch {
       return;
     }
