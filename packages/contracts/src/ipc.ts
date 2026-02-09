@@ -1,6 +1,7 @@
 import type { AgentConfig, AgentExit, OutputChunk } from "./agent";
 import type {
   ProviderEvent,
+  ProviderKind,
   ProviderInterruptTurnInput,
   ProviderRespondToRequestInput,
   ProviderSendTurnInput,
@@ -19,29 +20,18 @@ export const EDITORS = [
 
 export type EditorId = (typeof EDITORS)[number]["id"];
 
-export const IPC_CHANNELS = {
-  todosList: "todos:list",
-  todosAdd: "todos:add",
-  todosToggle: "todos:toggle",
-  todosRemove: "todos:remove",
-  dialogPickFolder: "dialog:pick-folder",
-  terminalRun: "terminal:run",
-  agentSpawn: "agent:spawn",
-  agentKill: "agent:kill",
-  agentWrite: "agent:write",
-  agentOutput: "agent:output",
-  agentExit: "agent:exit",
-  providerSessionStart: "provider:session:start",
-  providerTurnStart: "provider:turn:start",
-  providerTurnInterrupt: "provider:turn:interrupt",
-  providerSessionStop: "provider:session:stop",
-  providerSessionList: "provider:session:list",
-  providerRequestRespond: "provider:request:respond",
-  providerEvent: "provider:event",
-  shellOpenInEditor: "shell:open-in-editor",
-} as const;
+export interface AppBootstrapResult {
+  launchCwd: string;
+  projectName: string;
+  provider: ProviderKind;
+  model: string;
+  session: ProviderSession;
+}
 
 export interface NativeApi {
+  app: {
+    bootstrap: () => Promise<AppBootstrapResult>;
+  };
   todos: {
     list: () => Promise<Todo[]>;
     add: (input: NewTodoInput) => Promise<Todo[]>;
