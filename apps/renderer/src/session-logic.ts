@@ -86,36 +86,58 @@ export type TimelineEntry =
       entry: WorkLogEntry;
     };
 
-function truncateLine(value: string, limit = 140): string {
-  if (value.length <= limit) return value;
-  return `${value.slice(0, limit - 1)}…`;
+function normalizeDetail(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function normalizeItemType(raw: string | undefined): string {
   if (!raw) return "item";
-  return raw.replace(/[_-]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+  return raw
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[._/-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function shouldDropItemType(type: string): boolean {
+  if (
+    type.includes("preamble") ||
+    type.includes("reasoning") ||
+    type.includes("thought")
+  ) {
+    return true;
+  }
+
+  return type === "work" || type.startsWith("work ");
+}
+
+function shouldShowItemLifecycle(type: string): boolean {
+  return (
+    type.includes("tool") ||
+    type.includes("command") ||
+    type.includes("file change")
+  );
+}
+
+function shouldDropMethod(method: string): boolean {
+  return /(^|\/)(preamble|work|reasoning|thought)(\/|$)/i.test(method);
 }
 
 function itemTypeMeta(type: string): {
   label: string;
   tone: WorkLogEntry["tone"];
 } {
-  if (
-    type.includes("preamble") ||
-    type.includes("reasoning") ||
-    type.includes("thought")
-  ) {
-    return { label: "Preamble", tone: "thinking" };
+  if (type.includes("command")) {
+    return { label: "Command run", tone: "tool" };
   }
-  if (
-    type.includes("tool") ||
-    type.includes("command") ||
-    type.includes("file change")
-  ) {
+  if (type.includes("file change")) {
+    return { label: "File change", tone: "tool" };
+  }
+  if (type.includes("tool")) {
     return { label: "Tool call", tone: "tool" };
-  }
-  if (type.includes("agent message")) {
-    return { label: "Drafting response", tone: "thinking" };
   }
   return { label: "Work item", tone: "info" };
 }
@@ -135,9 +157,8 @@ function extractDetail(
   ];
 
   for (const candidate of candidates) {
-    if (candidate && candidate.trim().length > 0) {
-      return truncateLine(candidate.trim());
-    }
+    const detail = normalizeDetail(candidate);
+    if (detail) return detail;
   }
   return undefined;
 }
@@ -146,6 +167,13 @@ function entryFromItemLifecycle(event: ProviderEvent): WorkLogEntry | null {
   const payload = asObject(event.payload);
   const item = asObject(payload?.item);
   const normalizedType = normalizeItemType(asString(item?.type));
+  if (shouldDropItemType(normalizedType) || shouldDropMethod(event.method)) {
+    return null;
+  }
+  if (!shouldShowItemLifecycle(normalizedType)) {
+    return null;
+  }
+
   const meta = itemTypeMeta(normalizedType);
   const isStarted = event.method === "item/started";
   const isCompleted = event.method === "item/completed";
@@ -166,6 +194,7 @@ function entryFromItemLifecycle(event: ProviderEvent): WorkLogEntry | null {
 
 function entryFromRequest(event: ProviderEvent): WorkLogEntry | null {
   if (event.kind !== "request") return null;
+  if (shouldDropMethod(event.method)) return null;
 
   if (event.method.includes("commandExecution")) {
     return {
@@ -202,39 +231,73 @@ function entryFromRequest(event: ProviderEvent): WorkLogEntry | null {
   };
 }
 
-function entryFromNotification(event: ProviderEvent): WorkLogEntry | null {
+function entryFromNotification(
+  event: ProviderEvent,
+  turnStartedAt: number,
+): WorkLogEntry | null {
   if (event.kind !== "notification") return null;
+  if (shouldDropMethod(event.method)) return null;
   if (event.method === "item/agentMessage/delta") return null;
-  if (event.method === "turn/started" || event.method === "turn/completed") {
+  if (event.method === "turn/started") {
     return null;
   }
   if (event.method === "thread/started") return null;
 
-  const lifecycleEntry = entryFromItemLifecycle(event);
-  if (lifecycleEntry) return lifecycleEntry;
+  if (event.method === "turn/completed") {
+    const payload = asObject(event.payload);
+    const turn = asObject(payload?.turn);
+    const status = asString(turn?.status);
+    const turnError = asObject(turn?.error);
+    const turnErrorMessage = asString(turnError?.message);
+    const turnErrorDetail = normalizeDetail(turnErrorMessage);
+    const eventAt = Date.parse(event.createdAt);
+    const durationMs =
+      Number.isNaN(turnStartedAt) ||
+      Number.isNaN(eventAt) ||
+      eventAt < turnStartedAt
+        ? undefined
+        : eventAt - turnStartedAt;
 
-  if (event.method.startsWith("item/")) {
     return {
       id: event.id,
       createdAt: event.createdAt,
-      label: `Event: ${event.method.replace(/^item\//, "")}`,
-      tone: "info",
+      label:
+        status === "failed"
+          ? "Turn failed"
+          : durationMs !== undefined
+            ? `Turn complete in ${formatDuration(durationMs)}`
+            : "Turn complete",
+      ...(turnErrorDetail ? { detail: turnErrorDetail } : {}),
+      tone: status === "failed" ? "error" : "info",
     };
   }
+
+  const lifecycleEntry = entryFromItemLifecycle(event);
+  if (lifecycleEntry) return lifecycleEntry;
+
+  if (event.method.startsWith("item/")) return null;
 
   return null;
 }
 
 function entryFromError(event: ProviderEvent): WorkLogEntry | null {
   if (event.kind !== "error") return null;
+  if (shouldDropMethod(event.method)) return null;
+  const detail = normalizeDetail(event.message);
 
   return {
     id: event.id,
     createdAt: event.createdAt,
     label: "Runtime error",
-    ...(event.message ? { detail: truncateLine(event.message) } : {}),
+    ...(detail ? { detail } : {}),
     tone: "error",
   };
+}
+
+function eventTurnId(event: ProviderEvent): string | undefined {
+  const payload = asObject(event.payload);
+  const turn = asObject(payload?.turn);
+  return event.turnId ?? asString(turn?.id);
 }
 
 export function deriveWorkLogEntries(
@@ -246,10 +309,7 @@ export function deriveWorkLogEntries(
   const turnStartedAtIso = turnId
     ? ordered.find((event) => {
         if (event.method !== "turn/started") return false;
-        const payload = asObject(event.payload);
-        const turn = asObject(payload?.turn);
-        const startedTurnId = event.turnId ?? asString(turn?.id);
-        return startedTurnId === turnId;
+        return eventTurnId(event) === turnId;
       })?.createdAt
     : undefined;
   const turnStartedAt = turnStartedAtIso
@@ -258,11 +318,12 @@ export function deriveWorkLogEntries(
 
   for (const event of ordered) {
     if (turnId) {
-      if (event.turnId && event.turnId !== turnId) {
+      const scopedTurnId = eventTurnId(event);
+      if (scopedTurnId && scopedTurnId !== turnId) {
         continue;
       }
 
-      if (!event.turnId && !Number.isNaN(turnStartedAt)) {
+      if (!scopedTurnId && !Number.isNaN(turnStartedAt)) {
         const eventAt = Date.parse(event.createdAt);
         if (!Number.isNaN(eventAt) && eventAt < turnStartedAt) {
           continue;
@@ -276,7 +337,7 @@ export function deriveWorkLogEntries(
       continue;
     }
 
-    const fromNotification = entryFromNotification(event);
+    const fromNotification = entryFromNotification(event, turnStartedAt);
     if (fromNotification) {
       entries.push(fromNotification);
       continue;

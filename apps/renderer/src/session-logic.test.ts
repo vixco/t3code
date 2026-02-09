@@ -5,6 +5,7 @@ import {
   type WorkLogEntry,
   applyEventToMessages,
   deriveTimelineEntries,
+  deriveWorkLogEntries,
   evolveSession,
 } from "./session-logic";
 import type { ChatMessage } from "./types";
@@ -102,6 +103,188 @@ describe("deriveTimelineEntries", () => {
       "work:w-1",
       "message:m-1",
     ]);
+  });
+});
+
+describe("deriveWorkLogEntries", () => {
+  it("drops preamble/work events from the visible work log", () => {
+    const entries = deriveWorkLogEntries(
+      [
+        makeEvent({
+          id: "evt-1",
+          method: "item/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:00.000Z",
+          payload: { item: { type: "preamble", text: "thinking" } },
+        }),
+        makeEvent({
+          id: "evt-2",
+          method: "item/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:01.000Z",
+          payload: { item: { type: "work", text: "planning" } },
+        }),
+        makeEvent({
+          id: "evt-3",
+          method: "item/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:02.000Z",
+          payload: { item: { type: "tool_call", command: "ls -la" } },
+        }),
+      ],
+      "turn-1",
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.label).toBe("Tool call");
+  });
+
+  it("logs turn completion with elapsed time", () => {
+    const entries = deriveWorkLogEntries(
+      [
+        makeEvent({
+          id: "evt-start",
+          method: "turn/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:00.000Z",
+        }),
+        makeEvent({
+          id: "evt-complete",
+          method: "turn/completed",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:10.000Z",
+          payload: { turn: { id: "turn-1", status: "completed" } },
+        }),
+      ],
+      "turn-1",
+    );
+
+    expect(entries[0]?.label).toBe("Turn complete in 10s");
+  });
+
+  it("hides reasoning and agent-message noise from the visible work log", () => {
+    const entries = deriveWorkLogEntries(
+      [
+        makeEvent({
+          id: "evt-turn-start",
+          method: "turn/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:00.000Z",
+        }),
+        makeEvent({
+          id: "evt-summary-part",
+          method: "item/reasoning/summaryPartAdded",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:01.000Z",
+        }),
+        makeEvent({
+          id: "evt-summary-delta",
+          method: "item/reasoning/summaryTextDelta",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:02.000Z",
+        }),
+        makeEvent({
+          id: "evt-agent-start",
+          method: "item/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:03.000Z",
+          payload: {
+            item: { id: "item-msg", type: "agentMessage", text: "Working..." },
+          },
+        }),
+        makeEvent({
+          id: "evt-agent-complete",
+          method: "item/completed",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:04.000Z",
+          payload: {
+            item: {
+              id: "item-msg",
+              type: "agentMessage",
+              text: "Done response",
+            },
+          },
+        }),
+        makeEvent({
+          id: "evt-tool-start",
+          method: "item/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:05.000Z",
+          payload: {
+            item: { id: "item-tool", type: "tool_call", command: "ls -la" },
+          },
+        }),
+        makeEvent({
+          id: "evt-tool-complete",
+          method: "item/completed",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:06.000Z",
+          payload: {
+            item: { id: "item-tool", type: "tool_call", command: "ls -la" },
+          },
+        }),
+        makeEvent({
+          id: "evt-turn-complete",
+          method: "turn/completed",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:08.000Z",
+          payload: { turn: { id: "turn-1", status: "completed" } },
+        }),
+      ],
+      "turn-1",
+    );
+
+    expect(entries.map((entry) => entry.label)).toEqual([
+      "Turn complete in 8.0s",
+      "Tool call complete",
+      "Tool call",
+    ]);
+  });
+
+  it("preserves full tool-call detail text without data truncation", () => {
+    const longCommand =
+      'node ./scripts/sync.js --project ct-round-5 --mode dry-run --include "very long argument with lots of detail and metadata to verify there is no hard truncation in session logic"';
+    const entries = deriveWorkLogEntries(
+      [
+        makeEvent({
+          id: "evt-tool-start",
+          method: "item/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:05.000Z",
+          payload: {
+            item: { id: "item-tool", type: "tool_call", command: longCommand },
+          },
+        }),
+      ],
+      "turn-1",
+    );
+
+    expect(entries[0]?.detail).toBe(longCommand);
+  });
+
+  it("can derive work-log entries across all turns when not scoped", () => {
+    const entries = deriveWorkLogEntries(
+      [
+        makeEvent({
+          id: "evt-turn-1-tool",
+          method: "item/started",
+          turnId: "turn-1",
+          createdAt: "2026-02-08T10:00:01.000Z",
+          payload: { item: { type: "tool_call", command: "ls -la" } },
+        }),
+        makeEvent({
+          id: "evt-turn-2-tool",
+          method: "item/started",
+          turnId: "turn-2",
+          createdAt: "2026-02-08T10:00:02.000Z",
+          payload: { item: { type: "tool_call", command: "pwd" } },
+        }),
+      ],
+      undefined,
+    );
+
+    expect(entries).toHaveLength(2);
+    expect(entries.map((entry) => entry.detail)).toEqual(["pwd", "ls -la"]);
   });
 });
 
