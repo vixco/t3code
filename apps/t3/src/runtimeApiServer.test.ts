@@ -867,6 +867,39 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("runs terminal commands in the requested cwd", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "terminal-cwd-1",
+      "terminal.run",
+      {
+        command: "pwd",
+        cwd: process.cwd(),
+      },
+    );
+    expect(response.ok).toBe(true);
+    if (!response.ok) {
+      throw new Error("Expected terminal cwd response to succeed.");
+    }
+
+    const payload = response.result as {
+      stdout: string;
+    };
+    expect(payload.stdout.trim()).toBe(process.cwd());
+
+    client.socket.close();
+  });
+
   it("supports todo mutation lifecycle over websocket RPC", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
