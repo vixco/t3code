@@ -154,6 +154,51 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("encodes auth token query parameter in runtime websocket URL", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+      authToken: "token with spaces/?&",
+    });
+    servers.push(server);
+
+    const wsUrl = new URL(server.wsUrl);
+    expect(wsUrl.searchParams.get("token")).toBe("token with spaces/?&");
+
+    const client = await connectClient(server.wsUrl);
+    const hello = await client.nextMessage();
+    expect(hello.type).toBe("hello");
+    client.socket.close();
+  });
+
+  it("normalizes relative launch cwd in app.health response", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: ".",
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "health-relative-cwd",
+      "app.health",
+    );
+    expect(response.ok).toBe(true);
+    if (!response.ok) {
+      throw new Error("Expected health response to succeed.");
+    }
+
+    const payload = response.result as {
+      launchCwd: string;
+    };
+    expect(payload.launchCwd).toBe(process.cwd());
+    client.socket.close();
+  });
+
   it("responds to todos.list over websocket RPC", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
