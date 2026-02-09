@@ -259,6 +259,16 @@ describe("runtimeApiServer", () => {
     );
     expect(unauthorizedClose.code).toBe(4001);
 
+    const wrongTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=wrong-token`;
+    const wrongTokenClient = new WebSocket(wrongTokenUrl);
+    const wrongTokenClose = await withTimeout(
+      new Promise<{ code: number }>((resolve, reject) => {
+        wrongTokenClient.once("close", (code) => resolve({ code }));
+        wrongTokenClient.once("error", (error) => reject(error));
+      }),
+    );
+    expect(wrongTokenClose.code).toBe(4001);
+
     const authorizedClient = await connectClient(server.wsUrl);
     const hello = await authorizedClient.nextMessage();
     expect(hello.type).toBe("hello");

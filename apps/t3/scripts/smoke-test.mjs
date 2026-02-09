@@ -168,6 +168,16 @@ async function main() {
       );
     }
 
+    const wrongTokenWs = new WebSocket(
+      `${parsedWsUrl.origin}${parsedWsUrl.pathname}?token=wrong-token`,
+    );
+    const wrongTokenCode = await waitForSocketCloseCode(wrongTokenWs);
+    if (wrongTokenCode !== 4001) {
+      throw new Error(
+        `Smoke test failed: expected wrong-token close code 4001, received ${wrongTokenCode}.`,
+      );
+    }
+
     const ws = new WebSocket(wsUrl);
     await new Promise((resolve, reject) => {
       const timer = setTimeout(
