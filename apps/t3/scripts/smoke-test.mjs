@@ -53,6 +53,22 @@ async function terminateProcess(processRef, timeoutMs = 5_000) {
   await waitForProcessExit(processRef);
 }
 
+function waitForSocketCloseCode(socket, timeoutMs = 10_000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("Smoke test failed: websocket close event timed out."));
+    }, timeoutMs);
+    socket.addEventListener("close", (event) => {
+      clearTimeout(timer);
+      resolve(event.code);
+    });
+    socket.addEventListener("error", () => {
+      clearTimeout(timer);
+      reject(new Error("Smoke test failed: websocket client error before close."));
+    });
+  });
+}
+
 function waitForStartupUrl(readOutput, processRef, timeoutMs = 20_000) {
   return new Promise((resolve, reject) => {
     const finish = (callback, value) => {
@@ -141,6 +157,15 @@ async function main() {
     }
     if (!parsedWsUrl.searchParams.get("token")) {
       throw new Error("Smoke test failed: websocket URL is missing runtime auth token.");
+    }
+
+    const unauthorizedWsUrl = `${parsedWsUrl.origin}${parsedWsUrl.pathname}`;
+    const unauthorizedWs = new WebSocket(unauthorizedWsUrl);
+    const unauthorizedCode = await waitForSocketCloseCode(unauthorizedWs);
+    if (unauthorizedCode !== 4001) {
+      throw new Error(
+        `Smoke test failed: expected unauthorized close code 4001, received ${unauthorizedCode}.`,
+      );
     }
 
     const ws = new WebSocket(wsUrl);
