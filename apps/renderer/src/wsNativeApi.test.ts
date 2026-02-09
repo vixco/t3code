@@ -175,6 +175,52 @@ describe("wsNativeApi", () => {
     });
   });
 
+  it("sends app.bootstrap requests and returns payload", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4412");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.app.bootstrap();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as {
+      id: string;
+      method: string;
+    };
+    expect(requestEnvelope.method).toBe("app.bootstrap");
+
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: {
+          launchCwd: "/workspace",
+          projectName: "workspace",
+          provider: "codex",
+          model: "gpt-5-codex",
+          session: {
+            sessionId: "sess-1",
+            provider: "codex",
+            status: "ready",
+            cwd: "/workspace",
+            model: "gpt-5-codex",
+            createdAt: "2026-02-01T00:00:00.000Z",
+            updatedAt: "2026-02-01T00:00:00.000Z",
+          },
+        },
+      }),
+    );
+
+    await expect(request).resolves.toMatchObject({
+      launchCwd: "/workspace",
+      provider: "codex",
+      session: {
+        sessionId: "sess-1",
+      },
+    });
+  });
+
   it("falls back to default local runtime URL when ws query is missing", async () => {
     setWindowSearch("");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -248,6 +294,33 @@ describe("wsNativeApi", () => {
     const second = getOrCreateWsNativeApi();
 
     expect(second).toBe(first);
+  });
+
+  it("sends shell.openInEditor requests with expected payload", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4413");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.shell.openInEditor("/workspace", "cursor");
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as {
+      id: string;
+      method: string;
+      params: { cwd: string; editor: string };
+    };
+    expect(requestEnvelope.method).toBe("shell.openInEditor");
+    expect(requestEnvelope.params).toEqual({ cwd: "/workspace", editor: "cursor" });
+
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: null,
+      }),
+    );
+    await expect(request).resolves.toBeUndefined();
   });
 
   it("rejects requests when websocket connection fails", async () => {
