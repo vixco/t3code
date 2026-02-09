@@ -82,6 +82,15 @@ function waitForCondition(check: () => boolean, timeoutMs = 1_000) {
   });
 }
 
+async function waitForSocket() {
+  await waitForCondition(() => MockWebSocket.instances.length > 0);
+  const socket = MockWebSocket.instances[0];
+  if (!socket) {
+    throw new Error("Expected mock websocket instance.");
+  }
+  return socket;
+}
+
 describe("wsNativeApi", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -408,6 +417,96 @@ describe("wsNativeApi", () => {
         provider: "codex",
       },
     ]);
+  });
+
+  it("sends todo mutation requests with expected payloads", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4416");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const addRequest = api.todos.add({
+      title: "Write tests",
+    });
+    const socket = await waitForSocket();
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) >= 1, 5_000);
+    const addEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as {
+      id: string;
+      method: string;
+      params: { title: string };
+    };
+    expect(addEnvelope.method).toBe("todos.add");
+    expect(addEnvelope.params).toEqual({ title: "Write tests" });
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: addEnvelope.id,
+        ok: true,
+        result: [
+          {
+            id: "todo-1",
+            title: "Write tests",
+            completed: false,
+            createdAt: "2026-02-01T00:00:00.000Z",
+          },
+        ],
+      }),
+    );
+    await expect(addRequest).resolves.toMatchObject([
+      {
+        id: "todo-1",
+        completed: false,
+      },
+    ]);
+
+    const toggleRequest = api.todos.toggle("todo-1");
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) >= 2, 5_000);
+    const toggleEnvelope = JSON.parse(socket?.sentMessages[1] ?? "{}") as {
+      id: string;
+      method: string;
+      params: string;
+    };
+    expect(toggleEnvelope.method).toBe("todos.toggle");
+    expect(toggleEnvelope.params).toBe("todo-1");
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: toggleEnvelope.id,
+        ok: true,
+        result: [
+          {
+            id: "todo-1",
+            title: "Write tests",
+            completed: true,
+            createdAt: "2026-02-01T00:00:00.000Z",
+          },
+        ],
+      }),
+    );
+    await expect(toggleRequest).resolves.toMatchObject([
+      {
+        id: "todo-1",
+        completed: true,
+      },
+    ]);
+
+    const removeRequest = api.todos.remove("todo-1");
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) >= 3, 5_000);
+    const removeEnvelope = JSON.parse(socket?.sentMessages[2] ?? "{}") as {
+      id: string;
+      method: string;
+      params: string;
+    };
+    expect(removeEnvelope.method).toBe("todos.remove");
+    expect(removeEnvelope.params).toBe("todo-1");
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: removeEnvelope.id,
+        ok: true,
+        result: [],
+      }),
+    );
+    await expect(removeRequest).resolves.toEqual([]);
   });
 
   it("rejects requests when websocket connection fails", async () => {
