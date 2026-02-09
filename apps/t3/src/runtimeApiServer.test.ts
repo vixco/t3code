@@ -160,6 +160,31 @@ describe("runtimeApiServer", () => {
     secondClient.socket.close();
   });
 
+  it("requires auth token when runtime is configured with one", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+      authToken: "secret-token",
+    });
+    servers.push(server);
+
+    const authorizedUrl = new URL(server.wsUrl);
+    const unauthorizedUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}`;
+    const unauthorizedClient = new WebSocket(unauthorizedUrl);
+    const unauthorizedClose = await withTimeout(
+      new Promise<{ code: number }>((resolve, reject) => {
+        unauthorizedClient.once("close", (code) => resolve({ code }));
+        unauthorizedClient.once("error", (error) => reject(error));
+      }),
+    );
+    expect(unauthorizedClose.code).toBe(4001);
+
+    const authorizedClient = await connectClient(server.wsUrl);
+    const hello = await authorizedClient.nextMessage();
+    expect(hello.type).toBe("hello");
+    authorizedClient.socket.close();
+  });
+
   it("returns a bootstrap payload even when codex cannot initialize", async () => {
     const originalPath = process.env.PATH;
     process.env.PATH = "";

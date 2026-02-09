@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
@@ -256,9 +257,11 @@ export function readCliVersion(
 }
 
 async function runCli(options: CliOptions): Promise<void> {
+  const authToken = randomUUID();
   const runtimeServer = await startRuntimeApiServer({
     port: options.backendPort,
     launchCwd: options.launchCwd,
+    authToken,
   });
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));

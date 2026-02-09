@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { createServer } from "node:net";
 import path from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 function getFreePort() {
@@ -30,6 +29,26 @@ function getFreePort() {
 function waitForProcessExit(processRef) {
   return new Promise((resolve) => {
     processRef.once("exit", (code) => resolve(code));
+  });
+}
+
+function waitForStartupUrl(readOutput, timeoutMs = 20_000) {
+  return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      const output = readOutput();
+      const match = output.match(/CodeThing is running at (http:\/\/[^\s]+)/);
+      if (match?.[1]) {
+        clearInterval(timer);
+        resolve(match[1]);
+        return;
+      }
+
+      if (Date.now() - startedAt >= timeoutMs) {
+        clearInterval(timer);
+        reject(new Error("Smoke test failed: did not observe startup URL in CLI output."));
+      }
+    }, 100);
   });
 }
 
@@ -68,14 +87,20 @@ async function main() {
   });
 
   try {
-    await delay(2_000);
+    const appUrl = await waitForStartupUrl(() => output);
+    const parsedAppUrl = new URL(appUrl);
 
-    const page = await fetch(`http://127.0.0.1:${webPort}`);
+    const page = await fetch(parsedAppUrl);
     if (page.status !== 200) {
       throw new Error(`Smoke test failed: expected web status 200, received ${page.status}.`);
     }
 
-    const ws = new WebSocket(`ws://127.0.0.1:${backendPort}`);
+    const wsUrl = parsedAppUrl.searchParams.get("ws");
+    if (!wsUrl) {
+      throw new Error("Smoke test failed: launch URL did not include ws runtime parameter.");
+    }
+
+    const ws = new WebSocket(wsUrl);
     await new Promise((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error("Smoke test failed: websocket did not respond in time.")),

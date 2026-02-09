@@ -75,6 +75,7 @@ interface RuntimeApiServerOptions {
   port: number;
   launchCwd: string;
   bootstrapSessionTimeoutMs?: number;
+  authToken?: string;
 }
 
 interface RuntimeApiServer {
@@ -257,6 +258,7 @@ export async function startRuntimeApiServer(
   options: RuntimeApiServerOptions,
 ): Promise<RuntimeApiServer> {
   const launchCwd = path.resolve(options.launchCwd);
+  const authToken = options.authToken;
   const bootstrapSessionTimeoutMs =
     options.bootstrapSessionTimeoutMs ?? BOOTSTRAP_SESSION_TIMEOUT_MS;
   const providerManager = new ProviderManager();
@@ -385,6 +387,23 @@ export async function startRuntimeApiServer(
     port: options.port,
   });
 
+  const isAuthorizedConnection = (requestUrl: string | undefined) => {
+    if (!authToken) {
+      return true;
+    }
+
+    if (!requestUrl) {
+      return false;
+    }
+
+    try {
+      const request = new URL(requestUrl, "ws://127.0.0.1");
+      return request.searchParams.get("token") === authToken;
+    } catch {
+      return false;
+    }
+  };
+
   const resolveMethod = async (method: string, params: unknown) => {
     if (method === "app.bootstrap") {
       const bootstrap = await ensureLaunchSession();
@@ -486,7 +505,12 @@ export async function startRuntimeApiServer(
     throw new Error(`Unknown API method: ${method}`);
   };
 
-  wss.on("connection", (socket) => {
+  wss.on("connection", (socket, request) => {
+    if (!isAuthorizedConnection(request.url)) {
+      socket.close(4001, "unauthorized");
+      return;
+    }
+
     if (activeClient && activeClient !== socket) {
       activeClient.close(4000, "replaced-by-new-client");
     }
@@ -560,9 +584,13 @@ export async function startRuntimeApiServer(
   const address = wss.address();
   const resolvedPort =
     typeof address === "object" && address !== null ? address.port : options.port;
+  const wsBaseUrl = `ws://127.0.0.1:${resolvedPort}`;
+  const wsUrl = authToken
+    ? `${wsBaseUrl}?token=${encodeURIComponent(authToken)}`
+    : wsBaseUrl;
 
   return {
-    wsUrl: `ws://127.0.0.1:${resolvedPort}`,
+    wsUrl,
     async close() {
       processManager.killAll();
       providerManager.stopAll();
