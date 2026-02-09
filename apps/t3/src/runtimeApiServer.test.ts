@@ -768,6 +768,45 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("runs terminal commands through terminal.run endpoint", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "terminal-run-1",
+      "terminal.run",
+      {
+        command: "echo hello",
+        cwd: process.cwd(),
+        timeoutMs: 5_000,
+      },
+    );
+    expect(response.ok).toBe(true);
+    if (!response.ok) {
+      throw new Error("Expected terminal.run response to succeed.");
+    }
+    const payload = response.result as {
+      stdout: string;
+      stderr: string;
+      code: number | null;
+      timedOut: boolean;
+    };
+    expect(payload.stdout.toLowerCase()).toContain("hello");
+    expect(payload.stderr).toBe("");
+    expect(payload.code).toBe(0);
+    expect(payload.timedOut).toBe(false);
+
+    client.socket.close();
+  });
+
   it("reports runtime health metadata", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
