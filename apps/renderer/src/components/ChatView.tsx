@@ -450,7 +450,7 @@ export default function ChatView() {
               >
                 <SelectTrigger
                   size="sm"
-                  className="w-auto min-w-0 border-0 shadow-none bg-transparent"
+                  className="w-auto min-w-0 border-0 shadow-none bg-transparent dark:bg-transparent before:hidden data-[popup-open]:bg-accent dark:data-[popup-open]:bg-accent"
                 >
                   <SelectValue />
                 </SelectTrigger>
@@ -470,7 +470,7 @@ export default function ChatView() {
               >
                 <SelectTrigger
                   size="sm"
-                  className="w-auto min-w-0 border-0 shadow-none bg-transparent capitalize"
+                  className="w-auto min-w-0 border-0 shadow-none bg-transparent dark:bg-transparent before:hidden data-[popup-open]:bg-accent dark:data-[popup-open]:bg-accent capitalize"
                 >
                   <SelectValue />
                 </SelectTrigger>
