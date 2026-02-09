@@ -62,10 +62,7 @@ function readPersistedState(): AppState {
     const rawLegacy = window.localStorage.getItem(LEGACY_PERSISTED_STATE_KEY);
     const raw = rawCurrent ?? rawLegacy;
     if (!raw) return initialState;
-    const hydrated = hydratePersistedState(
-      raw,
-      !rawCurrent && Boolean(rawLegacy),
-    );
+    const hydrated = hydratePersistedState(raw, !rawCurrent && Boolean(rawLegacy));
     if (!hydrated) return initialState;
 
     return { ...hydrated, diffOpen: false };
@@ -78,10 +75,7 @@ function persistState(state: AppState): void {
   if (typeof window === "undefined") return;
 
   try {
-    window.localStorage.setItem(
-      PERSISTED_STATE_KEY,
-      JSON.stringify(toPersistedState(state)),
-    );
+    window.localStorage.setItem(PERSISTED_STATE_KEY, JSON.stringify(toPersistedState(state)));
     window.localStorage.removeItem(LEGACY_PERSISTED_STATE_KEY);
   } catch {
     // Ignore quota/storage errors to avoid breaking chat UX.
@@ -96,10 +90,7 @@ function updateThread(
   return threads.map((t) => (t.id === threadId ? updater(t) : t));
 }
 
-function findThreadBySessionId(
-  threads: Thread[],
-  sessionId: string,
-): Thread | undefined {
+function findThreadBySessionId(threads: Thread[], sessionId: string): Thread | undefined {
   return threads.find((t) => t.session?.sessionId === sessionId);
 }
 
@@ -156,14 +147,9 @@ function reducer(state: AppState, action: Action): AppState {
         threads: updateThread(state.threads, target.id, (t) => ({
           ...t,
           session: t.session ? evolveSession(t.session, event) : t.session,
-          messages: applyEventToMessages(
-            t.messages,
-            event,
-            activeAssistantItemRef,
-          ),
+          messages: applyEventToMessages(t.messages, event, activeAssistantItemRef),
           events: [event, ...t.events].slice(0, 200),
-          error:
-            event.kind === "error" && event.message ? event.message : t.error,
+          error: event.kind === "error" && event.message ? event.message : t.error,
         })),
       };
     }
@@ -243,11 +229,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     persistState(state);
   }, [state]);
 
-  return createElement(
-    StoreContext.Provider,
-    { value: { state, dispatch } },
-    children,
-  );
+  return createElement(StoreContext.Provider, { value: { state, dispatch } }, children);
 }
 
 export function useStore() {

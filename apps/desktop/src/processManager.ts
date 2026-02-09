@@ -76,9 +76,7 @@ export class ProcessManager extends EventEmitter<ProcessManagerEvents> {
       cols: 120,
       rows: 30,
       cwd: config.cwd ?? process.cwd(),
-      env: (config.env
-        ? { ...process.env, ...config.env }
-        : process.env) as Record<string, string>,
+      env: (config.env ? { ...process.env, ...config.env } : process.env) as Record<string, string>,
     });
 
     this.ptySessions.set(sessionId, ptyProcess);

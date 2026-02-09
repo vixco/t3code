@@ -21,9 +21,7 @@ function makeEvent(overrides: Partial<ProviderEvent>): ProviderEvent {
   };
 }
 
-function makeSession(
-  overrides: Partial<ProviderSession> = {},
-): ProviderSession {
+function makeSession(overrides: Partial<ProviderSession> = {}): ProviderSession {
   return {
     sessionId: "sess-1",
     provider: "codex",
@@ -98,10 +96,7 @@ describe("deriveTimelineEntries", () => {
 
     const timeline = deriveTimelineEntries(messages, workEntries);
 
-    expect(timeline.map((entry) => entry.id)).toEqual([
-      "work:w-1",
-      "message:m-1",
-    ]);
+    expect(timeline.map((entry) => entry.id)).toEqual(["work:w-1", "message:m-1"]);
   });
 });
 

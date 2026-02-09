@@ -103,8 +103,7 @@ function registerIpcHandlers(): void {
   );
 
   ipcMain.handle(IPC_CHANNELS.dialogPickFolder, async () => {
-    const owner =
-      BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const owner = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
     const result = owner
       ? await dialog.showOpenDialog(owner, {
           properties: ["openDirectory", "createDirectory"],
@@ -150,12 +149,9 @@ function registerIpcHandlers(): void {
   // Provider handlers
   ipcMain.handle(
     IPC_CHANNELS.providerSessionStart,
-    withParsedPayload(
-      providerSessionStartInputSchema,
-      async (_event, payload) => {
-        return providerManager.startSession(payload);
-      },
-    ),
+    withParsedPayload(providerSessionStartInputSchema, async (_event, payload) => {
+      return providerManager.startSession(payload);
+    }),
   );
 
   ipcMain.handle(
@@ -167,22 +163,16 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(
     IPC_CHANNELS.providerTurnInterrupt,
-    withParsedPayload(
-      providerInterruptTurnInputSchema,
-      async (_event, payload) => {
-        await providerManager.interruptTurn(payload);
-      },
-    ),
+    withParsedPayload(providerInterruptTurnInputSchema, async (_event, payload) => {
+      await providerManager.interruptTurn(payload);
+    }),
   );
 
   ipcMain.handle(
     IPC_CHANNELS.providerSessionStop,
-    withParsedPayload(
-      providerStopSessionInputSchema,
-      async (_event, payload) => {
-        providerManager.stopSession(payload);
-      },
-    ),
+    withParsedPayload(providerStopSessionInputSchema, async (_event, payload) => {
+      providerManager.stopSession(payload);
+    }),
   );
 
   ipcMain.handle(IPC_CHANNELS.providerSessionList, async () => {
@@ -190,18 +180,14 @@ function registerIpcHandlers(): void {
   });
 }
 
-async function runTerminalCommand(
-  input: TerminalCommandInput,
-): Promise<TerminalCommandResult> {
+async function runTerminalCommand(input: TerminalCommandInput): Promise<TerminalCommandResult> {
   const shellPath =
     process.platform === "win32"
       ? (process.env.ComSpec ?? "cmd.exe")
       : (process.env.SHELL ?? "/bin/sh");
 
   const args =
-    process.platform === "win32"
-      ? ["/d", "/s", "/c", input.command]
-      : ["-lc", input.command];
+    process.platform === "win32" ? ["/d", "/s", "/c", input.command] : ["-lc", input.command];
 
   return new Promise((resolve, reject) => {
     const child = spawn(shellPath, args, {

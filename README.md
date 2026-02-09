@@ -38,6 +38,7 @@ CodeThing is a desktop shell for coding agents. This first implementation is:
 - `.github/workflows/ci.yml` runs `bun run lint`, `bun run typecheck`, and `bun run test` on pull requests and pushes to `main`.
 
 Optional:
+
 - `ELECTRON_RENDERER_PORT=5180 bun run dev` if `5173` is already in use.
 
 ## Provider architecture

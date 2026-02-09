@@ -65,12 +65,7 @@ export const providerStopSessionInputSchema = z.object({
   sessionId: z.string().min(1),
 });
 
-export const providerEventKindSchema = z.enum([
-  "session",
-  "notification",
-  "request",
-  "error",
-]);
+export const providerEventKindSchema = z.enum(["session", "notification", "request", "error"]);
 
 export const providerEventSchema = z.object({
   id: z.string().min(1),
@@ -88,24 +83,14 @@ export const providerEventSchema = z.object({
 });
 
 export type ProviderKind = z.infer<typeof providerKindSchema>;
-export type ProviderApprovalPolicy = z.infer<
-  typeof providerApprovalPolicySchema
->;
+export type ProviderApprovalPolicy = z.infer<typeof providerApprovalPolicySchema>;
 export type ProviderSandboxMode = z.infer<typeof providerSandboxModeSchema>;
 export type ProviderSessionStatus = z.infer<typeof providerSessionStatusSchema>;
 export type ProviderSession = z.infer<typeof providerSessionSchema>;
-export type ProviderSessionStartInput = z.input<
-  typeof providerSessionStartInputSchema
->;
+export type ProviderSessionStartInput = z.input<typeof providerSessionStartInputSchema>;
 export type ProviderSendTurnInput = z.input<typeof providerSendTurnInputSchema>;
-export type ProviderTurnStartResult = z.infer<
-  typeof providerTurnStartResultSchema
->;
-export type ProviderInterruptTurnInput = z.input<
-  typeof providerInterruptTurnInputSchema
->;
-export type ProviderStopSessionInput = z.input<
-  typeof providerStopSessionInputSchema
->;
+export type ProviderTurnStartResult = z.infer<typeof providerTurnStartResultSchema>;
+export type ProviderInterruptTurnInput = z.input<typeof providerInterruptTurnInputSchema>;
+export type ProviderStopSessionInput = z.input<typeof providerStopSessionInputSchema>;
 export type ProviderEventKind = z.infer<typeof providerEventKindSchema>;
 export type ProviderEvent = z.infer<typeof providerEventSchema>;

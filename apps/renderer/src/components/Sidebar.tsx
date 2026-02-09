@@ -25,7 +25,7 @@ export default function Sidebar() {
   const handleAddProject = () => {
     const cwd = newCwd.trim();
     if (!cwd) return;
-    const name = cwd.split("/").filter(Boolean).pop() ?? "project";
+    const name = cwd.split("/").findLast(Boolean) || "project";
     const normalizedModel = resolveModelSlug(newModel);
     const project: Project = {
       id: crypto.randomUUID(),
@@ -47,9 +47,7 @@ export default function Sidebar() {
         id: crypto.randomUUID(),
         projectId,
         title: "New thread",
-        model:
-          state.projects.find((p) => p.id === projectId)?.model ??
-          DEFAULT_MODEL,
+        model: state.projects.find((p) => p.id === projectId)?.model ?? DEFAULT_MODEL,
         session: null,
         messages: [],
         events: [],
@@ -72,7 +70,7 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="sidebar flex h-full w-[260px] shrink-0 flex-col border-r border-white/[0.08] bg-[#141414]">
+    <aside className="sidebar flex h-full w-[260px] shrink-0 flex-col border-r border-white/8 bg-[#141414]">
       {/* Drag region / traffic light space */}
       <div className="drag-region h-[52px] shrink-0" />
       {/* Branding */}
@@ -80,16 +78,14 @@ export default function Sidebar() {
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-xs font-bold text-[#0c0c0c]">
           CT
         </div>
-        <span className="text-sm font-semibold tracking-tight text-[#e0e0e0]">
-          CodeThing
-        </span>
+        <span className="text-sm font-semibold tracking-tight text-[#e0e0e0]">CodeThing</span>
       </div>
 
       {/* New thread (global) */}
       <div className="px-3 pb-3">
         <button
           type="button"
-          className="flex w-full items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-[#a0a0a0]/80 transition-colors duration-150 hover:bg-white/[0.07]"
+          className="flex w-full items-center gap-2 rounded-lg border border-white/8 bg-white/4 px-3 py-2 text-xs text-[#a0a0a0]/80 transition-colors duration-150 hover:bg-white/[0.07]"
           onClick={() => {
             if (state.projects.length === 0) {
               setAddingProject(true);
@@ -107,18 +103,14 @@ export default function Sidebar() {
       {/* Project list */}
       <nav className="flex-1 overflow-y-auto px-2">
         {state.projects.map((project) => {
-          const threads = state.threads.filter(
-            (t) => t.projectId === project.id,
-          );
+          const threads = state.threads.filter((t) => t.projectId === project.id);
           return (
             <div key={project.id} className="mb-1">
               {/* Project header */}
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-150 hover:bg-white/[0.05]"
-                onClick={() =>
-                  dispatch({ type: "TOGGLE_PROJECT", projectId: project.id })
-                }
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-150 hover:bg-white/5"
+                onClick={() => dispatch({ type: "TOGGLE_PROJECT", projectId: project.id })}
               >
                 <span className="text-[10px] text-[#a0a0a0]/50">
                   {project.expanded ? "▼" : "▶"}
@@ -126,14 +118,12 @@ export default function Sidebar() {
                 <span className="flex-1 truncate text-xs font-medium text-[#e0e0e0]/90">
                   {project.name}
                 </span>
-                <span className="text-[10px] text-[#a0a0a0]/40">
-                  {threads.length}
-                </span>
+                <span className="text-[10px] text-[#a0a0a0]/40">{threads.length}</span>
               </button>
 
               {/* Threads */}
               {project.expanded && (
-                <div className="ml-2 border-l border-white/[0.06] pl-2">
+                <div className="ml-2 border-l border-white/6 pl-2">
                   {threads.map((thread) => {
                     const isActive = state.activeThreadId === thread.id;
                     return (
@@ -141,9 +131,7 @@ export default function Sidebar() {
                         key={thread.id}
                         type="button"
                         className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-150 ${
-                          isActive
-                            ? "bg-white/10 text-white"
-                            : "text-[#a0a0a0]/70 hover:bg-white/[0.04]"
+                          isActive ? "bg-white/10 text-white" : "text-[#a0a0a0]/70 hover:bg-white/4"
                         }`}
                         onClick={() =>
                           dispatch({
@@ -152,9 +140,7 @@ export default function Sidebar() {
                           })
                         }
                       >
-                        <span className="flex-1 truncate text-xs">
-                          {thread.title}
-                        </span>
+                        <span className="flex-1 truncate text-xs">{thread.title}</span>
                         <span className="shrink-0 text-[10px] text-[#a0a0a0]/30">
                           {formatRelativeTime(thread.createdAt)}
                         </span>
@@ -187,12 +173,12 @@ export default function Sidebar() {
 
       {/* Add project form */}
       {addingProject ? (
-        <div className="border-t border-white/[0.08] p-3">
+        <div className="border-t border-white/8 p-3">
           <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-[#a0a0a0]/50">
             Add project
           </p>
           <input
-            className="mb-2 w-full rounded-md border border-white/[0.1] bg-white/[0.04] px-2 py-1.5 font-mono text-xs text-[#e0e0e0] placeholder:text-[#a0a0a0]/30 focus:border-white/30 focus:outline-none"
+            className="mb-2 w-full rounded-md border border-white/10 bg-white/4 px-2 py-1.5 font-mono text-xs text-[#e0e0e0] placeholder:text-[#a0a0a0]/30 focus:border-white/30 focus:outline-none"
             placeholder="/path/to/project"
             value={newCwd}
             onChange={(e) => setNewCwd(e.target.value)}
@@ -204,7 +190,7 @@ export default function Sidebar() {
           {api && (
             <button
               type="button"
-              className="mb-2 flex w-full items-center justify-center rounded-md border border-white/[0.1] px-2 py-1.5 text-xs text-[#a0a0a0]/70 transition-colors duration-150 hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-60"
+              className="mb-2 flex w-full items-center justify-center rounded-md border border-white/10 px-2 py-1.5 text-xs text-[#a0a0a0]/70 transition-colors duration-150 hover:bg-white/4 disabled:cursor-not-allowed disabled:opacity-60"
               onClick={() => void handlePickFolder()}
               disabled={isPickingFolder}
             >
@@ -212,7 +198,7 @@ export default function Sidebar() {
             </button>
           )}
           <select
-            className="mb-2 w-full rounded-md border border-white/[0.1] bg-white/[0.04] px-2 py-1.5 font-mono text-xs text-[#e0e0e0] placeholder:text-[#a0a0a0]/30 focus:border-white/30 focus:outline-none"
+            className="mb-2 w-full rounded-md border border-white/10 bg-white/4 px-2 py-1.5 font-mono text-xs text-[#e0e0e0] placeholder:text-[#a0a0a0]/30 focus:border-white/30 focus:outline-none"
             value={newModel}
             onChange={(e) => setNewModel(e.target.value)}
             onKeyDown={(e) => {
@@ -236,7 +222,7 @@ export default function Sidebar() {
             </button>
             <button
               type="button"
-              className="flex-1 rounded-md border border-white/[0.1] px-2 py-1 text-xs text-[#a0a0a0]/60 transition-colors duration-150 hover:bg-white/[0.04]"
+              className="flex-1 rounded-md border border-white/10 px-2 py-1 text-xs text-[#a0a0a0]/60 transition-colors duration-150 hover:bg-white/4"
               onClick={() => setAddingProject(false)}
             >
               Cancel
@@ -244,10 +230,10 @@ export default function Sidebar() {
           </div>
         </div>
       ) : (
-        <div className="border-t border-white/[0.08] p-3">
+        <div className="border-t border-white/8 p-3">
           <button
             type="button"
-            className="flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-white/[0.12] py-2 text-xs text-[#a0a0a0]/50 transition-colors duration-150 hover:border-white/[0.2] hover:text-[#a0a0a0]/70"
+            className="flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-white/12 py-2 text-xs text-[#a0a0a0]/50 transition-colors duration-150 hover:border-white/20 hover:text-[#a0a0a0]/70"
             onClick={() => setAddingProject(true)}
           >
             + Add project

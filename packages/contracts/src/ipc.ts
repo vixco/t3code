@@ -52,12 +52,8 @@ export interface NativeApi {
     onExit: (callback: (exit: AgentExit) => void) => () => void;
   };
   providers: {
-    startSession: (
-      input: ProviderSessionStartInput,
-    ) => Promise<ProviderSession>;
-    sendTurn: (
-      input: ProviderSendTurnInput,
-    ) => Promise<ProviderTurnStartResult>;
+    startSession: (input: ProviderSessionStartInput) => Promise<ProviderSession>;
+    sendTurn: (input: ProviderSendTurnInput) => Promise<ProviderTurnStartResult>;
     interruptTurn: (input: ProviderInterruptTurnInput) => Promise<void>;
     stopSession: (input: ProviderStopSessionInput) => Promise<void>;
     listSessions: () => Promise<ProviderSession[]>;

@@ -1,11 +1,4 @@
-import {
-  type FormEvent,
-  type KeyboardEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type FormEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   DEFAULT_MODEL,
@@ -51,17 +44,14 @@ export default function ChatView() {
   const [isSending, setIsSending] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
-  const [selectedEffort, setSelectedEffort] =
-    useState<string>(DEFAULT_REASONING);
+  const [selectedEffort, setSelectedEffort] = useState<string>(DEFAULT_REASONING);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
 
   const activeThread = state.threads.find((t) => t.id === state.activeThreadId);
-  const activeProject = state.projects.find(
-    (p) => p.id === activeThread?.projectId,
-  );
+  const activeProject = state.projects.find((p) => p.id === activeThread?.projectId);
   const selectedModel = resolveModelSlug(
     activeThread?.model ?? activeProject?.model ?? DEFAULT_MODEL,
   );
@@ -76,7 +66,7 @@ export default function ChatView() {
   );
   const assistantCompletionByItemId = useMemo(() => {
     const map = new Map<string, string>();
-    const ordered = [...(activeThread?.events ?? [])].reverse();
+    const ordered = [...(activeThread?.events ?? [])].toReversed();
     for (const event of ordered) {
       if (event.method !== "item/completed") continue;
       if (!event.itemId) continue;
@@ -85,11 +75,7 @@ export default function ChatView() {
     return map;
   }, [activeThread?.events]);
   const timelineEntries = useMemo(
-    () =>
-      deriveTimelineEntries(
-        activeThread?.messages ?? [],
-        isWorking ? workLogEntries : [],
-      ),
+    () => deriveTimelineEntries(activeThread?.messages ?? [], isWorking ? workLogEntries : []),
     [activeThread?.messages, isWorking, workLogEntries],
   );
 
@@ -130,10 +116,7 @@ export default function ChatView() {
 
     const handleClickOutside = (event: MouseEvent) => {
       if (!modelMenuRef.current) return;
-      if (
-        event.target instanceof Node &&
-        !modelMenuRef.current.contains(event.target)
-      ) {
+      if (event.target instanceof Node && !modelMenuRef.current.contains(event.target)) {
         setIsModelMenuOpen(false);
       }
     };
@@ -183,8 +166,7 @@ export default function ChatView() {
 
     // Auto-title from first message
     if (activeThread.messages.length === 0) {
-      const title =
-        trimmed.length > 50 ? `${trimmed.slice(0, 50)}...` : trimmed;
+      const title = trimmed.length > 50 ? `${trimmed.slice(0, 50)}...` : trimmed;
       dispatch({
         type: "SET_THREAD_TITLE",
         threadId: activeThread.id,
@@ -259,9 +241,7 @@ export default function ChatView() {
         <div className="drag-region h-[52px] shrink-0" />
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center">
-            <p className="text-sm">
-              Select a thread or create a new one to get started.
-            </p>
+            <p className="text-sm">Select a thread or create a new one to get started.</p>
           </div>
         </div>
       </div>
@@ -273,9 +253,7 @@ export default function ChatView() {
       {/* Top bar */}
       <header className="drag-region flex items-center justify-between border-b border-white/[0.08] px-5 pt-[28px] pb-3">
         <div className="flex items-center gap-3">
-          <h2 className="text-sm font-medium text-[#e0e0e0]">
-            {activeThread.title}
-          </h2>
+          <h2 className="text-sm font-medium text-[#e0e0e0]">{activeThread.title}</h2>
           {activeProject && (
             <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] text-[#a0a0a0]/50">
               {activeProject.name}
@@ -343,18 +321,13 @@ export default function ChatView() {
       <div className="flex-1 overflow-y-auto px-5 py-4">
         {activeThread.messages.length === 0 && !isWorking ? (
           <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-[#a0a0a0]/30">
-              Send a message to start the conversation.
-            </p>
+            <p className="text-sm text-[#a0a0a0]/30">Send a message to start the conversation.</p>
           </div>
         ) : (
           <div className="mx-auto max-w-3xl space-y-4">
             {timelineEntries.map((timelineEntry) =>
               timelineEntry.kind === "work" ? (
-                <div
-                  key={timelineEntry.id}
-                  className="border-l-2 border-white/[0.05] pl-4 py-1"
-                >
+                <div key={timelineEntry.id} className="border-l-2 border-white/[0.05] pl-4 py-1">
                   <p
                     className={`py-[2px] text-[12px] leading-relaxed ${workToneClass(timelineEntry.entry.tone)}`}
                   >
@@ -388,9 +361,7 @@ export default function ChatView() {
                       <ChatMarkdown
                         text={
                           timelineEntry.message.text ||
-                          (timelineEntry.message.streaming
-                            ? ""
-                            : "(empty response)")
+                          (timelineEntry.message.streaming ? "" : "(empty response)")
                         }
                       />
                       {timelineEntry.message.streaming && (
@@ -409,15 +380,10 @@ export default function ChatView() {
                         {formatMessageMeta(
                           timelineEntry.message.createdAt,
                           timelineEntry.message.streaming
-                            ? formatElapsed(
-                                timelineEntry.message.createdAt,
-                                nowIso,
-                              )
+                            ? formatElapsed(timelineEntry.message.createdAt, nowIso)
                             : formatElapsed(
                                 timelineEntry.message.createdAt,
-                                assistantCompletionByItemId.get(
-                                  timelineEntry.message.id,
-                                ),
+                                assistantCompletionByItemId.get(timelineEntry.message.id),
                               ),
                         )}
                       </p>
@@ -456,9 +422,7 @@ export default function ChatView() {
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={onKeyDown}
                 placeholder={
-                  phase === "disconnected"
-                    ? "Ask for follow-up changes"
-                    : "Ask anything..."
+                  phase === "disconnected" ? "Ask for follow-up changes" : "Ask anything..."
                 }
                 disabled={isSending || isConnecting}
               />
@@ -474,9 +438,7 @@ export default function ChatView() {
                     className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-[#a0a0a0]/70 transition-colors duration-150 hover:bg-white/[0.06] hover:text-[#d0d0d0]"
                     onClick={() => setIsModelMenuOpen((open) => !open)}
                   >
-                    <span className="max-w-[180px] truncate">
-                      {selectedModel}
-                    </span>
+                    <span className="max-w-[180px] truncate">{selectedModel}</span>
                     <svg
                       width="10"
                       height="10"
@@ -496,9 +458,7 @@ export default function ChatView() {
                   </button>
                   {isModelMenuOpen && (
                     <div className="absolute bottom-full left-0 z-20 mb-2 w-[320px] rounded-2xl border border-white/[0.1] bg-[#1b1b1d]/95 p-2 shadow-[0_16px_40px_rgba(0,0,0,0.55)] backdrop-blur">
-                      <p className="px-2 py-1 text-[11px] text-[#a0a0a0]/70">
-                        Select model
-                      </p>
+                      <p className="px-2 py-1 text-[11px] text-[#a0a0a0]/70">Select model</p>
                       <div className="max-h-72 overflow-y-auto">
                         {modelOptions.map((model) => {
                           const isSelected = model === selectedModel;
@@ -537,10 +497,7 @@ export default function ChatView() {
                   className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-[#a0a0a0]/70 transition-colors duration-150 hover:bg-white/[0.06] hover:text-[#d0d0d0]"
                   htmlFor="reasoning-effort"
                 >
-                  <span>
-                    {selectedEffort.charAt(0).toUpperCase() +
-                      selectedEffort.slice(1)}
-                  </span>
+                  <span>{selectedEffort.charAt(0).toUpperCase() + selectedEffort.slice(1)}</span>
                   <select
                     id="reasoning-effort"
                     className="absolute opacity-0 w-0 h-0"
@@ -548,11 +505,7 @@ export default function ChatView() {
                     onChange={(event) => setSelectedEffort(event.target.value)}
                   >
                     {REASONING_OPTIONS.map((effort) => (
-                      <option
-                        key={effort}
-                        value={effort}
-                        className="bg-[#1b1b1d]"
-                      >
+                      <option key={effort} value={effort} className="bg-[#1b1b1d]">
                         {effort}
                         {effort === DEFAULT_REASONING ? " (default)" : ""}
                       </option>
@@ -580,9 +533,7 @@ export default function ChatView() {
               {/* Right side: send / stop button */}
               <div className="flex items-center gap-2">
                 {activeProject && (
-                  <span className="text-[11px] text-[#a0a0a0]/25">
-                    {activeProject.name}
-                  </span>
+                  <span className="text-[11px] text-[#a0a0a0]/25">{activeProject.name}</span>
                 )}
                 {phase === "running" ? (
                   <button
@@ -607,11 +558,7 @@ export default function ChatView() {
                     className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-[#0c0c0c] transition-all duration-150 hover:bg-white hover:scale-105 disabled:opacity-30 disabled:hover:scale-100"
                     disabled={isSending || isConnecting || !prompt.trim()}
                     aria-label={
-                      isConnecting
-                        ? "Connecting"
-                        : isSending
-                          ? "Sending"
-                          : "Send message"
+                      isConnecting ? "Connecting" : isSending ? "Sending" : "Send message"
                     }
                   >
                     {isConnecting || isSending ? (

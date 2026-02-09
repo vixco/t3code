@@ -1,8 +1,4 @@
-import type {
-  ProviderEvent,
-  ProviderKind,
-  ProviderSession,
-} from "@acme/contracts";
+import type { ProviderEvent, ProviderKind, ProviderSession } from "@acme/contracts";
 import type { ChatMessage, SessionPhase } from "./types";
 
 export const PROVIDER_OPTIONS: Array<{
@@ -49,10 +45,7 @@ export function formatDuration(durationMs: number): string {
   return `${minutes}m ${seconds}s`;
 }
 
-export function formatElapsed(
-  startIso: string,
-  endIso: string | undefined,
-): string | null {
+export function formatElapsed(startIso: string, endIso: string | undefined): string | null {
   if (!endIso) return null;
 
   const startedAt = Date.parse(startIso);
@@ -100,18 +93,10 @@ function itemTypeMeta(type: string): {
   label: string;
   tone: WorkLogEntry["tone"];
 } {
-  if (
-    type.includes("preamble") ||
-    type.includes("reasoning") ||
-    type.includes("thought")
-  ) {
+  if (type.includes("preamble") || type.includes("reasoning") || type.includes("thought")) {
     return { label: "Preamble", tone: "thinking" };
   }
-  if (
-    type.includes("tool") ||
-    type.includes("command") ||
-    type.includes("file change")
-  ) {
+  if (type.includes("tool") || type.includes("command") || type.includes("file change")) {
     return { label: "Tool call", tone: "tool" };
   }
   if (type.includes("agent message")) {
@@ -241,7 +226,7 @@ export function deriveWorkLogEntries(
   events: ProviderEvent[],
   turnId: string | undefined,
 ): WorkLogEntry[] {
-  const ordered = [...events].reverse();
+  const ordered = [...events].toReversed();
   const entries: WorkLogEntry[] = [];
   const turnStartedAtIso = turnId
     ? ordered.find((event) => {
@@ -252,9 +237,7 @@ export function deriveWorkLogEntries(
         return startedTurnId === turnId;
       })?.createdAt
     : undefined;
-  const turnStartedAt = turnStartedAtIso
-    ? Date.parse(turnStartedAtIso)
-    : Number.NaN;
+  const turnStartedAt = turnStartedAtIso ? Date.parse(turnStartedAtIso) : Number.NaN;
 
   for (const event of ordered) {
     if (turnId) {
@@ -367,10 +350,7 @@ export function derivePhase(session: ProviderSession | null): SessionPhase {
   return "ready";
 }
 
-export function evolveSession(
-  previous: ProviderSession,
-  event: ProviderEvent,
-): ProviderSession {
+export function evolveSession(previous: ProviderSession, event: ProviderEvent): ProviderSession {
   const payload = asObject(event.payload);
 
   if (event.method === "thread/started") {

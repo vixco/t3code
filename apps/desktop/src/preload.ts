@@ -18,14 +18,12 @@ const nativeApi: NativeApi = {
   agent: {
     spawn: (config) => ipcRenderer.invoke(IPC_CHANNELS.agentSpawn, config),
     kill: (sessionId) => ipcRenderer.invoke(IPC_CHANNELS.agentKill, sessionId),
-    write: (sessionId, data) =>
-      ipcRenderer.invoke(IPC_CHANNELS.agentWrite, sessionId, data),
+    write: (sessionId, data) => ipcRenderer.invoke(IPC_CHANNELS.agentWrite, sessionId, data),
     onOutput: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, chunk: unknown) =>
         callback(chunk as Parameters<typeof callback>[0]);
       ipcRenderer.on(IPC_CHANNELS.agentOutput, listener);
-      return () =>
-        ipcRenderer.removeListener(IPC_CHANNELS.agentOutput, listener);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.agentOutput, listener);
     },
     onExit: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, exit: unknown) =>
@@ -35,21 +33,16 @@ const nativeApi: NativeApi = {
     },
   },
   providers: {
-    startSession: (input) =>
-      ipcRenderer.invoke(IPC_CHANNELS.providerSessionStart, input),
-    sendTurn: (input) =>
-      ipcRenderer.invoke(IPC_CHANNELS.providerTurnStart, input),
-    interruptTurn: (input) =>
-      ipcRenderer.invoke(IPC_CHANNELS.providerTurnInterrupt, input),
-    stopSession: (input) =>
-      ipcRenderer.invoke(IPC_CHANNELS.providerSessionStop, input),
+    startSession: (input) => ipcRenderer.invoke(IPC_CHANNELS.providerSessionStart, input),
+    sendTurn: (input) => ipcRenderer.invoke(IPC_CHANNELS.providerTurnStart, input),
+    interruptTurn: (input) => ipcRenderer.invoke(IPC_CHANNELS.providerTurnInterrupt, input),
+    stopSession: (input) => ipcRenderer.invoke(IPC_CHANNELS.providerSessionStop, input),
     listSessions: () => ipcRenderer.invoke(IPC_CHANNELS.providerSessionList),
     onEvent: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) =>
         callback(payload as Parameters<typeof callback>[0]);
       ipcRenderer.on(IPC_CHANNELS.providerEvent, listener);
-      return () =>
-        ipcRenderer.removeListener(IPC_CHANNELS.providerEvent, listener);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.providerEvent, listener);
     },
   },
 };

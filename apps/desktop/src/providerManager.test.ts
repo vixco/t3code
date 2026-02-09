@@ -14,9 +14,7 @@ describe("ProviderManager", () => {
     manager.dispose();
 
     expect(internals.codex.listenerCount("event")).toBe(0);
-    expect(
-      internals.logStream.writableEnded || internals.logStream.destroyed,
-    ).toBe(true);
+    expect(internals.logStream.writableEnded || internals.logStream.destroyed).toBe(true);
   });
 
   it("allows multiple dispose calls", () => {
