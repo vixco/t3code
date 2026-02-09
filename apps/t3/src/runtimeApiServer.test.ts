@@ -736,6 +736,34 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("returns structured errors for invalid providers.startSession payloads", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "provider-start-invalid-1",
+      "providers.startSession",
+      {
+        provider: "unknown-provider",
+      },
+    );
+    expect(response.ok).toBe(false);
+    if (response.ok) {
+      throw new Error("Expected invalid provider start payload to fail.");
+    }
+    expect(response.error?.code).toBe("request_failed");
+
+    client.socket.close();
+  });
+
   it("reports runtime health metadata", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
