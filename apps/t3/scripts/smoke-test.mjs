@@ -32,21 +32,34 @@ function waitForProcessExit(processRef) {
   });
 }
 
-function waitForStartupUrl(readOutput, timeoutMs = 20_000) {
+function waitForStartupUrl(readOutput, processRef, timeoutMs = 20_000) {
   return new Promise((resolve, reject) => {
+    const finish = (callback, value) => {
+      clearInterval(timer);
+      processRef.off("exit", onExit);
+      callback(value);
+    };
+    const onExit = (code) => {
+      finish(
+        reject,
+        new Error(
+          `Smoke test failed: CLI exited before startup URL was printed (exit code ${String(code)}).`,
+        ),
+      );
+    };
+    processRef.once("exit", onExit);
+
     const startedAt = Date.now();
     const timer = setInterval(() => {
       const output = readOutput();
       const match = output.match(/CodeThing is running at (http:\/\/[^\s]+)/);
       if (match?.[1]) {
-        clearInterval(timer);
-        resolve(match[1]);
+        finish(resolve, match[1]);
         return;
       }
 
       if (Date.now() - startedAt >= timeoutMs) {
-        clearInterval(timer);
-        reject(new Error("Smoke test failed: did not observe startup URL in CLI output."));
+        finish(reject, new Error("Smoke test failed: did not observe startup URL in CLI output."));
       }
     }, 100);
   });
@@ -87,7 +100,7 @@ async function main() {
   });
 
   try {
-    const appUrl = await waitForStartupUrl(() => output);
+    const appUrl = await waitForStartupUrl(() => output, child);
     const parsedAppUrl = new URL(appUrl);
 
     const page = await fetch(parsedAppUrl);
@@ -98,6 +111,15 @@ async function main() {
     const wsUrl = parsedAppUrl.searchParams.get("ws");
     if (!wsUrl) {
       throw new Error("Smoke test failed: launch URL did not include ws runtime parameter.");
+    }
+    const parsedWsUrl = new URL(wsUrl);
+    if (parsedWsUrl.port !== String(backendPort)) {
+      throw new Error(
+        `Smoke test failed: expected backend port ${backendPort}, got ${parsedWsUrl.port}.`,
+      );
+    }
+    if (!parsedWsUrl.searchParams.get("token")) {
+      throw new Error("Smoke test failed: websocket URL is missing runtime auth token.");
     }
 
     const ws = new WebSocket(wsUrl);
