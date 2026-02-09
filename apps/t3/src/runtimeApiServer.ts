@@ -278,7 +278,10 @@ export async function startRuntimeApiServer(
   options: RuntimeApiServerOptions,
 ): Promise<RuntimeApiServer> {
   const launchCwd = path.resolve(options.launchCwd);
-  const authToken = options.authToken;
+  const authToken = options.authToken?.trim();
+  if (options.authToken !== undefined && !authToken) {
+    throw new Error("Invalid runtime auth token: expected non-empty string.");
+  }
   const bootstrapSessionTimeoutMs =
     options.bootstrapSessionTimeoutMs ?? BOOTSTRAP_SESSION_TIMEOUT_MS;
   const providerManager = new ProviderManager();

@@ -106,6 +106,16 @@ afterEach(async () => {
 });
 
 describe("runtimeApiServer", () => {
+  it("rejects empty auth token configuration", async () => {
+    await expect(
+      startRuntimeApiServer({
+        port: 0,
+        launchCwd: process.cwd(),
+        authToken: "   ",
+      }),
+    ).rejects.toThrow("Invalid runtime auth token");
+  });
+
   it("responds to todos.list over websocket RPC", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
