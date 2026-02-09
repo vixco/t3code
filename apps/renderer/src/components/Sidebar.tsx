@@ -1,5 +1,6 @@
 import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
 import { DEFAULT_MODEL } from "../model-logic";
 import { readNativeApi } from "../session-logic";
@@ -125,10 +126,10 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar flex h-full w-[260px] shrink-0 flex-col border-r border-border bg-card">
-      {/* Drag region / traffic light space */}
-      <div className="drag-region h-[52px] shrink-0" />
+      {/* Drag region / traffic light space (Electron only) */}
+      {isElectron && <div className="drag-region h-[52px] shrink-0" />}
       {/* Branding */}
-      <div className="flex items-center gap-2 px-4 pb-4">
+      <div className={`flex items-center gap-2 px-4 pb-4 ${isElectron ? "" : "pt-4"}`}>
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-xs font-bold text-primary-foreground">
           CT
         </div>
@@ -281,7 +282,7 @@ export default function Sidebar() {
               if (e.key === "Escape") setAddingProject(false);
             }}
           />
-          {api && (
+          {isElectron && api && (
             <button
               type="button"
               className="mb-2 flex w-full items-center justify-center rounded-md border border-border px-2 py-1.5 text-xs text-muted-foreground transition-colors duration-150 hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-60"
