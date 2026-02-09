@@ -29,6 +29,7 @@ export const IPC_CHANNELS = {
   providerSessionStop: "provider:session:stop",
   providerSessionList: "provider:session:list",
   providerEvent: "provider:event",
+  shellOpenInEditor: "shell:open-in-editor",
 } as const;
 
 export interface NativeApi {
@@ -62,5 +63,8 @@ export interface NativeApi {
     stopSession: (input: ProviderStopSessionInput) => Promise<void>;
     listSessions: () => Promise<ProviderSession[]>;
     onEvent: (callback: (event: ProviderEvent) => void) => () => void;
+  };
+  shell: {
+    openInEditor: (cwd: string, editor: string) => Promise<void>;
   };
 }
