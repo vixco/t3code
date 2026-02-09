@@ -828,6 +828,45 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("marks long-running terminal commands as timed out", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "terminal-timeout-1",
+      "terminal.run",
+      {
+        command: "sleep 2",
+        cwd: process.cwd(),
+        timeoutMs: 100,
+      },
+    );
+    expect(response.ok).toBe(true);
+    if (!response.ok) {
+      throw new Error("Expected terminal.run timeout response to succeed.");
+    }
+    const payload = response.result as {
+      timedOut: boolean;
+      stdout: string;
+      stderr: string;
+      code: number | null;
+    };
+    expect(payload.timedOut).toBe(true);
+    expect(payload.stdout).toBe("");
+    expect(payload.stderr).toBe("");
+    expect(payload.code === null || payload.code > 0).toBe(true);
+
+    client.socket.close();
+  });
+
   it("supports todo mutation lifecycle over websocket RPC", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
