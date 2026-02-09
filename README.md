@@ -20,6 +20,14 @@ On launch, `t3`:
 2. serves the web UI in your browser,
 3. auto-connects to your current working directory as the default project.
 
+CLI flags:
+
+- `--no-open` — do not open a browser window automatically.
+- `--backend-port <port>` — set WebSocket runtime port.
+- `--web-port <port>` — set web UI port.
+- `--cwd <path>` — choose launch project directory (defaults to current directory).
+- `--help` — print CLI usage.
+
 Optional environment variables:
 
 - `T3_NO_OPEN=1` — start runtime without auto-opening a browser window.
