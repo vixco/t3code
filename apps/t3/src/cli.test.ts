@@ -69,8 +69,18 @@ describe("parseCliOptions", () => {
     expect(options.showHelp).toBe(true);
   });
 
+  it("supports short help flag alias", () => {
+    const options = parseCliOptions(["-h"], {}, "/workspace");
+    expect(options.showHelp).toBe(true);
+  });
+
   it("supports version flag", () => {
     const options = parseCliOptions(["--version"], {}, "/workspace");
+    expect(options.showVersion).toBe(true);
+  });
+
+  it("supports short version flag alias", () => {
+    const options = parseCliOptions(["-v"], {}, "/workspace");
     expect(options.showVersion).toBe(true);
   });
 
