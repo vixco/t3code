@@ -110,6 +110,12 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("throws when cwd flag value is missing", () => {
+    expect(() => parseCliOptions(["--cwd"], {}, "/workspace")).toThrow(
+      "Missing value for --cwd",
+    );
+  });
+
   it("throws for whitespace-only cwd flag values", () => {
     expect(() => parseCliOptions(["--cwd", "   "], {}, "/workspace")).toThrow(
       "Invalid value for --cwd",
