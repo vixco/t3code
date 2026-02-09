@@ -44,11 +44,12 @@
         "t3": "./dist/index.js",
       },
       "dependencies": {
-        "@acme/contracts": "workspace:*",
         "open": "^10.1.0",
         "ws": "^8.18.0",
       },
       "devDependencies": {
+        "@acme/contracts": "workspace:*",
+        "@acme/renderer": "workspace:*",
         "@types/node": "^22.10.2",
         "@types/ws": "^8.5.13",
         "tsup": "^8.3.5",

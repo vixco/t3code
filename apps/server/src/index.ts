@@ -35,14 +35,23 @@ async function findAvailablePort(preferred: number): Promise<number> {
 }
 
 function resolveStaticDir(): string | undefined {
-  // In production, the renderer dist is next to the server dist:
-  // apps/server/dist/index.js → apps/renderer/dist/
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const rendererDist = path.resolve(__dirname, "../../renderer/dist");
 
+  // Check for bundled client (npm publish / npx scenario):
+  // dist/client/ lives alongside dist/index.js
+  const bundledClient = path.resolve(__dirname, "client");
   try {
-    const stat = fs.statSync(path.join(rendererDist, "index.html"));
-    if (stat.isFile()) return rendererDist;
+    const stat = fs.statSync(path.join(bundledClient, "index.html"));
+    if (stat.isFile()) return bundledClient;
+  } catch {
+    // Not bundled — check monorepo layout
+  }
+
+  // Monorepo layout: apps/server/dist/index.js → apps/renderer/dist/
+  const monorepoClient = path.resolve(__dirname, "../../renderer/dist");
+  try {
+    const stat = fs.statSync(path.join(monorepoClient, "index.html"));
+    if (stat.isFile()) return monorepoClient;
   } catch {
     // Not found — probably dev mode, Vite will serve
   }
