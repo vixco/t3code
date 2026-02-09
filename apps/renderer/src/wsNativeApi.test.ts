@@ -247,4 +247,30 @@ describe("wsNativeApi", () => {
 
     await expect(request).resolves.toEqual([]);
   });
+
+  it("accepts blob server messages", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4407");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as {
+      id: string;
+    };
+
+    socket?.emitMessage(
+      new Blob([
+        JSON.stringify({
+          type: "response",
+          id: requestEnvelope.id,
+          ok: true,
+          result: [],
+        }),
+      ]),
+    );
+
+    await expect(request).resolves.toEqual([]);
+  });
 });
