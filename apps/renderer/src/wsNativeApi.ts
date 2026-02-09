@@ -92,7 +92,23 @@ class WsNativeApiClient {
       this.pending.set(id, { resolve, reject, timeout });
     });
 
-    socket.send(JSON.stringify(requestMessage));
+    try {
+      socket.send(JSON.stringify(requestMessage));
+    } catch (error) {
+      const pending = this.pending.get(id);
+      if (pending) {
+        clearTimeout(pending.timeout);
+        this.pending.delete(id);
+        pending.reject(
+          new Error(
+            `Failed to send runtime request '${method}': ${
+              error instanceof Error ? error.message : "unknown websocket failure"
+            }`,
+          ),
+        );
+      }
+    }
+
     return requestPromise;
   }
 
