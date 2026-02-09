@@ -86,6 +86,12 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("throws for invalid backend environment port values", () => {
+    expect(() => parseCliOptions([], { T3_BACKEND_PORT: "nope" }, "/workspace")).toThrow(
+      "Invalid value for T3_BACKEND_PORT",
+    );
+  });
+
   it("throws for empty cwd flag values", () => {
     expect(() => parseCliOptions(["--cwd="], {}, "/workspace")).toThrow(
       "Invalid value for --cwd",
