@@ -28,7 +28,7 @@ function applyTheme(theme: Theme, suppressTransitions = false) {
   document.documentElement.classList.toggle("dark", isDark);
   if (suppressTransitions) {
     // Force a reflow so the no-transitions class takes effect before removal
-    document.documentElement.offsetHeight;
+    void document.documentElement.offsetHeight;
     requestAnimationFrame(() => {
       document.documentElement.classList.remove("no-transitions");
     });

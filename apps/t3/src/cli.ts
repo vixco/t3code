@@ -382,34 +382,62 @@ async function main() {
   }
 
   const maxPortRetryAttempts = 10;
-  for (let attempt = 0; attempt < maxPortRetryAttempts; attempt += 1) {
+  const runWithRetry = async (
+    currentOptions: CliOptions,
+    attempt: number,
+  ): Promise<void> => {
     try {
-      await runCli(options);
+      await runCli(currentOptions);
       return;
     } catch (error) {
       const canRetryWithNextPorts =
         isPortInUseError(error) &&
-        !options.backendPortLocked &&
-        !options.webPortLocked &&
+        !currentOptions.backendPortLocked &&
+        !currentOptions.webPortLocked &&
         attempt < maxPortRetryAttempts - 1;
       if (canRetryWithNextPorts) {
-        const nextBackendPort = options.backendPort + 1;
-        const nextWebPort = options.webPort + 1;
+        const nextBackendPort = currentOptions.backendPort + 1;
+        const nextWebPort = currentOptions.webPort + 1;
         process.stderr.write(
-          `Ports ${options.backendPort}/${options.webPort} busy; retrying with ${nextBackendPort}/${nextWebPort}.\n`,
+          `Ports ${currentOptions.backendPort}/${currentOptions.webPort} busy; retrying with ${nextBackendPort}/${nextWebPort}.\n`,
         );
-        options = {
-          ...options,
-          backendPort: nextBackendPort,
-          webPort: nextWebPort,
-        };
-        continue;
+        return runWithRetry(
+          {
+            ...currentOptions,
+            backendPort: nextBackendPort,
+            webPort: nextWebPort,
+          },
+          attempt + 1,
+        );
       }
 
-      process.stderr.write(`${formatStartupError(error, options)}\n`);
-      process.exit(1);
-      return;
+      const wrappedError = new Error("CLI startup failed.");
+      (wrappedError as Error & { cause?: unknown }).cause = {
+        originalError: error,
+        options: currentOptions,
+      };
+      throw wrappedError;
     }
+  };
+
+  try {
+    await runWithRetry(options, 0);
+  } catch (error) {
+    const wrappedCause = (error as Error & { cause?: unknown }).cause as
+      | {
+          originalError?: unknown;
+          options?: CliOptions;
+        }
+      | undefined;
+    const wrapped = wrappedCause ?? {
+      originalError: error,
+      options,
+    };
+    const failedOptions = wrapped.options ?? options;
+    process.stderr.write(
+      `${formatStartupError(wrapped.originalError ?? error, failedOptions)}\n`,
+    );
+    process.exit(1);
   }
 }
 

@@ -36,7 +36,7 @@ export default function Sidebar() {
   const handleAddProject = () => {
     const cwd = newCwd.trim();
     if (!cwd) return;
-    const name = cwd.split("/").filter(Boolean).pop() ?? "project";
+    const name = cwd.split("/").findLast((segment) => segment.length > 0) ?? "project";
     const project: Project = {
       id: crypto.randomUUID(),
       name,
@@ -107,7 +107,21 @@ export default function Sidebar() {
       if (!projectId) return;
 
       event.preventDefault();
-      handleNewThread(projectId);
+      dispatch({
+        type: "ADD_THREAD",
+        thread: {
+          id: crypto.randomUUID(),
+          codexThreadId: null,
+          projectId,
+          title: "New thread",
+          model: state.projects.find((project) => project.id === projectId)?.model ?? DEFAULT_MODEL,
+          session: null,
+          messages: [],
+          events: [],
+          error: null,
+          createdAt: new Date().toISOString(),
+        },
+      });
     };
 
     window.addEventListener("keydown", onWindowKeyDown);
@@ -174,7 +188,7 @@ export default function Sidebar() {
         {state.projects.map((project) => {
           const threads = state.threads
             .filter((t) => t.projectId === project.id)
-            .sort((a, b) => {
+            .toSorted((a, b) => {
               const byDate = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
               if (byDate !== 0) return byDate;
               return b.id.localeCompare(a.id);

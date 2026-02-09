@@ -91,7 +91,7 @@ function approvalDetail(event: ProviderEvent): string | undefined {
 
 function derivePendingApprovals(events: ProviderEvent[]): PendingApprovalCard[] {
   const pending = new Map<string, PendingApprovalCard>();
-  const ordered = [...events].reverse();
+  const ordered = events.toReversed();
 
   for (const event of ordered) {
     if (event.method === "session/closed" || event.method === "session/exited") {

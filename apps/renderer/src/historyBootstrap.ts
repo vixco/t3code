@@ -68,7 +68,7 @@ export function buildBootstrapInput(
   let includedNewestFirst: string[] = [];
   for (const block of newestFirstBlocks) {
     const nextNewestFirst = [...includedNewestFirst, block];
-    const nextChronological = [...nextNewestFirst].reverse();
+    const nextChronological = nextNewestFirst.toReversed();
     const omittedCount = newestFirstBlocks.length - nextChronological.length;
     const transcriptBody =
       omittedCount > 0
@@ -80,7 +80,7 @@ export function buildBootstrapInput(
     includedNewestFirst = nextNewestFirst;
   }
 
-  let includedChronological = [...includedNewestFirst].reverse();
+  let includedChronological = includedNewestFirst.toReversed();
   while (true) {
     const omittedCount = newestFirstBlocks.length - includedChronological.length;
     const transcriptBody =

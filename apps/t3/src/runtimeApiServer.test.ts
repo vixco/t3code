@@ -82,27 +82,27 @@ async function sendRequest(
     }),
   );
 
-  while (true) {
+  const waitForMatchingResponse = async (): Promise<WsResponseMessage> => {
     const message = await nextMessage();
     if (message.type !== "response") {
-      continue;
+      return waitForMatchingResponse();
     }
     if (message.id !== id) {
-      continue;
+      return waitForMatchingResponse();
     }
 
     return message;
-  }
+  };
+
+  return waitForMatchingResponse();
 }
 
 const servers: Array<{ close: () => Promise<void> }> = [];
 
 afterEach(async () => {
-  while (servers.length > 0) {
-    const server = servers.pop();
-    if (!server) break;
-    await server.close();
-  }
+  const snapshot = [...servers];
+  servers.length = 0;
+  await Promise.all(snapshot.map((server) => server.close()));
 });
 
 describe("runtimeApiServer", () => {
