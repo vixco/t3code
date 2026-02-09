@@ -647,6 +647,34 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("returns structured errors for invalid agent.spawn payloads", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "agent-invalid-1",
+      "agent.spawn",
+      {
+        command: "",
+      },
+    );
+    expect(response.ok).toBe(false);
+    if (response.ok) {
+      throw new Error("Expected invalid agent payload to fail.");
+    }
+    expect(response.error?.code).toBe("request_failed");
+
+    client.socket.close();
+  });
+
   it("reports runtime health metadata", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
