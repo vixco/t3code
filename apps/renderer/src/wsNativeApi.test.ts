@@ -414,5 +414,32 @@ describe("wsNativeApi", () => {
 
     unsubscribeOutput();
     unsubscribeExit();
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "event",
+        channel: "agent:output",
+        payload: {
+          sessionId: "agent-session-1",
+          stream: "stdout",
+          data: "ignored",
+        },
+      }),
+    );
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "event",
+        channel: "agent:exit",
+        payload: {
+          sessionId: "agent-session-1",
+          code: 1,
+          signal: null,
+        },
+      }),
+    );
+    await new Promise((resolve) => {
+      setTimeout(resolve, 25);
+    });
+    expect(outputEvents).toHaveLength(1);
+    expect(exitEvents).toHaveLength(1);
   });
 });
