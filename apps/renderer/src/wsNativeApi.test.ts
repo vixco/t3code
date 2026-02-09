@@ -230,6 +230,51 @@ describe("wsNativeApi", () => {
     });
   });
 
+  it("preserves bootstrapError field in bootstrap payloads", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4420");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.app.bootstrap();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as {
+      id: string;
+    };
+
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: {
+          launchCwd: "/workspace",
+          projectName: "workspace",
+          provider: "codex",
+          model: "gpt-5-codex",
+          session: {
+            sessionId: "bootstrap-error",
+            provider: "codex",
+            status: "error",
+            cwd: "/workspace",
+            model: "gpt-5-codex",
+            createdAt: "2026-02-01T00:00:00.000Z",
+            updatedAt: "2026-02-01T00:00:00.000Z",
+            lastError: "Timed out waiting for initialize.",
+          },
+          bootstrapError: "Timed out waiting for initialize.",
+        },
+      }),
+    );
+
+    await expect(request).resolves.toMatchObject({
+      bootstrapError: "Timed out waiting for initialize.",
+      session: {
+        status: "error",
+      },
+    });
+  });
+
   it("falls back to default local runtime URL when ws query is missing", async () => {
     setWindowSearch("");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");

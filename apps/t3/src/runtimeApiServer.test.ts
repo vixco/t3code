@@ -479,9 +479,11 @@ describe("runtimeApiServer", () => {
       }
 
       const payload = response.result as {
+        launchCwd: string;
         session: { status: string };
         bootstrapError?: string;
       };
+      expect(payload.launchCwd).toBe(process.cwd());
       expect(payload.session.status).toBe("error");
       expect(typeof payload.bootstrapError).toBe("string");
       expect((payload.bootstrapError ?? "").length).toBeGreaterThan(0);
