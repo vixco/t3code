@@ -880,6 +880,38 @@ describe("wsNativeApi", () => {
     await expect(request).resolves.toEqual([]);
   });
 
+  it("ignores blob decode failures and continues processing", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4422");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as {
+      id: string;
+    };
+
+    const originalBlobText = Blob.prototype.text;
+    Blob.prototype.text = () => Promise.reject(new Error("decode failure"));
+    try {
+      socket?.emitMessage(new Blob(["invalid-json"]));
+    } finally {
+      Blob.prototype.text = originalBlobText;
+    }
+
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: [],
+      }),
+    );
+
+    await expect(request).resolves.toEqual([]);
+  });
+
   it("ignores invalid server messages and still resolves on valid response", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4408");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
