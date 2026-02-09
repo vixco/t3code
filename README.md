@@ -55,6 +55,7 @@ Optional environment variables:
 
 - `t3` starts a localhost-only WebSocket server.
 - Launch URLs include an ephemeral WebSocket token so only the opened browser session can attach.
+- Connections missing the token (or using a wrong token) are rejected by the runtime.
 - Browser renderer talks through a typed `NativeApi` adapter over that WebSocket.
 - Runtime currently enforces a single active browser client (new client replaces old one).
 - Runtime validates request payloads with shared Zod contracts.
