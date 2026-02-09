@@ -24,11 +24,7 @@ export class WsTransport {
   constructor(url?: string) {
     // In dev mode, VITE_WS_URL points to the server's WebSocket endpoint.
     // In production, the page is served by the WS server on the same host:port.
-    const envUrl =
-      typeof import.meta !== "undefined"
-        ? (import.meta as unknown as { env?: { VITE_WS_URL?: string } }).env
-            ?.VITE_WS_URL
-        : undefined;
+    const envUrl = import.meta.env.VITE_WS_URL as string | undefined;
     this.url =
       url ??
       (envUrl && envUrl.length > 0

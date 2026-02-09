@@ -1,4 +1,4 @@
-# AGENTS.md
+# CLAUDE.md
 
 ## Project Snapshot
 CodeThing is a minimal web GUI for using code agents like Codex and Claude Code (coming soon).

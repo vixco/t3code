@@ -9,11 +9,27 @@ import { WsTransport } from "./wsTransport";
 
 let instance: { api: NativeApi; transport: WsTransport } | null = null;
 const welcomeListeners = new Set<(payload: WsWelcomePayload) => void>();
+let lastWelcome: WsWelcomePayload | null = null;
 
+/**
+ * Subscribe to the server welcome message. If a welcome was already received
+ * before this call, the listener fires synchronously with the cached payload.
+ * This avoids the race between WebSocket connect and React effect registration.
+ */
 export function onServerWelcome(
   listener: (payload: WsWelcomePayload) => void,
 ): () => void {
   welcomeListeners.add(listener);
+
+  // Replay cached welcome for late subscribers
+  if (lastWelcome) {
+    try {
+      listener(lastWelcome);
+    } catch {
+      // Swallow listener errors
+    }
+  }
+
   return () => {
     welcomeListeners.delete(listener);
   };
@@ -24,9 +40,11 @@ export function createWsNativeApi(): NativeApi {
 
   const transport = new WsTransport();
 
-  // Listen for server welcome and forward to registered listeners
+  // Listen for server welcome and forward to registered listeners.
+  // Also cache it so late subscribers (React effects) get it immediately.
   transport.subscribe(WS_CHANNELS.serverWelcome, (data) => {
     const payload = data as WsWelcomePayload;
+    lastWelcome = payload;
     for (const listener of welcomeListeners) {
       try {
         listener(payload);

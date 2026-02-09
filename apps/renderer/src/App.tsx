@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from "react";
 import ChatView from "./components/ChatView";
 import DiffPanel from "./components/DiffPanel";
 import Sidebar from "./components/Sidebar";
+import { isElectron } from "./env";
 import { DEFAULT_MODEL } from "./model-logic";
 import { readNativeApi } from "./session-logic";
 import { StoreProvider, useStore } from "./store";
@@ -29,13 +30,20 @@ function EventRouter() {
 
 function AutoProjectBootstrap() {
   const { state, dispatch } = useStore();
+  const bootstrappedRef = useRef(false);
 
   useEffect(() => {
+    // Only relevant in browser mode — Electron doesn't send server welcome
+    if (isElectron) return;
+
     return onServerWelcome((payload) => {
+      if (bootstrappedRef.current) return;
+
       // Don't create duplicate projects for the same cwd
       const existing = state.projects.find((p) => p.cwd === payload.cwd);
       if (existing) {
-        // If there are threads, ensure one is active
+        bootstrappedRef.current = true;
+        // Ensure a thread is active
         const existingThread = state.threads.find(
           (t) => t.projectId === existing.id,
         );
@@ -47,6 +55,8 @@ function AutoProjectBootstrap() {
         }
         return;
       }
+
+      bootstrappedRef.current = true;
 
       // Create project + thread from server cwd
       const projectId = crypto.randomUUID();
