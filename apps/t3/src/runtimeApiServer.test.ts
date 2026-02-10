@@ -1031,6 +1031,48 @@ describe("runtimeApiServer", () => {
     expect(duplicateTokenClose.code).toBe(4001);
     expect(duplicateTokenMessageCount).toBe(0);
 
+    const wrongPathTokenUrl = `${authorizedUrl.origin}/unexpected?token=secret-token`;
+    const wrongPathTokenClient = new WebSocket(wrongPathTokenUrl);
+    let wrongPathTokenMessageCount = 0;
+    wrongPathTokenClient.on("message", () => {
+      wrongPathTokenMessageCount += 1;
+    });
+    const wrongPathTokenClose = await withTimeout(
+      new Promise<{ code: number }>((resolve, reject) => {
+        wrongPathTokenClient.once("close", (code) => resolve({ code }));
+        wrongPathTokenClient.once("error", (error) => reject(error));
+      }),
+    );
+    expect(wrongPathTokenClose.code).toBe(4001);
+    expect(wrongPathTokenMessageCount).toBe(0);
+
+    const authorizedClient = await connectClient(server.wsUrl);
+    const hello = await authorizedClient.nextMessage();
+    expect(hello.type).toBe("hello");
+    authorizedClient.socket.close();
+  });
+
+  it("rejects websocket connections on non-root paths without auth", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const wrongPathClient = new WebSocket(`${server.wsUrl}/unexpected`);
+    let wrongPathMessageCount = 0;
+    wrongPathClient.on("message", () => {
+      wrongPathMessageCount += 1;
+    });
+    const wrongPathClose = await withTimeout(
+      new Promise<{ code: number }>((resolve, reject) => {
+        wrongPathClient.once("close", (code) => resolve({ code }));
+        wrongPathClient.once("error", (error) => reject(error));
+      }),
+    );
+    expect(wrongPathClose.code).toBe(4001);
+    expect(wrongPathMessageCount).toBe(0);
+
     const authorizedClient = await connectClient(server.wsUrl);
     const hello = await authorizedClient.nextMessage();
     expect(hello.type).toBe("hello");

@@ -485,16 +485,20 @@ export async function startRuntimeApiServer(
   });
 
   const isAuthorizedConnection = (requestUrl: string | undefined) => {
-    if (!authToken) {
-      return true;
-    }
-
     if (!requestUrl) {
-      return false;
+      return authToken === null;
     }
 
     try {
       const request = new URL(requestUrl, "ws://127.0.0.1");
+      if (request.pathname !== "/") {
+        return false;
+      }
+
+      if (!authToken) {
+        return true;
+      }
+
       const tokens = request.searchParams.getAll("token");
       return tokens.length === 1 && tokens[0] === authToken;
     } catch {

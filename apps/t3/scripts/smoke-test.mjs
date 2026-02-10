@@ -1390,6 +1390,13 @@ async function main() {
     );
     await waitForUnauthorizedCloseWithoutMessages(duplicateTokenWs);
 
+    const wrongPathTokenWs = new WebSocket(
+      `${parsedWsUrl.origin}/unexpected?token=${encodeURIComponent(
+        parsedWsUrl.searchParams.get("token") ?? "",
+      )}`,
+    );
+    await waitForUnauthorizedCloseWithoutMessages(wrongPathTokenWs);
+
     const ws = new WebSocket(wsUrl);
     await new Promise((resolve, reject) => {
       let sawHello = false;
