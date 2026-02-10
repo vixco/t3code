@@ -1056,6 +1056,13 @@ describe("ifModifiedSinceSatisfied", () => {
     const modifiedAt = Date.parse("2026-01-01T12:00:00.000Z");
     expect(ifModifiedSinceSatisfied(["Thu, 01 Jan 2026 12:00:00 GMT"], modifiedAt)).toBe(true);
   });
+
+  it("uses first array value when multiple are provided", () => {
+    const modifiedAt = Date.parse("2026-01-01T12:00:01.000Z");
+    expect(
+      ifModifiedSinceSatisfied(["Thu, 01 Jan 2026 12:00:01 GMT", "Thu, 01 Jan 2026 12:00:00 GMT"], modifiedAt),
+    ).toBe(true);
+  });
 });
 
 describe("ifUnmodifiedSinceSatisfied", () => {
