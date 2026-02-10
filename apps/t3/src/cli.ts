@@ -131,6 +131,23 @@ export function parseCliOptions(
     const arg = argv[index];
     if (!arg) continue;
 
+    if (arg === "--") {
+      const positionalArgs = argv.slice(index + 1);
+      const [first, ...rest] = positionalArgs;
+      if (!first) {
+        throw new Error("Missing value for [path].");
+      }
+      if (usedPositionalCwd) {
+        throw new Error(`Unexpected positional argument: ${first}`);
+      }
+      if (rest.length > 0) {
+        throw new Error(`Unexpected positional argument: ${rest[0]}`);
+      }
+      launchCwd = parseExplicitPath(first, "[path]", parserCwd);
+      usedPositionalCwd = true;
+      break;
+    }
+
     if (arg === "--help" || arg === "-h") {
       showHelp = true;
       continue;

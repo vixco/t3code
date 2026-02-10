@@ -145,6 +145,21 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("supports end-of-options marker for positional cwd values", () => {
+    const options = parseCliOptions(["--", "-project"], {}, "/workspace");
+    expect(options.launchCwd).toBe(path.resolve("/workspace", "-project"));
+  });
+
+  it("throws when end-of-options marker has no positional value", () => {
+    expect(() => parseCliOptions(["--"], {}, "/workspace")).toThrow("Missing value for [path]");
+  });
+
+  it("throws when end-of-options marker has multiple positional values", () => {
+    expect(() => parseCliOptions(["--", "apps/renderer", "apps/t3"], {}, "/workspace")).toThrow(
+      "Unexpected positional argument: apps/t3",
+    );
+  });
+
   it("keeps ports unlocked when using defaults", () => {
     const options = parseCliOptions([], {}, "/workspace");
     expect(options.backendPortLocked).toBe(false);
