@@ -992,6 +992,10 @@ describe("ifMatchSatisfied", () => {
     expect(ifMatchSatisfied("\"xyz\"", "\"abc\"")).toBe(false);
   });
 
+  it("rejects weak current etags for strong If-Match comparisons", () => {
+    expect(ifMatchSatisfied("\"abc\"", "W/\"abc\"")).toBe(false);
+  });
+
   it("supports array-valued headers", () => {
     expect(ifMatchSatisfied(["\"foo\"", "\"abc\""], "\"abc\"")).toBe(true);
   });
@@ -1033,6 +1037,13 @@ describe("ifUnmodifiedSinceSatisfied", () => {
   it("returns false when resource changed after timestamp", () => {
     const modifiedAt = Date.parse("2026-01-01T12:00:01.000Z");
     expect(ifUnmodifiedSinceSatisfied("Thu, 01 Jan 2026 12:00:00 GMT", modifiedAt)).toBe(false);
+  });
+
+  it("uses first value when header is provided as an array", () => {
+    const modifiedAt = Date.parse("2026-01-01T12:00:00.000Z");
+    expect(
+      ifUnmodifiedSinceSatisfied(["Thu, 01 Jan 2026 12:00:00 GMT", "Wed, 31 Dec 2025 12:00:00 GMT"], modifiedAt),
+    ).toBe(true);
   });
 });
 
