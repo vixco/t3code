@@ -73,6 +73,16 @@ function waitForUnauthorizedCloseWithoutMessages(socket, label, timeoutMs = 10_0
         );
         return;
       }
+      if (event.reason !== "unauthorized") {
+        reject(
+          new Error(
+            `Smoke test failed: expected unauthorized close reason for ${label}, received ${JSON.stringify(
+              event.reason,
+            )}.`,
+          ),
+        );
+        return;
+      }
       if (messageCount > 0) {
         reject(
           new Error(
@@ -102,6 +112,16 @@ function waitForCloseCode(socket, expectedCode, label, timeoutMs = 10_000) {
         reject(
           new Error(
             `Smoke test failed: expected ${label} close code ${expectedCode}, received ${event.code}.`,
+          ),
+        );
+        return;
+      }
+      if (label === "replaced-client" && event.reason !== "replaced-by-new-client") {
+        reject(
+          new Error(
+            `Smoke test failed: expected replaced-client close reason "replaced-by-new-client", received ${JSON.stringify(
+              event.reason,
+            )}.`,
           ),
         );
         return;
