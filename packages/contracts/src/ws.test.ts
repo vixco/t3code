@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { WS_EVENT_CHANNELS, wsClientMessageSchema, wsServerMessageSchema } from "./ws";
+import {
+  WS_CLOSE_CODES,
+  WS_CLOSE_REASONS,
+  WS_EVENT_CHANNELS,
+  wsClientMessageSchema,
+  wsServerMessageSchema,
+} from "./ws";
 
 describe("wsClientMessageSchema", () => {
   it("accepts request messages", () => {
@@ -45,5 +51,17 @@ describe("wsServerMessageSchema", () => {
     });
 
     expect(parsed.type).toBe("event");
+  });
+});
+
+describe("ws close metadata", () => {
+  it("exposes stable unauthorized close semantics", () => {
+    expect(WS_CLOSE_CODES.unauthorized).toBe(4001);
+    expect(WS_CLOSE_REASONS.unauthorized).toBe("unauthorized");
+  });
+
+  it("exposes stable replacement close semantics", () => {
+    expect(WS_CLOSE_CODES.replacedByNewClient).toBe(4000);
+    expect(WS_CLOSE_REASONS.replacedByNewClient).toBe("replaced-by-new-client");
   });
 });
