@@ -754,6 +754,22 @@ async function main() {
         "Smoke test failed: expected no content-range on conditional ranged If-None-Match response.",
       );
     }
+    const wildcardConditionalRangedAsset = await fetch(assetUrl, {
+      headers: {
+        Range: `bytes=0-${rangeEnd}`,
+        "If-None-Match": "*",
+      },
+    });
+    if (wildcardConditionalRangedAsset.status !== 304) {
+      throw new Error(
+        `Smoke test failed: expected wildcard conditional ranged asset status 304, received ${wildcardConditionalRangedAsset.status}.`,
+      );
+    }
+    if (wildcardConditionalRangedAsset.headers.get("content-range") !== null) {
+      throw new Error(
+        "Smoke test failed: expected no content-range on wildcard conditional ranged response.",
+      );
+    }
     const ifRangeEtagAsset = await fetch(assetUrl, {
       headers: {
         Range: `bytes=0-${rangeEnd}`,
