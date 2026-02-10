@@ -94,6 +94,7 @@ interface JsonRpcErrorResult {
 }
 
 const BOOTSTRAP_SESSION_TIMEOUT_MS = 3_000;
+const MAX_WS_CLIENT_PAYLOAD_BYTES = 5 * 1024 * 1024;
 
 interface BootstrapSessionResult {
   session: ProviderSession;
@@ -467,6 +468,8 @@ export async function startRuntimeApiServer(
   const wss = new WebSocketServer({
     host: "127.0.0.1",
     port: options.port,
+    maxPayload: MAX_WS_CLIENT_PAYLOAD_BYTES,
+    perMessageDeflate: false,
   });
 
   const isAuthorizedConnection = (requestUrl: string | undefined) => {
