@@ -53,14 +53,35 @@ async function terminateProcess(processRef, timeoutMs = 5_000) {
   await waitForProcessExit(processRef);
 }
 
-function waitForSocketCloseCode(socket, timeoutMs = 10_000) {
+function waitForUnauthorizedCloseWithoutMessages(socket, timeoutMs = 10_000) {
   return new Promise((resolve, reject) => {
+    let messageCount = 0;
     const timer = setTimeout(() => {
       reject(new Error("Smoke test failed: websocket close event timed out."));
     }, timeoutMs);
+
+    socket.addEventListener("message", () => {
+      messageCount += 1;
+    });
     socket.addEventListener("close", (event) => {
       clearTimeout(timer);
-      resolve(event.code);
+      if (event.code !== 4001) {
+        reject(
+          new Error(
+            `Smoke test failed: expected unauthorized close code 4001, received ${event.code}.`,
+          ),
+        );
+        return;
+      }
+      if (messageCount > 0) {
+        reject(
+          new Error(
+            `Smoke test failed: unauthorized websocket received ${messageCount} message(s) before close.`,
+          ),
+        );
+        return;
+      }
+      resolve();
     });
     socket.addEventListener("error", () => {
       clearTimeout(timer);
@@ -161,22 +182,12 @@ async function main() {
 
     const unauthorizedWsUrl = `${parsedWsUrl.origin}${parsedWsUrl.pathname}`;
     const unauthorizedWs = new WebSocket(unauthorizedWsUrl);
-    const unauthorizedCode = await waitForSocketCloseCode(unauthorizedWs);
-    if (unauthorizedCode !== 4001) {
-      throw new Error(
-        `Smoke test failed: expected unauthorized close code 4001, received ${unauthorizedCode}.`,
-      );
-    }
+    await waitForUnauthorizedCloseWithoutMessages(unauthorizedWs);
 
     const wrongTokenWs = new WebSocket(
       `${parsedWsUrl.origin}${parsedWsUrl.pathname}?token=wrong-token`,
     );
-    const wrongTokenCode = await waitForSocketCloseCode(wrongTokenWs);
-    if (wrongTokenCode !== 4001) {
-      throw new Error(
-        `Smoke test failed: expected wrong-token close code 4001, received ${wrongTokenCode}.`,
-      );
-    }
+    await waitForUnauthorizedCloseWithoutMessages(wrongTokenWs);
 
     const ws = new WebSocket(wsUrl);
     await new Promise((resolve, reject) => {
