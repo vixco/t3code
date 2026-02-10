@@ -344,6 +344,9 @@ export async function startRuntimeApiServer(
     throw new Error("Invalid runtime port: expected integer between 0 and 65535.");
   }
   const launchCwd = resolveExistingDirectory(options.launchCwd, "Invalid launchCwd");
+  if (options.authToken !== undefined && typeof options.authToken !== "string") {
+    throw new Error("Invalid runtime auth token: expected non-empty string.");
+  }
   const authToken = options.authToken?.trim();
   if (options.authToken !== undefined && !authToken) {
     throw new Error("Invalid runtime auth token: expected non-empty string.");

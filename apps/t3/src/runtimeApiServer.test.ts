@@ -317,6 +317,16 @@ describe("runtimeApiServer", () => {
     ).rejects.toThrow("Invalid runtime auth token");
   });
 
+  it("rejects non-string auth token configuration", async () => {
+    await expect(
+      startRuntimeApiServer({
+        port: 0,
+        launchCwd: process.cwd(),
+        authToken: 123 as unknown as string,
+      }),
+    ).rejects.toThrow("Invalid runtime auth token");
+  });
+
   it("accepts websocket connections without token when auth is disabled", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
