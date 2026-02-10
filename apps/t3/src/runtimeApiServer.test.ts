@@ -434,6 +434,39 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("closes oversized websocket payloads and remains available", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const firstClient = await connectClient(server.wsUrl);
+    await firstClient.nextMessage();
+
+    const firstClose = withTimeout(
+      new Promise<number>((resolve) => {
+        firstClient.socket.once("close", (code) => resolve(code));
+      }),
+      10_000,
+    );
+    firstClient.socket.send("x".repeat(6 * 1024 * 1024));
+    const closeCode = await firstClose;
+    expect([1006, 1009]).toContain(closeCode);
+
+    const secondClient = await connectClient(server.wsUrl);
+    await secondClient.nextMessage();
+
+    const response = await sendRequest(
+      secondClient.socket,
+      secondClient.nextMessage,
+      "todos-after-large-payload",
+      "todos.list",
+    );
+    expect(response.ok).toBe(true);
+    secondClient.socket.close();
+  });
+
   it("accepts buffer-encoded websocket request payloads", async () => {
     const server = await startRuntimeApiServer({
       port: 0,

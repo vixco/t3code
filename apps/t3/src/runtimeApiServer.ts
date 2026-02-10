@@ -646,6 +646,10 @@ export async function startRuntimeApiServer(
         activeClient = null;
       }
     });
+    socket.on("error", () => {
+      // Connection-level protocol/socket errors are expected occasionally
+      // (for example oversized client payloads). Keep server process alive.
+    });
   });
 
   try {
