@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { WS_CLOSE_CODES, WS_CLOSE_REASONS, WS_REQUEST_ID_MAX_CHARS } from "@acme/contracts";
+import {
+  WS_CLOSE_CODES,
+  WS_CLOSE_REASONS,
+  WS_ERROR_MESSAGE_MAX_CHARS,
+  WS_REQUEST_ID_MAX_CHARS,
+} from "@acme/contracts";
 
 type Listener = (event: unknown) => void;
 
@@ -3152,6 +3157,17 @@ describe("wsNativeApi", () => {
         ok: true,
         result: [],
         unexpected: true,
+      }),
+    );
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: false,
+        error: {
+          code: "request_failed",
+          message: "m".repeat(WS_ERROR_MESSAGE_MAX_CHARS + 1),
+        },
       }),
     );
     socket?.emitMessage(
