@@ -731,19 +731,28 @@ function startStaticWebServer(distRoot: string, port: number) {
       return;
     }
 
-    fs.readFile(targetPath, (error, content) => {
-      if (error) {
+    fs.stat(targetPath, (error, stats) => {
+      if (error || !stats.isFile()) {
         respondText(404, "Not found");
         return;
       }
 
       response.statusCode = 200;
       response.setHeader("Content-Type", contentTypeFor(targetPath));
-      response.setHeader("Content-Length", String(content.byteLength));
+      response.setHeader("Content-Length", String(stats.size));
       applyStaticSecurityHeaders(response, {
         cacheControl: cacheControlFor(targetPath),
       });
-      response.end(content);
+
+      const stream = fs.createReadStream(targetPath);
+      stream.on("error", () => {
+        if (!response.headersSent) {
+          respondText(404, "Not found");
+          return;
+        }
+        response.destroy();
+      });
+      stream.pipe(response);
     });
   });
 
