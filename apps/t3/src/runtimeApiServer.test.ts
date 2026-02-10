@@ -748,6 +748,14 @@ describe("runtimeApiServer", () => {
 
     client.socket.send("not-json");
     client.socket.send(JSON.stringify({ type: "request", id: "", method: "" }));
+    client.socket.send(
+      JSON.stringify({
+        type: "request",
+        id: "malformed-extra-field",
+        method: "todos.list",
+        unexpected: true,
+      }),
+    );
 
     const response = await sendRequest(
       client.socket,

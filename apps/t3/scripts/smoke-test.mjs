@@ -2102,6 +2102,14 @@ async function main() {
 
     ws.send("not-json");
     ws.send(JSON.stringify({ foo: "bar" }));
+    ws.send(
+      JSON.stringify({
+        type: "request",
+        id: "smoke-malformed-extra-field",
+        method: "app.health",
+        unexpected: true,
+      }),
+    );
     const postMalformedHealthResponse = await sendWsRequest(ws, {
       id: "smoke-health-after-malformed",
       method: "app.health",
