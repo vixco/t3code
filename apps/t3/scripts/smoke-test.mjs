@@ -358,6 +358,22 @@ async function main() {
     if ((ifMatchMismatchAsset.headers.get("x-content-type-options") ?? "").toLowerCase() !== "nosniff") {
       throw new Error("Smoke test failed: expected nosniff on If-Match mismatch response.");
     }
+    const ifMatchRangeMismatchAsset = await fetch(assetUrl, {
+      headers: {
+        Range: "bytes=0-15",
+        "If-Match": "\"definitely-different-etag\"",
+      },
+    });
+    if (ifMatchRangeMismatchAsset.status !== 412) {
+      throw new Error(
+        `Smoke test failed: expected ranged If-Match mismatch status 412, received ${ifMatchRangeMismatchAsset.status}.`,
+      );
+    }
+    if (ifMatchRangeMismatchAsset.headers.get("content-range") !== null) {
+      throw new Error(
+        "Smoke test failed: expected no content-range on ranged If-Match mismatch response.",
+      );
+    }
     const staleUnmodifiedSince = new Date(parsedLastModifiedMs - 1_000).toUTCString();
     const ifUnmodifiedSinceStaleAsset = await fetch(assetUrl, {
       headers: {
@@ -480,6 +496,23 @@ async function main() {
     if ((ifMatchMismatchHeadAsset.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {
       throw new Error(
         "Smoke test failed: expected cache-control=no-store on HEAD If-Match mismatch response.",
+      );
+    }
+    const ifMatchRangeMismatchHeadAsset = await fetch(assetUrl, {
+      method: "HEAD",
+      headers: {
+        Range: "bytes=0-15",
+        "If-Match": "\"definitely-different-etag\"",
+      },
+    });
+    if (ifMatchRangeMismatchHeadAsset.status !== 412) {
+      throw new Error(
+        `Smoke test failed: expected HEAD ranged If-Match mismatch status 412, received ${ifMatchRangeMismatchHeadAsset.status}.`,
+      );
+    }
+    if (ifMatchRangeMismatchHeadAsset.headers.get("content-range") !== null) {
+      throw new Error(
+        "Smoke test failed: expected no content-range on HEAD ranged If-Match mismatch response.",
       );
     }
     const rangeEnd = Math.min(15, assetContentLength - 1);
