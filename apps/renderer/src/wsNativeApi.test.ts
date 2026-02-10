@@ -195,6 +195,33 @@ describe("wsNativeApi", () => {
     await expect(request).resolves.toEqual([]);
   });
 
+  it("rejects todos.list responses with invalid payload shape", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4525");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: [
+          {
+            id: "",
+          },
+        ],
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'todos.list' returned invalid response payload.",
+    );
+  });
+
   it("configures websocket binaryType to arraybuffer", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4430");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -1608,6 +1635,38 @@ describe("wsNativeApi", () => {
     });
   });
 
+  it("rejects terminal.run responses with invalid payload shape", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4526");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.terminal.run({
+      command: "pwd",
+      cwd: "/workspace",
+    });
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: {
+          stdout: "/workspace\n",
+          stderr: "",
+          code: "0",
+          signal: null,
+          timedOut: false,
+        },
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'terminal.run' returned invalid response payload.",
+    );
+  });
+
   it("sends dialogs.pickFolder requests and resolves value", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4417");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -1891,6 +1950,39 @@ describe("wsNativeApi", () => {
     );
 
     await expect(request).rejects.toThrow("provider stop failed");
+  });
+
+  it("rejects providers.startSession responses with invalid payload shape", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4528");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.providers.startSession({
+      provider: "codex",
+      cwd: "/workspace",
+      model: "gpt-5-codex",
+    });
+    const socket = await waitForSocket();
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: {
+          sessionId: "",
+          provider: "codex",
+          status: "ready",
+          createdAt: "2026-02-01T00:00:00.000Z",
+          updatedAt: "2026-02-01T00:00:00.000Z",
+        },
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'providers.startSession' returned invalid response payload.",
+    );
   });
 
   it("sends todo mutation requests with expected payloads", async () => {
