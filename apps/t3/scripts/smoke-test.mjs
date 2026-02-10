@@ -748,6 +748,12 @@ async function main() {
         )}, got ${String(unsatisfiableRange.headers.get("content-range"))}.`,
       );
     }
+    if (unsatisfiableRange.headers.get("etag") !== assetEtag) {
+      throw new Error("Smoke test failed: expected ETag on unsatisfiable range response.");
+    }
+    if (unsatisfiableRange.headers.get("last-modified") !== assetLastModified) {
+      throw new Error("Smoke test failed: expected Last-Modified on unsatisfiable range response.");
+    }
     if ((unsatisfiableRange.headers.get("accept-ranges") ?? "").toLowerCase() !== "bytes") {
       throw new Error(
         "Smoke test failed: expected accept-ranges=bytes on unsatisfiable range response.",
@@ -886,6 +892,12 @@ async function main() {
           assetContentLength,
         )}, got ${String(headUnsatisfiableRange.headers.get("content-range"))}.`,
       );
+    }
+    if (headUnsatisfiableRange.headers.get("etag") !== assetEtag) {
+      throw new Error("Smoke test failed: expected ETag on HEAD unsatisfiable range response.");
+    }
+    if (headUnsatisfiableRange.headers.get("last-modified") !== assetLastModified) {
+      throw new Error("Smoke test failed: expected Last-Modified on HEAD unsatisfiable range response.");
     }
     if ((headUnsatisfiableRange.headers.get("accept-ranges") ?? "").toLowerCase() !== "bytes") {
       throw new Error(

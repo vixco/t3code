@@ -943,6 +943,8 @@ function startStaticWebServer(distRoot: string, port: number) {
             "Content-Range": `bytes */${stats.size}`,
             "Accept-Ranges": "bytes",
             Vary: "Range",
+            ETag: etag,
+            "Last-Modified": lastModified,
           });
           return;
         }
