@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { WS_CLOSE_CODES, WS_CLOSE_REASONS } from "@acme/contracts";
+import { WS_CLOSE_CODES, WS_CLOSE_REASONS, WS_REQUEST_ID_MAX_CHARS } from "@acme/contracts";
 
 type Listener = (event: unknown) => void;
 
@@ -3034,7 +3034,7 @@ describe("wsNativeApi", () => {
     socket?.emitMessage(
       JSON.stringify({
         type: "response",
-        id: "x".repeat(257),
+        id: "x".repeat(WS_REQUEST_ID_MAX_CHARS + 1),
         ok: true,
         result: [],
       }),
