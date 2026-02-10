@@ -401,6 +401,50 @@ async function main() {
         `Smoke test failed: expected conditional ranged asset status 206, received ${conditionalRangedAsset.status}.`,
       );
     }
+    const ifRangeEtagAsset = await fetch(assetUrl, {
+      headers: {
+        Range: `bytes=0-${rangeEnd}`,
+        "If-Range": assetEtag,
+      },
+    });
+    if (ifRangeEtagAsset.status !== 206) {
+      throw new Error(
+        `Smoke test failed: expected If-Range(etag) asset status 206, received ${ifRangeEtagAsset.status}.`,
+      );
+    }
+    const ifRangeDateAsset = await fetch(assetUrl, {
+      headers: {
+        Range: `bytes=0-${rangeEnd}`,
+        "If-Range": assetLastModified,
+      },
+    });
+    if (ifRangeDateAsset.status !== 206) {
+      throw new Error(
+        `Smoke test failed: expected If-Range(date) asset status 206, received ${ifRangeDateAsset.status}.`,
+      );
+    }
+    const ifRangeMismatchAsset = await fetch(assetUrl, {
+      headers: {
+        Range: `bytes=0-${rangeEnd}`,
+        "If-Range": "\"definitely-different-etag\"",
+      },
+    });
+    if (ifRangeMismatchAsset.status !== 200) {
+      throw new Error(
+        `Smoke test failed: expected If-Range mismatch asset status 200, received ${ifRangeMismatchAsset.status}.`,
+      );
+    }
+    if (ifRangeMismatchAsset.headers.get("content-range") !== null) {
+      throw new Error("Smoke test failed: expected no content-range on If-Range mismatch response.");
+    }
+    const ifRangeMismatchLength = Number(ifRangeMismatchAsset.headers.get("content-length") ?? "0");
+    if (!Number.isFinite(ifRangeMismatchLength) || ifRangeMismatchLength !== assetContentLength) {
+      throw new Error(
+        `Smoke test failed: expected full content-length ${String(
+          assetContentLength,
+        )} on If-Range mismatch response, got ${String(ifRangeMismatchAsset.headers.get("content-length"))}.`,
+      );
+    }
     const unsatisfiableRange = await fetch(assetUrl, {
       headers: {
         Range: `bytes=${assetContentLength}-${assetContentLength + 10}`,
@@ -513,6 +557,21 @@ async function main() {
     }
     if ((headRangedAsset.headers.get("vary") ?? "").toLowerCase() !== "range") {
       throw new Error("Smoke test failed: expected vary=range on HEAD ranged asset response.");
+    }
+    const headIfRangeMismatch = await fetch(assetUrl, {
+      method: "HEAD",
+      headers: {
+        Range: `bytes=0-${rangeEnd}`,
+        "If-Range": "\"definitely-different-etag\"",
+      },
+    });
+    if (headIfRangeMismatch.status !== 200) {
+      throw new Error(
+        `Smoke test failed: expected HEAD If-Range mismatch status 200, received ${headIfRangeMismatch.status}.`,
+      );
+    }
+    if (headIfRangeMismatch.headers.get("content-range") !== null) {
+      throw new Error("Smoke test failed: expected no content-range on HEAD If-Range mismatch response.");
     }
     const headUnsatisfiableRange = await fetch(assetUrl, {
       method: "HEAD",

@@ -7,6 +7,7 @@ import {
   formatStartupError,
   ifModifiedSinceSatisfied,
   ifNoneMatchSatisfied,
+  ifRangeSatisfied,
   parseByteRangeHeader,
   parseCliOptions,
   readCliVersion,
@@ -985,6 +986,26 @@ describe("ifModifiedSinceSatisfied", () => {
   it("supports array-valued header representations", () => {
     const modifiedAt = Date.parse("2026-01-01T12:00:00.000Z");
     expect(ifModifiedSinceSatisfied(["Thu, 01 Jan 2026 12:00:00 GMT"], modifiedAt)).toBe(true);
+  });
+});
+
+describe("ifRangeSatisfied", () => {
+  it("returns true when header is missing", () => {
+    expect(ifRangeSatisfied(undefined, "\"abc\"", Date.now())).toBe(true);
+  });
+
+  it("requires exact strong etag match", () => {
+    expect(ifRangeSatisfied("\"abc\"", "\"abc\"", Date.now())).toBe(true);
+    expect(ifRangeSatisfied("\"abc\"", "\"xyz\"", Date.now())).toBe(false);
+    expect(ifRangeSatisfied("W/\"abc\"", "\"abc\"", Date.now())).toBe(false);
+  });
+
+  it("supports HTTP-date if-range values", () => {
+    const modifiedAt = Date.parse("2026-01-01T12:00:00.100Z");
+    expect(ifRangeSatisfied("Thu, 01 Jan 2026 12:00:00 GMT", "\"etag\"", modifiedAt)).toBe(true);
+    expect(
+      ifRangeSatisfied("Thu, 01 Jan 2026 11:59:59 GMT", "\"etag\"", Date.parse("2026-01-01T12:00:01.000Z")),
+    ).toBe(false);
   });
 });
 

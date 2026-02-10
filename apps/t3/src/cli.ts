@@ -571,6 +571,31 @@ export function ifModifiedSinceSatisfied(
   return Math.floor(modifiedAtMs / 1_000) <= Math.floor(parsedTimestamp / 1_000);
 }
 
+export function ifRangeSatisfied(
+  ifRangeHeader: string | string[] | undefined,
+  etag: string,
+  modifiedAtMs: number,
+): boolean {
+  if (!ifRangeHeader) {
+    return true;
+  }
+
+  const rawHeaderValue = Array.isArray(ifRangeHeader) ? ifRangeHeader[0] : ifRangeHeader;
+  if (!rawHeaderValue) {
+    return true;
+  }
+
+  const trimmed = rawHeaderValue.trim();
+  if (trimmed.startsWith("\"")) {
+    return trimmed === etag;
+  }
+  if (trimmed.startsWith("W/")) {
+    return false;
+  }
+
+  return ifModifiedSinceSatisfied(trimmed, modifiedAtMs);
+}
+
 export function parseByteRangeHeader(
   rangeHeaderValue: string | undefined,
   fileSize: number,
@@ -827,30 +852,35 @@ function startStaticWebServer(distRoot: string, port: number) {
 
         const etag = staticEtagFor(stats);
         const lastModified = stats.mtime.toUTCString();
+        const effectiveRange =
+          resolvedRange && ifRangeSatisfied(request.headers["if-range"], etag, stats.mtimeMs)
+            ? resolvedRange
+            : null;
+        const hadRangeRequest = resolvedRange !== null;
         const hasIfNoneMatchHeader = request.headers["if-none-match"] !== undefined;
         const ifNoneMatchMatches = ifNoneMatchSatisfied(request.headers["if-none-match"], etag);
         const ifModifiedSinceMatches = hasIfNoneMatchHeader
           ? false
           : ifModifiedSinceSatisfied(request.headers["if-modified-since"], stats.mtimeMs);
 
-        response.statusCode = resolvedRange ? 206 : 200;
+        response.statusCode = effectiveRange ? 206 : 200;
         response.setHeader("Content-Type", contentTypeFor(targetPath));
         response.setHeader("ETag", etag);
         response.setHeader("Last-Modified", lastModified);
         response.setHeader(
           "Content-Length",
-          String(resolvedRange ? resolvedRange.end - resolvedRange.start + 1 : stats.size),
+          String(effectiveRange ? effectiveRange.end - effectiveRange.start + 1 : stats.size),
         );
         response.setHeader("Accept-Ranges", "bytes");
         response.setHeader("Vary", "Range");
-        if (resolvedRange) {
-          response.setHeader("Content-Range", `bytes ${resolvedRange.start}-${resolvedRange.end}/${stats.size}`);
+        if (effectiveRange) {
+          response.setHeader("Content-Range", `bytes ${effectiveRange.start}-${effectiveRange.end}/${stats.size}`);
         }
         applyStaticSecurityHeaders(response, {
           cacheControl: cacheControlFor(targetPath),
         });
 
-        if (!resolvedRange && (ifNoneMatchMatches || ifModifiedSinceMatches)) {
+        if (!hadRangeRequest && (ifNoneMatchMatches || ifModifiedSinceMatches)) {
           response.statusCode = 304;
           response.removeHeader("Content-Length");
           response.end();
@@ -864,10 +894,10 @@ function startStaticWebServer(distRoot: string, port: number) {
 
         const stream = fs.createReadStream(
           targetPath,
-          resolvedRange
+          effectiveRange
             ? {
-                start: resolvedRange.start,
-                end: resolvedRange.end,
+                start: effectiveRange.start,
+                end: effectiveRange.end,
               }
             : undefined,
         );
