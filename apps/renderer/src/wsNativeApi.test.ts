@@ -1977,6 +1977,33 @@ describe("wsNativeApi", () => {
     await expect(request).rejects.toThrow("provider stop failed");
   });
 
+  it("rejects provider void responses that do not return null", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4534");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.providers.stopSession({
+      sessionId: "sess-1",
+    });
+    const socket = await waitForSocket();
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: {
+          unexpected: true,
+        },
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'providers.stopSession' returned invalid response payload.",
+    );
+  });
+
   it("rejects providers.startSession responses with invalid payload shape", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4528");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -2126,6 +2153,36 @@ describe("wsNativeApi", () => {
       }),
     );
     await expect(removeRequest).resolves.toEqual([]);
+  });
+
+  it("rejects todos.add responses with invalid payload shape", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4533");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.add({
+      title: "Write tests",
+    });
+    const socket = await waitForSocket();
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: [
+          {
+            title: "Write tests",
+            completed: false,
+          },
+        ],
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'todos.add' returned invalid response payload.",
+    );
   });
 
   it("sends agent spawn/write/kill requests with expected payloads", async () => {
