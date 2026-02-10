@@ -1,7 +1,6 @@
 import {
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   type ProviderApprovalDecision,
-  type ProviderEvent,
 } from "@t3tools/contracts";
 import {
   type FormEvent,
@@ -33,6 +32,7 @@ import {
   readNativeApi,
 } from "../session-logic";
 import { useStore } from "../store";
+import type { ThreadEvent } from "../types";
 import ChatMarkdown from "./ChatMarkdown";
 
 function formatMessageMeta(createdAt: string, duration: string | null): string {
@@ -61,8 +61,8 @@ function workToneClass(tone: "thinking" | "tool" | "info" | "error"): string {
 }
 
 interface PendingApprovalCard {
-  requestId: string;
-  requestKind: "command" | "file-change";
+  approvalId: string;
+  approvalKind: "command" | "file_change";
   createdAt: string;
   detail?: string;
 }
@@ -75,57 +75,27 @@ interface EnsuredSessionInfo {
   continuityState: SessionContinuityState;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  return value as Record<string, unknown>;
-}
-
-function asString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-function approvalDetail(event: ProviderEvent): string | undefined {
-  const payload = asRecord(event.payload);
-  const command = asString(payload?.command);
-  if (command) return command;
-  return asString(payload?.reason);
-}
-
-function derivePendingApprovals(
-  events: ProviderEvent[],
-): PendingApprovalCard[] {
+function derivePendingApprovals(events: ThreadEvent[]): PendingApprovalCard[] {
   const pending = new Map<string, PendingApprovalCard>();
   const ordered = [...events].toReversed();
 
-  for (const event of ordered) {
+  for (const eventRecord of ordered) {
+    const event = eventRecord.event;
     if (
-      event.method === "session/closed" ||
-      event.method === "session/exited"
+      event.type === "approval.requested" &&
+      (event.approvalKind === "command" || event.approvalKind === "file_change")
     ) {
-      pending.clear();
-      continue;
-    }
-
-    const requestId =
-      event.requestId ?? asString(asRecord(event.payload)?.requestId);
-    if (!requestId) continue;
-
-    if (
-      event.kind === "request" &&
-      (event.requestKind === "command" || event.requestKind === "file-change")
-    ) {
-      const detail = approvalDetail(event);
-      pending.set(requestId, {
-        requestId,
-        requestKind: event.requestKind,
-        createdAt: event.createdAt,
-        ...(detail ? { detail } : {}),
+      pending.set(event.approvalId, {
+        approvalId: event.approvalId,
+        approvalKind: event.approvalKind,
+        createdAt: event.requestedAt,
+        ...(event.detail ? { detail: event.detail } : {}),
       });
       continue;
     }
 
-    if (event.method === "item/requestApproval/decision") {
-      pending.delete(requestId);
+    if (event.type === "approval.resolved") {
+      pending.delete(event.approvalId);
     }
   }
 
@@ -149,7 +119,7 @@ export default function ChatView() {
   const [selectedEffort, setSelectedEffort] =
     useState<string>(DEFAULT_REASONING);
   const [isSwitchingRuntimeMode, setIsSwitchingRuntimeMode] = useState(false);
-  const [respondingRequestIds, setRespondingRequestIds] = useState<string[]>(
+  const [respondingApprovalIds, setRespondingApprovalIds] = useState<string[]>(
     [],
   );
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<
@@ -186,13 +156,13 @@ export default function ChatView() {
     () => derivePendingApprovals(activeThread?.events ?? []),
     [activeThread?.events],
   );
-  const assistantCompletionByItemId = useMemo(() => {
+  const assistantCompletionByMessageId = useMemo(() => {
     const map = new Map<string, string>();
     const ordered = [...(activeThread?.events ?? [])].toReversed();
-    for (const event of ordered) {
-      if (event.method !== "item/completed") continue;
-      if (!event.itemId) continue;
-      map.set(event.itemId, event.createdAt);
+    for (const eventRecord of ordered) {
+      const event = eventRecord.event;
+      if (event.type !== "message.completed") continue;
+      map.set(event.messageId, eventRecord.at);
     }
     return map;
   }, [activeThread?.events]);
@@ -513,18 +483,18 @@ export default function ChatView() {
   };
 
   const onRespondToApproval = async (
-    requestId: string,
+    approvalId: string,
     decision: ProviderApprovalDecision,
   ) => {
     if (!api || !activeThread?.session) return;
 
-    setRespondingRequestIds((existing) =>
-      existing.includes(requestId) ? existing : [...existing, requestId],
+    setRespondingApprovalIds((existing) =>
+      existing.includes(approvalId) ? existing : [...existing, approvalId],
     );
     try {
-      await api.providers.respondToRequest({
+      await api.providers.respondToApproval({
         sessionId: activeThread.session.sessionId,
-        requestId,
+        approvalId,
         decision,
       });
     } catch (err) {
@@ -537,8 +507,8 @@ export default function ChatView() {
             : "Failed to submit approval decision.",
       });
     } finally {
-      setRespondingRequestIds((existing) =>
-        existing.filter((id) => id !== requestId),
+      setRespondingApprovalIds((existing) =>
+        existing.filter((id) => id !== approvalId),
       );
     }
   };
@@ -642,16 +612,16 @@ export default function ChatView() {
       {pendingApprovals.length > 0 && (
         <div className="mx-4 mt-3 space-y-2">
           {pendingApprovals.map((approval) => {
-            const isResponding = respondingRequestIds.includes(
-              approval.requestId,
+            const isResponding = respondingApprovalIds.includes(
+              approval.approvalId,
             );
             return (
               <div
-                key={approval.requestId}
+                key={approval.approvalId}
                 className="rounded-lg border border-amber-300/20 bg-amber-500/[0.07] px-3 py-2"
               >
                 <p className="text-xs font-medium text-amber-100">
-                  {approval.requestKind === "command"
+                  {approval.approvalKind === "command"
                     ? "Command approval requested"
                     : "File-change approval requested"}
                 </p>
@@ -669,7 +639,7 @@ export default function ChatView() {
                     className="rounded-md border border-border bg-accent px-2 py-1 text-[11px] text-foreground transition-colors duration-150 hover:bg-accent/80 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={isResponding}
                     onClick={() =>
-                      void onRespondToApproval(approval.requestId, "accept")
+                      void onRespondToApproval(approval.approvalId, "accept")
                     }
                   >
                     Approve once
@@ -680,7 +650,7 @@ export default function ChatView() {
                     disabled={isResponding}
                     onClick={() =>
                       void onRespondToApproval(
-                        approval.requestId,
+                        approval.approvalId,
                         "acceptForSession",
                       )
                     }
@@ -692,7 +662,7 @@ export default function ChatView() {
                     className="rounded-md border border-border px-2 py-1 text-[11px] text-foreground/90 transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={isResponding}
                     onClick={() =>
-                      void onRespondToApproval(approval.requestId, "decline")
+                      void onRespondToApproval(approval.approvalId, "decline")
                     }
                   >
                     Decline
@@ -702,7 +672,7 @@ export default function ChatView() {
                     className="rounded-md border border-rose-300/30 bg-rose-500/[0.12] px-2 py-1 text-[11px] text-rose-100 transition-colors duration-150 hover:bg-rose-500/[0.2] disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={isResponding}
                     onClick={() =>
-                      void onRespondToApproval(approval.requestId, "cancel")
+                      void onRespondToApproval(approval.approvalId, "cancel")
                     }
                   >
                     Cancel turn
@@ -868,7 +838,7 @@ export default function ChatView() {
                             )
                           : formatElapsed(
                               timelineEntry.message.createdAt,
-                              assistantCompletionByItemId.get(
+                              assistantCompletionByMessageId.get(
                                 timelineEntry.message.id,
                               ),
                             ),

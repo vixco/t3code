@@ -49,13 +49,13 @@ describe("ProviderManager", () => {
     expect(() => manager.dispose()).not.toThrow();
   });
 
-  it("rejects request responses for unknown sessions", async () => {
+  it("rejects approval responses for unknown sessions", async () => {
     const manager = new ProviderManager();
 
     await expect(
-      manager.respondToRequest({
+      manager.respondToApproval({
         sessionId: "missing-session",
-        requestId: "req-1",
+        approvalId: "approval-1",
         decision: "accept",
       }),
     ).rejects.toThrow("Unknown provider session: missing-session");

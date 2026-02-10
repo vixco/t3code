@@ -7,12 +7,23 @@ import {
   useEffect,
   useReducer,
 } from "react";
+import type {
+  ProviderCoreEvent,
+  ProviderSession,
+  ProviderSnapshot,
+  ProviderStreamFrame,
+} from "@t3tools/contracts";
 
-import type { ProviderEvent, ProviderSession } from "@t3tools/contracts";
 import { resolveModelSlug } from "./model-logic";
 import { hydratePersistedState, toPersistedState } from "./persistenceSchema";
-import { applyEventToMessages, asObject, asString, evolveSession } from "./session-logic";
-import { DEFAULT_RUNTIME_MODE, type Project, type RuntimeMode, type Thread } from "./types";
+import { applyEventToMessages, evolveSession } from "./session-logic";
+import {
+  DEFAULT_RUNTIME_MODE,
+  type Project,
+  type RuntimeMode,
+  type Thread,
+  type ThreadEvent,
+} from "./types";
 
 // ── Actions ──────────────────────────────────────────────────────────
 
@@ -24,9 +35,9 @@ type Action =
   | { type: "SET_ACTIVE_THREAD"; threadId: string }
   | { type: "TOGGLE_DIFF" }
   | {
-      type: "APPLY_EVENT";
-      event: ProviderEvent;
-      activeAssistantItemRef: { current: string | null };
+      type: "APPLY_STREAM_FRAME";
+      frame: ProviderStreamFrame;
+      activeAssistantMessageRef: { current: string | null };
     }
   | { type: "UPDATE_SESSION"; threadId: string; session: ProviderSession }
   | { type: "PUSH_USER_MESSAGE"; threadId: string; id: string; text: string }
@@ -43,6 +54,7 @@ export interface AppState {
   activeThreadId: string | null;
   runtimeMode: RuntimeMode;
   diffOpen: boolean;
+  lastProviderSeq: number;
 }
 
 const PERSISTED_STATE_KEY = "t3code:renderer-state:v4";
@@ -60,6 +72,7 @@ const initialState: AppState = {
   activeThreadId: null,
   runtimeMode: DEFAULT_RUNTIME_MODE,
   diffOpen: false,
+  lastProviderSeq: 0,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -81,7 +94,7 @@ function readPersistedState(): AppState {
     );
     if (!hydrated) return initialState;
 
-    return { ...hydrated, diffOpen: false };
+    return { ...hydrated, diffOpen: false, lastProviderSeq: 0 };
   } catch {
     return initialState;
   }
@@ -112,46 +125,6 @@ function findThreadBySessionId(threads: Thread[], sessionId: string): Thread | u
   return threads.find((t) => t.session?.sessionId === sessionId);
 }
 
-function getEventTurnId(event: ProviderEvent): string | undefined {
-  if (event.turnId) return event.turnId;
-  const payload = asObject(event.payload);
-  const turn = asObject(payload?.turn);
-  return asString(turn?.id);
-}
-
-function getEventThreadId(event: ProviderEvent): string | undefined {
-  if (event.threadId) return event.threadId;
-  const payload = asObject(event.payload);
-  const payloadThread = asObject(payload?.thread);
-  const payloadMessage = asObject(payload?.msg);
-  return (
-    asString(payload?.threadId) ??
-    asString(payloadThread?.id) ??
-    asString(payload?.conversationId) ??
-    asString(payload?.thread_id) ??
-    asString(payloadMessage?.thread_id)
-  );
-}
-
-function shouldIgnoreForeignThreadEvent(thread: Thread, event: ProviderEvent): boolean {
-  const eventThreadId = getEventThreadId(event);
-  if (!eventThreadId) {
-    return false;
-  }
-
-  const expectedThreadId = thread.session?.threadId ?? thread.codexThreadId;
-  if (!expectedThreadId || eventThreadId === expectedThreadId) {
-    return false;
-  }
-
-  // During connect, accept a thread/started notification as an identity rebind.
-  if (event.method === "thread/started" && thread.session?.status === "connecting") {
-    return false;
-  }
-
-  return true;
-}
-
 function durationMs(startIso: string, endIso: string): number | undefined {
   const start = Date.parse(startIso);
   const end = Date.parse(endIso);
@@ -162,33 +135,228 @@ function durationMs(startIso: string, endIso: string): number | undefined {
   return end - start;
 }
 
-function updateTurnFields(thread: Thread, event: ProviderEvent): Partial<Thread> {
-  if (event.method === "turn/started") {
+function eventSessionId(event: ProviderCoreEvent): string | undefined {
+  if (event.type === "session.updated") {
+    return event.session.sessionId;
+  }
+
+  if (event.type === "debug.raw") {
+    return event.sessionId;
+  }
+
+  return event.sessionId;
+}
+
+function eventThreadId(event: ProviderCoreEvent): string | undefined {
+  if (event.type === "session.updated") {
+    return event.session.threadId;
+  }
+
+  if (event.type === "turn.started") {
+    return event.threadId;
+  }
+
+  if (event.type === "turn.completed") {
+    return event.threadId;
+  }
+
+  if (event.type === "message.delta") {
+    return event.threadId;
+  }
+
+  if (event.type === "message.completed") {
+    return event.threadId;
+  }
+
+  if (event.type === "approval.requested") {
+    return event.threadId;
+  }
+
+  if (event.type === "activity") {
+    return event.threadId;
+  }
+
+  if (event.type === "error") {
+    return event.threadId;
+  }
+
+  return undefined;
+}
+
+function shouldIgnoreForeignThreadEvent(thread: Thread, event: ProviderCoreEvent): boolean {
+  const emittedThreadId = eventThreadId(event);
+  if (!emittedThreadId) {
+    return false;
+  }
+
+  const expectedThreadId = thread.session?.threadId ?? thread.codexThreadId;
+  if (!expectedThreadId || emittedThreadId === expectedThreadId) {
+    return false;
+  }
+
+  if (event.type === "session.updated" && thread.session?.status === "connecting") {
+    return false;
+  }
+
+  return true;
+}
+
+function updateTurnFields(
+  thread: Thread,
+  event: ProviderCoreEvent,
+): Partial<Thread> {
+  if (event.type === "turn.started") {
     return {
-      latestTurnId: getEventTurnId(event) ?? thread.latestTurnId,
-      latestTurnStartedAt: event.createdAt,
+      latestTurnId: event.turnId,
+      latestTurnStartedAt: event.startedAt,
       latestTurnCompletedAt: undefined,
       latestTurnDurationMs: undefined,
     };
   }
 
-  if (event.method === "turn/completed") {
-    const completedTurnId = getEventTurnId(event) ?? thread.latestTurnId;
+  if (event.type === "turn.completed") {
     const startedAt =
-      completedTurnId && completedTurnId === thread.latestTurnId
+      event.turnId === thread.latestTurnId
         ? thread.latestTurnStartedAt
         : undefined;
     const elapsed =
-      startedAt && startedAt.length > 0 ? durationMs(startedAt, event.createdAt) : undefined;
+      event.durationMs ??
+      (startedAt && startedAt.length > 0
+        ? durationMs(startedAt, event.completedAt)
+        : undefined);
 
     return {
-      latestTurnId: completedTurnId ?? thread.latestTurnId,
-      latestTurnCompletedAt: event.createdAt,
+      latestTurnId: event.turnId,
+      latestTurnCompletedAt: event.completedAt,
       latestTurnDurationMs: elapsed,
     };
   }
 
   return {};
+}
+
+function shouldPersistThreadEvent(event: ProviderCoreEvent): boolean {
+  if (event.type === "message.delta") {
+    return false;
+  }
+
+  if (event.type === "debug.raw") {
+    return false;
+  }
+
+  if (event.type === "session.updated") {
+    return event.session.status === "error" || event.session.status === "closed";
+  }
+
+  return true;
+}
+
+function appendThreadEvent(
+  events: ThreadEvent[],
+  eventRecord: ThreadEvent,
+): ThreadEvent[] {
+  return [eventRecord, ...events].slice(0, 2_000);
+}
+
+function approvalEventsFromSnapshot(
+  approvals: ProviderSnapshot["pendingApprovals"],
+  seq: number,
+): ThreadEvent[] {
+  return approvals
+    .map((approval) => ({
+      seq,
+      at: approval.requestedAt,
+      event: {
+        type: "approval.requested",
+        sessionId: approval.sessionId,
+        ...(approval.threadId ? { threadId: approval.threadId } : {}),
+        ...(approval.turnId ? { turnId: approval.turnId } : {}),
+        approvalId: approval.approvalId,
+        approvalKind: approval.approvalKind,
+        title: approval.title,
+        ...(approval.detail ? { detail: approval.detail } : {}),
+        ...(approval.payload !== undefined ? { payload: approval.payload } : {}),
+        ...(approval.timeoutAt ? { timeoutAt: approval.timeoutAt } : {}),
+        requestedAt: approval.requestedAt,
+      } satisfies ProviderCoreEvent,
+    }))
+    .toSorted((left, right) => Date.parse(right.at) - Date.parse(left.at));
+}
+
+function applySnapshotToThread(
+  thread: Thread,
+  snapshot: ProviderSnapshot,
+  seq: number,
+): Thread {
+  if (!thread.session) {
+    return thread;
+  }
+
+  const sessionId = thread.session.sessionId;
+  const snapshotSession = snapshot.sessions.find((session) => session.sessionId === sessionId);
+  if (!snapshotSession) {
+    return {
+      ...thread,
+      session: null,
+      messages: thread.messages.map((message) => ({
+        ...message,
+        streaming: false,
+      })),
+      events: [],
+      error: null,
+      latestTurnId: undefined,
+      latestTurnStartedAt: undefined,
+      latestTurnCompletedAt: undefined,
+      latestTurnDurationMs: undefined,
+    };
+  }
+
+  const activeTurns = snapshot.activeTurns
+    .filter((turn) => turn.sessionId === sessionId)
+    .toSorted((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt));
+  const activeTurn = activeTurns[0];
+
+  const activeMessages = snapshot.activeMessages
+    .filter((message) => message.sessionId === sessionId)
+    .toSorted((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt));
+  const activeMessageIds = new Set(activeMessages.map((message) => message.messageId));
+
+  const keptMessages = thread.messages
+    .filter((message) => !message.streaming)
+    .filter((message) => !activeMessageIds.has(message.id));
+
+  const hydratedMessages = activeMessages.map((message) => ({
+    id: message.messageId,
+    role: "assistant" as const,
+    text: message.text,
+    createdAt: message.startedAt,
+    streaming: true,
+  }));
+
+  const pendingApprovals = snapshot.pendingApprovals.filter(
+    (approval) => approval.sessionId === sessionId,
+  );
+
+  return {
+    ...thread,
+    codexThreadId: snapshotSession.threadId ?? thread.codexThreadId,
+    session: snapshotSession,
+    messages: [...keptMessages, ...hydratedMessages],
+    events: approvalEventsFromSnapshot(pendingApprovals, seq),
+    error: snapshotSession.lastError ?? (snapshotSession.status === "error" ? thread.error : null),
+    latestTurnId: activeTurn?.turnId,
+    latestTurnStartedAt: activeTurn?.startedAt,
+    latestTurnCompletedAt: undefined,
+    latestTurnDurationMs: undefined,
+  };
+}
+
+function applySnapshotToThreads(
+  threads: Thread[],
+  snapshot: ProviderSnapshot,
+  seq: number,
+): Thread[] {
+  return threads.map((thread) => applySnapshotToThread(thread, snapshot, seq));
 }
 
 // ── Reducer ──────────────────────────────────────────────────────────
@@ -279,32 +447,89 @@ export function reducer(state: AppState, action: Action): AppState {
     case "TOGGLE_DIFF":
       return { ...state, diffOpen: !state.diffOpen };
 
-    case "APPLY_EVENT": {
-      const { event, activeAssistantItemRef } = action;
-      const target = findThreadBySessionId(state.threads, event.sessionId);
-      if (!target) return state;
-      if (shouldIgnoreForeignThreadEvent(target, event)) return state;
+    case "APPLY_STREAM_FRAME": {
+      const { frame, activeAssistantMessageRef } = action;
+      if (frame.seq <= state.lastProviderSeq) {
+        return state;
+      }
+
+      if (frame.kind === "gap") {
+        return {
+          ...state,
+          lastProviderSeq: frame.seq,
+        };
+      }
+
+      if (frame.kind === "snapshot") {
+        return {
+          ...state,
+          threads: applySnapshotToThreads(state.threads, frame.data, frame.seq),
+          lastProviderSeq: frame.seq,
+        };
+      }
+
+      const sessionId = eventSessionId(frame.data);
+      if (!sessionId) {
+        return {
+          ...state,
+          lastProviderSeq: frame.seq,
+        };
+      }
+
+      const target = findThreadBySessionId(state.threads, sessionId);
+      if (!target) {
+        return {
+          ...state,
+          lastProviderSeq: frame.seq,
+        };
+      }
+
+      if (shouldIgnoreForeignThreadEvent(target, frame.data)) {
+        return {
+          ...state,
+          lastProviderSeq: frame.seq,
+        };
+      }
 
       return {
         ...state,
-        threads: updateThread(state.threads, target.id, (t) => ({
-          ...t,
-          ...(() => {
-            const eventThreadId = getEventThreadId(event);
-            const shouldRebindIdentity =
-              event.method === "thread/started" && t.session?.status === "connecting";
-            return {
-              codexThreadId: shouldRebindIdentity
-                ? (eventThreadId ?? t.codexThreadId)
-                : (t.codexThreadId ?? eventThreadId ?? null),
-              error: event.kind === "error" && event.message ? event.message : t.error,
-            };
-          })(),
-          session: t.session ? evolveSession(t.session, event) : t.session,
-          messages: applyEventToMessages(t.messages, event, activeAssistantItemRef),
-          events: [event, ...t.events],
-          ...updateTurnFields(t, event),
-        })),
+        lastProviderSeq: frame.seq,
+        threads: updateThread(state.threads, target.id, (thread) => {
+          const nextSession =
+            frame.data.type === "session.updated"
+              ? frame.data.session
+              : thread.session
+                ? evolveSession(thread.session, frame.data, frame.at)
+                : thread.session;
+
+          return {
+            ...thread,
+            codexThreadId: nextSession?.threadId ?? thread.codexThreadId,
+            session: nextSession,
+            messages: applyEventToMessages(
+              thread.messages,
+              frame.data,
+              frame.at,
+              activeAssistantMessageRef,
+            ),
+            events: shouldPersistThreadEvent(frame.data)
+              ? appendThreadEvent(thread.events, {
+                  seq: frame.seq,
+                  at: frame.at,
+                  event: frame.data,
+                })
+              : thread.events,
+            error:
+              frame.data.type === "error"
+                ? frame.data.message
+                : frame.data.type === "turn.completed" && frame.data.outcome === "failed"
+                  ? (frame.data.error ?? thread.error)
+                  : frame.data.type === "session.updated" && frame.data.session.status === "error"
+                    ? (frame.data.session.lastError ?? thread.error)
+                    : thread.error,
+            ...updateTurnFields(thread, frame.data),
+          };
+        }),
       };
     }
 

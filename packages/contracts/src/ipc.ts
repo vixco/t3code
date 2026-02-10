@@ -1,14 +1,18 @@
 import type { AgentConfig, AgentExit, OutputChunk } from "./agent";
 import type {
-  ProviderEvent,
   ProviderInterruptTurnInput,
-  ProviderRespondToRequestInput,
+  ProviderRespondToApprovalInput,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
   ProviderStopSessionInput,
   ProviderTurnStartResult,
 } from "./provider";
+import type {
+  ProviderStreamFrame,
+  ProvidersOpenStreamInput,
+  ProvidersOpenStreamResult,
+} from "./providerStream";
 import type {
   ProjectAddInput,
   ProjectAddResult,
@@ -49,10 +53,12 @@ export interface NativeApi {
     startSession: (input: ProviderSessionStartInput) => Promise<ProviderSession>;
     sendTurn: (input: ProviderSendTurnInput) => Promise<ProviderTurnStartResult>;
     interruptTurn: (input: ProviderInterruptTurnInput) => Promise<void>;
-    respondToRequest: (input: ProviderRespondToRequestInput) => Promise<void>;
+    respondToApproval: (input: ProviderRespondToApprovalInput) => Promise<void>;
     stopSession: (input: ProviderStopSessionInput) => Promise<void>;
     listSessions: () => Promise<ProviderSession[]>;
-    onEvent: (callback: (event: ProviderEvent) => void) => () => void;
+    openStream: (input: ProvidersOpenStreamInput) => Promise<ProvidersOpenStreamResult>;
+    closeStream: () => Promise<void>;
+    onStream: (callback: (frame: ProviderStreamFrame) => void) => () => void;
   };
   projects: {
     list: () => Promise<ProjectListResult>;

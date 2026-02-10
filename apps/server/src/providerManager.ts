@@ -3,16 +3,16 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
-  type ProviderEvent,
   type ProviderInterruptTurnInput,
-  type ProviderRespondToRequestInput,
+  type ProviderRawEvent,
+  type ProviderRespondToApprovalInput,
   type ProviderSendTurnInput,
   type ProviderSession,
   type ProviderSessionStartInput,
   type ProviderStopSessionInput,
   type ProviderTurnStartResult,
   providerInterruptTurnInputSchema,
-  providerRespondToRequestInputSchema,
+  providerRespondToApprovalInputSchema,
   providerSendTurnInputSchema,
   providerSessionStartInputSchema,
   providerStopSessionInputSchema,
@@ -20,7 +20,7 @@ import {
 import { CodexAppServerManager } from "./codexAppServerManager";
 
 export interface ProviderManagerEvents {
-  event: [event: ProviderEvent];
+  event: [event: ProviderRawEvent];
 }
 
 export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
@@ -28,9 +28,9 @@ export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
   private readonly threadLogsDir: string;
   private readonly threadLogStreams = new Map<string, fs.WriteStream>();
   private readonly sessionThreadIds = new Map<string, string>();
-  private readonly pendingEventsBySession = new Map<string, ProviderEvent[]>();
+  private readonly pendingEventsBySession = new Map<string, ProviderRawEvent[]>();
   private disposed = false;
-  private readonly onCodexEvent = (event: ProviderEvent) => {
+  private readonly onCodexEvent = (event: ProviderRawEvent) => {
     if (this.disposed) {
       return;
     }
@@ -81,15 +81,15 @@ export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
     await this.codex.interruptTurn(input.sessionId, input.turnId);
   }
 
-  async respondToRequest(raw: ProviderRespondToRequestInput): Promise<void> {
-    const input = providerRespondToRequestInputSchema.parse(raw);
+  async respondToApproval(raw: ProviderRespondToApprovalInput): Promise<void> {
+    const input = providerRespondToApprovalInputSchema.parse(raw);
     if (!this.codex.hasSession(input.sessionId)) {
       throw new Error(`Unknown provider session: ${input.sessionId}`);
     }
 
-    await this.codex.respondToRequest(
+    await this.codex.respondToApproval(
       input.sessionId,
-      input.requestId,
+      input.approvalId,
       input.decision,
     );
   }
@@ -124,7 +124,7 @@ export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
     this.pendingEventsBySession.clear();
   }
 
-  private routeEventToThreadLog(event: ProviderEvent): void {
+  private routeEventToThreadLog(event: ProviderRawEvent): void {
     const threadId = this.resolveThreadId(event);
     if (!threadId) {
       const pending = this.pendingEventsBySession.get(event.sessionId) ?? [];
@@ -149,7 +149,7 @@ export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
     this.pendingEventsBySession.delete(sessionId);
   }
 
-  private resolveThreadId(event: ProviderEvent): string | undefined {
+  private resolveThreadId(event: ProviderRawEvent): string | undefined {
     const fromPayload = this.readThreadIdFromPayload(event.payload);
     const threadId =
       event.threadId ??
@@ -187,7 +187,7 @@ export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
     return undefined;
   }
 
-  private writeThreadEvent(threadId: string, event: ProviderEvent): void {
+  private writeThreadEvent(threadId: string, event: ProviderRawEvent): void {
     const stream = this.getOrCreateThreadLogStream(threadId);
     stream.write(`${JSON.stringify(event)}\n`);
   }

@@ -3,6 +3,7 @@ export * from "./ipc";
 export * from "./agent";
 export * from "./terminal";
 export * from "./provider";
+export * from "./providerStream";
 export * from "./model";
 export * from "./ws";
 export * from "./project";

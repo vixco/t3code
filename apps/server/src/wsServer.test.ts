@@ -213,6 +213,54 @@ describe("WebSocket Server", () => {
     expect(response.result).toEqual([]);
   });
 
+  it("opens provider stream with snapshot and returns stream metadata", async () => {
+    server = createTestServer({ cwd: "/test" });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+
+    // Consume welcome
+    await waitForMessage(ws);
+
+    const id = crypto.randomUUID();
+    ws.send(
+      JSON.stringify({
+        id,
+        method: WS_METHODS.providersOpenStream,
+        params: {},
+      }),
+    );
+
+    const first = (await waitForMessage(ws)) as Record<string, unknown>;
+    const second = (await waitForMessage(ws)) as Record<string, unknown>;
+    const messages = [first, second];
+
+    let response: WsResponse | null = null;
+    const sawSnapshotPush = messages.some(
+      (message) =>
+        message.type === "push" &&
+        message.channel === WS_CHANNELS.providerStream &&
+        typeof message.data === "object" &&
+        message.data !== null &&
+        (message.data as { kind?: string }).kind === "snapshot",
+    );
+
+    for (const message of messages) {
+      if (message.id === id) {
+        response = message as WsResponse;
+      }
+    }
+
+    expect(sawSnapshotPush).toBe(true);
+    expect(response).not.toBeNull();
+    expect(response?.error).toBeUndefined();
+    const result = response?.result as { mode?: string };
+    expect(result?.mode).toBe("snapshot");
+  });
+
   it("handles invalid JSON gracefully", async () => {
     server = createTestServer({ cwd: "/test" });
     await server.start();

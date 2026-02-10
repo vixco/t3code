@@ -9,6 +9,7 @@ import {
   EDITORS,
   WS_CHANNELS,
   WS_METHODS,
+  type ProviderCoreEvent,
   type WsPush,
   type WsRequest,
   type WsResponse,
@@ -17,8 +18,11 @@ import {
 import { WebSocketServer, type WebSocket } from "ws";
 
 import { createLogger } from "./logger";
+import { ProviderEventNormalizer } from "./providerEventNormalizer";
 import { ProjectRegistry } from "./projectRegistry";
 import { ProviderManager } from "./providerManager";
+import { ProviderStreamStore } from "./providerStreamStore";
+import { ProviderStreamSubscriptionManager } from "./providerStreamSubscriptionManager";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -70,6 +74,16 @@ export function createServer(options: ServerOptions) {
     providedRegistry ?? new ProjectRegistry(path.join(os.homedir(), ".t3", "userdata"));
   const clients = new Set<WebSocket>();
   const logger = createLogger("ws");
+  const providerEventNormalizer = new ProviderEventNormalizer();
+  const providerStreamStore = new ProviderStreamStore();
+  const providerStreamSubscriptions = new ProviderStreamSubscriptionManager(
+    providerStreamStore,
+    {
+      onPush: (push) => {
+        logOutgoingPush(push, 1);
+      },
+    },
+  );
   const logWebSocketEvents =
     explicitLogWsEvents ?? parseBooleanEnv(process.env.T3CODE_LOG_WS_EVENTS) ?? Boolean(devUrl);
 
@@ -82,22 +96,24 @@ export function createServer(options: ServerOptions) {
     });
   }
 
-  // Forward provider events to all connected WebSocket clients
-  providerManager.on("event", (event) => {
-    const push: WsPush = {
-      type: "push",
-      channel: WS_CHANNELS.providerEvent,
-      data: event,
+  providerManager.on("event", (rawEvent) => {
+    const currentSession = providerStreamStore.getSession(rawEvent.sessionId);
+    const normalized = providerEventNormalizer.normalize(rawEvent, currentSession);
+    const at = rawEvent.createdAt;
+
+    const publish = (event: ProviderCoreEvent) => {
+      const frame = providerStreamStore.appendEvent(event, at);
+      providerStreamSubscriptions.publish(frame);
     };
-    const message = JSON.stringify(push);
-    let recipients = 0;
-    for (const client of clients) {
-      if (client.readyState === client.OPEN) {
-        client.send(message);
-        recipients += 1;
-      }
+
+    if (normalized.length === 0) {
+      publish(providerEventNormalizer.toDebugRaw(rawEvent));
+      return;
     }
-    logOutgoingPush(push, recipients);
+
+    for (const event of normalized) {
+      publish(event);
+    }
   });
 
   // HTTP server — serves static files or redirects to Vite dev server
@@ -213,10 +229,12 @@ export function createServer(options: ServerOptions) {
     });
 
     ws.on("close", () => {
+      providerStreamSubscriptions.closeStream(ws);
       clients.delete(ws);
     });
 
     ws.on("error", () => {
+      providerStreamSubscriptions.closeStream(ws);
       clients.delete(ws);
     });
   });
@@ -236,7 +254,7 @@ export function createServer(options: ServerOptions) {
     }
 
     try {
-      const result = await routeRequest(request);
+      const result = await routeRequest(ws, request);
       const response: WsResponse = { id: request.id, result };
       ws.send(JSON.stringify(response));
     } catch (err) {
@@ -249,7 +267,7 @@ export function createServer(options: ServerOptions) {
     }
   }
 
-  async function routeRequest(request: WsRequest): Promise<unknown> {
+  async function routeRequest(ws: WebSocket, request: WsRequest): Promise<unknown> {
     switch (request.method) {
       case WS_METHODS.providersStartSession:
         return providerManager.startSession(request.params as never);
@@ -260,8 +278,8 @@ export function createServer(options: ServerOptions) {
       case WS_METHODS.providersInterruptTurn:
         return providerManager.interruptTurn(request.params as never);
 
-      case WS_METHODS.providersRespondToRequest:
-        return providerManager.respondToRequest(request.params as never);
+      case WS_METHODS.providersRespondToApproval:
+        return providerManager.respondToApproval(request.params as never);
 
       case WS_METHODS.providersStopSession: {
         providerManager.stopSession(request.params as never);
@@ -270,6 +288,13 @@ export function createServer(options: ServerOptions) {
 
       case WS_METHODS.providersListSessions:
         return providerManager.listSessions();
+
+      case WS_METHODS.providersOpenStream:
+        return providerStreamSubscriptions.openStream(ws, request.params as never);
+
+      case WS_METHODS.providersCloseStream:
+        providerStreamSubscriptions.closeStream(ws);
+        return undefined;
 
       case WS_METHODS.projectsList:
         return projectRegistry.list();
@@ -334,6 +359,7 @@ export function createServer(options: ServerOptions) {
   async function stop(): Promise<void> {
     providerManager.stopAll();
     providerManager.dispose();
+    providerStreamSubscriptions.closeAll();
 
     for (const client of clients) {
       client.close();

@@ -76,18 +76,21 @@ T3 Code has a global runtime mode switch in the chat toolbar:
 
 ## Provider architecture
 
-The web app communicates with the server via WebSocket using a simple JSON-RPC-style protocol:
+The web app communicates with the server via WebSocket using a JSON-RPC-style request/response layer plus a single canonical provider stream:
 
 - **Request/Response**: `{ id, method, params }` → `{ id, result }` or `{ id, error }`
-- **Push events**: `{ type: "push", channel, data }` for streaming provider events
+- **Push stream**: `{ type: "push", channel: "providers.stream", data: ProviderStreamFrame }`
 
 Methods mirror the `NativeApi` interface defined in `@t3tools/contracts`:
 
 - `providers.startSession`, `providers.sendTurn`, `providers.interruptTurn`
-- `providers.respondToRequest`, `providers.stopSession`, `providers.listSessions`
+- `providers.respondToApproval`, `providers.stopSession`, `providers.listSessions`
+- `providers.openStream`, `providers.closeStream`
 - `shell.openInEditor`, `server.getConfig`
 
-Codex is the only implemented provider. `claudeCode` is reserved in contracts/UI.
+The stream contract is `snapshot + delta` with cursor replay (`afterSeq`) for reconnect safety. The server normalizes provider-native events (currently Codex raw app-server events) into canonical events so UI rendering stays provider-agnostic.
+
+See `docs/provider-ws-api.md` for the full canonical schema, event mapping, and replay/gap semantics.
 
 ## CI quality gates
 

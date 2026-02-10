@@ -12,15 +12,15 @@ import { onServerWelcome } from "./wsNativeApi";
 function EventRouter() {
   const api = useMemo(() => readNativeApi(), []);
   const { dispatch } = useStore();
-  const activeAssistantItemRef = useRef<string | null>(null);
+  const activeAssistantMessageRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!api) return;
-    return api.providers.onEvent((event) => {
+    return api.providers.onStream((frame) => {
       dispatch({
-        type: "APPLY_EVENT",
-        event,
-        activeAssistantItemRef,
+        type: "APPLY_STREAM_FRAME",
+        frame,
+        activeAssistantMessageRef,
       });
     });
   }, [api, dispatch]);

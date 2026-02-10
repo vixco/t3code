@@ -5,7 +5,7 @@ import readline from "node:readline";
 
 import type {
   ProviderApprovalDecision,
-  ProviderEvent,
+  ProviderRawEvent,
   ProviderRequestKind,
   ProviderSendTurnInput,
   ProviderSession,
@@ -135,7 +135,7 @@ export function isRecoverableThreadResumeError(error: unknown): boolean {
 }
 
 export interface CodexAppServerManagerEvents {
-  event: [event: ProviderEvent];
+  event: [event: ProviderRawEvent];
 }
 
 export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEvents> {
@@ -333,18 +333,18 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     });
   }
 
-  async respondToRequest(
+  async respondToApproval(
     sessionId: string,
-    requestId: string,
+    approvalId: string,
     decision: ProviderApprovalDecision,
   ): Promise<void> {
     const context = this.requireSession(sessionId);
-    const pendingRequest = context.pendingApprovals.get(requestId);
+    const pendingRequest = context.pendingApprovals.get(approvalId);
     if (!pendingRequest) {
-      throw new Error(`Unknown pending approval request: ${requestId}`);
+      throw new Error(`Unknown pending approval request: ${approvalId}`);
     }
 
-    context.pendingApprovals.delete(requestId);
+    context.pendingApprovals.delete(approvalId);
     this.writeMessage(context, {
       id: pendingRequest.jsonRpcId,
       result: {
@@ -584,9 +584,12 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
   private handleServerRequest(context: CodexSessionContext, request: JsonRpcRequest): void {
     const route = this.readRouteFields(request.params);
     const requestKind = this.requestKindForMethod(request.method);
+    const isUserInputRequest = request.method === "item/tool/requestUserInput";
     let requestId: string | undefined;
-    if (requestKind) {
+    if (requestKind || isUserInputRequest) {
       requestId = randomUUID();
+    }
+    if (requestKind && requestId) {
       const pendingRequest: PendingApprovalRequest = {
         requestId,
         jsonRpcId: request.id,
@@ -621,11 +624,30 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       return;
     }
 
-    if (request.method === "item/tool/requestUserInput") {
+    if (isUserInputRequest) {
       this.writeMessage(context, {
         id: request.id,
         result: { answers: {} },
       });
+
+      if (requestId) {
+        this.emitEvent({
+          id: randomUUID(),
+          kind: "notification",
+          provider: "codex",
+          sessionId: context.session.sessionId,
+          createdAt: new Date().toISOString(),
+          method: "item/requestApproval/decision",
+          threadId: route.threadId,
+          turnId: route.turnId,
+          itemId: route.itemId,
+          requestId,
+          payload: {
+            requestId,
+            decision: "accept",
+          },
+        });
+      }
       return;
     }
 
@@ -720,7 +742,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     });
   }
 
-  private emitEvent(event: ProviderEvent): void {
+  private emitEvent(event: ProviderRawEvent): void {
     this.emit("event", event);
   }
 

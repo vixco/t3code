@@ -1,6 +1,8 @@
 import type { WsPush, WsRequest, WsResponse } from "@t3tools/contracts";
 
 type PushListener = (data: unknown) => void;
+type ConnectionState = "open" | "closed";
+type ConnectionStateListener = (state: ConnectionState) => void;
 
 interface PendingRequest {
   resolve: (result: unknown) => void;
@@ -20,6 +22,7 @@ export class WsTransport {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private readonly url: string;
+  private readonly connectionListeners = new Set<ConnectionStateListener>();
 
   constructor(url?: string) {
     const bridgeUrl = window.desktopBridge?.getWsUrl();
@@ -72,6 +75,17 @@ export class WsTransport {
     };
   }
 
+  onConnectionStateChange(listener: ConnectionStateListener): () => void {
+    this.connectionListeners.add(listener);
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      listener("open");
+    }
+
+    return () => {
+      this.connectionListeners.delete(listener);
+    };
+  }
+
   dispose() {
     this.disposed = true;
     if (this.reconnectTimer !== null) {
@@ -85,6 +99,7 @@ export class WsTransport {
     this.pending.clear();
     this.ws?.close();
     this.ws = null;
+    this.emitConnectionState("closed");
   }
 
   private connect() {
@@ -95,6 +110,7 @@ export class WsTransport {
     ws.addEventListener("open", () => {
       this.ws = ws;
       this.reconnectAttempt = 0;
+      this.emitConnectionState("open");
     });
 
     ws.addEventListener("message", (event) => {
@@ -103,6 +119,7 @@ export class WsTransport {
 
     ws.addEventListener("close", () => {
       this.ws = null;
+      this.emitConnectionState("closed");
       this.scheduleReconnect();
     });
 
@@ -193,5 +210,15 @@ export class WsTransport {
       this.reconnectTimer = null;
       this.connect();
     }, delay);
+  }
+
+  private emitConnectionState(state: ConnectionState) {
+    for (const listener of this.connectionListeners) {
+      try {
+        listener(state);
+      } catch {
+        // Swallow listener errors
+      }
+    }
   }
 }

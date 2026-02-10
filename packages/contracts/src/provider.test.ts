@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  providerEventSchema,
-  providerRespondToRequestInputSchema,
+  providerRawEventSchema,
+  providerRespondToApprovalInputSchema,
   providerSendTurnInputSchema,
   providerSessionStartInputSchema,
 } from "./provider";
@@ -45,9 +45,9 @@ describe("providerSendTurnInputSchema", () => {
   });
 });
 
-describe("providerEventSchema", () => {
+describe("providerRawEventSchema", () => {
   it("accepts notification events with routing metadata", () => {
-    const parsed = providerEventSchema.parse({
+    const parsed = providerRawEventSchema.parse({
       id: "evt_1",
       kind: "notification",
       provider: "codex",
@@ -63,7 +63,7 @@ describe("providerEventSchema", () => {
   });
 
   it("accepts request approval metadata", () => {
-    const parsed = providerEventSchema.parse({
+    const parsed = providerRawEventSchema.parse({
       id: "evt_2",
       kind: "request",
       provider: "codex",
@@ -78,11 +78,11 @@ describe("providerEventSchema", () => {
   });
 });
 
-describe("providerRespondToRequestInputSchema", () => {
+describe("providerRespondToApprovalInputSchema", () => {
   it("accepts valid decisions", () => {
-    const parsed = providerRespondToRequestInputSchema.parse({
+    const parsed = providerRespondToApprovalInputSchema.parse({
       sessionId: "sess_1",
-      requestId: "req_1",
+      approvalId: "approval_1",
       decision: "acceptForSession",
     });
     expect(parsed.decision).toBe("acceptForSession");
@@ -90,9 +90,9 @@ describe("providerRespondToRequestInputSchema", () => {
 
   it("rejects unknown decisions", () => {
     expect(() =>
-      providerRespondToRequestInputSchema.parse({
+      providerRespondToApprovalInputSchema.parse({
         sessionId: "sess_1",
-        requestId: "req_1",
+        approvalId: "approval_1",
         decision: "always",
       }),
     ).toThrow();

@@ -24,7 +24,7 @@ How we use it in this codebase:
 - Session startup/resume and turn lifecycle are brokered in `apps/server/src/codexAppServerManager.ts`.
 - Provider dispatch and thread event logging are coordinated in `apps/server/src/providerManager.ts`.
 - WebSocket server routes NativeApi methods in `apps/server/src/wsServer.ts`.
-- Web app consumes provider event streams via WebSocket push on channel `providers.event`.
+- Web app consumes canonical provider stream frames via WebSocket push on channel `providers.stream`.
 
 Docs:
 - Codex App Server docs: https://developers.openai.com/codex/sdk/#app-server

@@ -77,22 +77,22 @@ export const providerStopSessionInputSchema = z.object({
   sessionId: z.string().min(1),
 });
 
-export const providerRespondToRequestInputSchema = z.object({
+export const providerRespondToApprovalInputSchema = z.object({
   sessionId: z.string().min(1),
-  requestId: z.string().min(1),
+  approvalId: z.string().min(1),
   decision: providerApprovalDecisionSchema,
 });
 
-export const providerEventKindSchema = z.enum([
+export const providerRawEventKindSchema = z.enum([
   "session",
   "notification",
   "request",
   "error",
 ]);
 
-export const providerEventSchema = z.object({
+export const providerRawEventSchema = z.object({
   id: z.string().min(1),
-  kind: providerEventKindSchema,
+  kind: providerRawEventKindSchema,
   provider: providerKindSchema,
   sessionId: z.string().min(1),
   createdAt: z.string().datetime(),
@@ -127,8 +127,8 @@ export type ProviderInterruptTurnInput = z.input<
 export type ProviderStopSessionInput = z.input<
   typeof providerStopSessionInputSchema
 >;
-export type ProviderRespondToRequestInput = z.input<
-  typeof providerRespondToRequestInputSchema
+export type ProviderRespondToApprovalInput = z.input<
+  typeof providerRespondToApprovalInputSchema
 >;
-export type ProviderEventKind = z.infer<typeof providerEventKindSchema>;
-export type ProviderEvent = z.infer<typeof providerEventSchema>;
+export type ProviderRawEventKind = z.infer<typeof providerRawEventKindSchema>;
+export type ProviderRawEvent = z.infer<typeof providerRawEventSchema>;

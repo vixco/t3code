@@ -7,9 +7,11 @@ export const WS_METHODS = {
   providersStartSession: "providers.startSession",
   providersSendTurn: "providers.sendTurn",
   providersInterruptTurn: "providers.interruptTurn",
-  providersRespondToRequest: "providers.respondToRequest",
+  providersRespondToApproval: "providers.respondToApproval",
   providersStopSession: "providers.stopSession",
   providersListSessions: "providers.listSessions",
+  providersOpenStream: "providers.openStream",
+  providersCloseStream: "providers.closeStream",
 
   // Project registry methods
   projectsList: "projects.list",
@@ -26,7 +28,7 @@ export const WS_METHODS = {
 // ── Push Event Channels ──────────────────────────────────────────────
 
 export const WS_CHANNELS = {
-  providerEvent: "providers.event",
+  providerStream: "providers.stream",
   serverWelcome: "server.welcome",
 } as const;
 

@@ -1,4 +1,8 @@
-import type { ProviderEvent, ProviderSession } from "@t3tools/contracts";
+import type {
+  ProviderCoreEvent,
+  ProviderSession,
+  ProviderStreamFrame,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vitest";
 
 import { type AppState, reducer } from "./store";
@@ -15,14 +19,15 @@ function makeSession(overrides: Partial<ProviderSession> = {}): ProviderSession 
   };
 }
 
-function makeEvent(overrides: Partial<ProviderEvent> = {}): ProviderEvent {
+function makeEventFrame(
+  event: ProviderCoreEvent,
+  overrides: Partial<Pick<ProviderStreamFrame, "seq" | "at">> = {},
+): ProviderStreamFrame {
   return {
-    id: "evt-1",
-    kind: "notification",
-    provider: "codex",
-    sessionId: "sess-1",
-    createdAt: "2026-02-09T00:00:01.000Z",
-    method: "thread/started",
+    kind: "event",
+    seq: 1,
+    at: "2026-02-09T00:00:01.000Z",
+    data: event,
     ...overrides,
   };
 }
@@ -58,10 +63,11 @@ function makeState(thread: Thread): AppState {
     activeThreadId: thread.id,
     runtimeMode: "full-access",
     diffOpen: false,
+    lastProviderSeq: 0,
   };
 }
 
-describe("store reducer thread continuity", () => {
+describe("store reducer stream integration", () => {
   it("stores codexThreadId from UPDATE_SESSION", () => {
     const state = makeState(
       makeThread({
@@ -77,57 +83,112 @@ describe("store reducer thread continuity", () => {
     expect(next.threads[0]?.codexThreadId).toBe("thr_123");
   });
 
-  it("backfills codexThreadId from routed provider events", () => {
+  it("backfills codexThreadId from session.updated stream events", () => {
     const state = makeState(makeThread({ codexThreadId: null }));
     const next = reducer(state, {
-      type: "APPLY_EVENT",
-      event: makeEvent({
-        method: "thread/started",
-        payload: { thread: { id: "thr_backfilled" } },
+      type: "APPLY_STREAM_FRAME",
+      frame: makeEventFrame({
+        type: "session.updated",
+        session: makeSession({
+          threadId: "thr_backfilled",
+          updatedAt: "2026-02-09T00:00:01.000Z",
+        }),
       }),
-      activeAssistantItemRef: { current: null },
+      activeAssistantMessageRef: { current: null },
     });
 
     expect(next.threads[0]?.codexThreadId).toBe("thr_backfilled");
+    expect(next.lastProviderSeq).toBe(1);
   });
 
   it("ignores events from a foreign thread within the same session", () => {
     const state = makeState(makeThread({ codexThreadId: "thr_expected" }));
     const next = reducer(state, {
-      type: "APPLY_EVENT",
-      event: makeEvent({
-        method: "turn/started",
+      type: "APPLY_STREAM_FRAME",
+      frame: makeEventFrame({
+        type: "turn.started",
+        sessionId: "sess-1",
         threadId: "thr_unexpected",
-        payload: { turn: { id: "turn-1" } },
+        turnId: "turn-1",
+        startedAt: "2026-02-09T00:00:01.000Z",
       }),
-      activeAssistantItemRef: { current: null },
+      activeAssistantMessageRef: { current: null },
     });
 
-    expect(next).toBe(state);
+    expect(next.threads[0]).toEqual(state.threads[0]);
+    expect(next.lastProviderSeq).toBe(1);
   });
 
-  it("rebases thread identity on thread/started during connect", () => {
+  it("applies snapshot frames as authoritative baseline", () => {
     const state = makeState(
       makeThread({
         codexThreadId: "thr_old",
         session: makeSession({
-          status: "connecting",
           threadId: "thr_old",
+          status: "running",
+          activeTurnId: "turn_old",
         }),
       }),
     );
+
     const next = reducer(state, {
-      type: "APPLY_EVENT",
-      event: makeEvent({
-        method: "thread/started",
-        threadId: "thr_new",
-        payload: { thread: { id: "thr_new" } },
-      }),
-      activeAssistantItemRef: { current: null },
+      type: "APPLY_STREAM_FRAME",
+      frame: {
+        kind: "snapshot",
+        seq: 10,
+        at: "2026-02-09T00:00:10.000Z",
+        data: {
+          sessions: [
+            makeSession({
+              threadId: "thr_new",
+              status: "running",
+              activeTurnId: "turn_new",
+              updatedAt: "2026-02-09T00:00:10.000Z",
+            }),
+          ],
+          activeTurns: [
+            {
+              sessionId: "sess-1",
+              threadId: "thr_new",
+              turnId: "turn_new",
+              startedAt: "2026-02-09T00:00:09.000Z",
+            },
+          ],
+          activeMessages: [
+            {
+              sessionId: "sess-1",
+              threadId: "thr_new",
+              turnId: "turn_new",
+              messageId: "msg-1",
+              role: "assistant",
+              text: "streaming",
+              startedAt: "2026-02-09T00:00:09.100Z",
+              updatedAt: "2026-02-09T00:00:09.500Z",
+            },
+          ],
+          pendingApprovals: [
+            {
+              sessionId: "sess-1",
+              threadId: "thr_new",
+              turnId: "turn_new",
+              approvalId: "approval-1",
+              approvalKind: "command",
+              title: "Command approval requested",
+              detail: "git status --short",
+              requestedAt: "2026-02-09T00:00:09.200Z",
+            },
+          ],
+        },
+      },
+      activeAssistantMessageRef: { current: null },
     });
 
+    expect(next.lastProviderSeq).toBe(10);
     expect(next.threads[0]?.codexThreadId).toBe("thr_new");
-    expect(next.threads[0]?.session?.threadId).toBe("thr_new");
+    expect(next.threads[0]?.latestTurnId).toBe("turn_new");
+    expect(next.threads[0]?.messages.at(-1)?.id).toBe("msg-1");
+    expect(next.threads[0]?.messages.at(-1)?.streaming).toBe(true);
+    expect(next.threads[0]?.events[0]?.event.type).toBe("approval.requested");
   });
 
   it("reconciles project ids by cwd when syncing backend projects", () => {
@@ -161,6 +222,7 @@ describe("store reducer thread continuity", () => {
       activeThreadId: "thread-b",
       runtimeMode: "full-access",
       diffOpen: false,
+      lastProviderSeq: 0,
     };
 
     const next = reducer(state, {

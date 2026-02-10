@@ -1,4 +1,4 @@
-import type { ProviderEvent, ProviderSession } from "@t3tools/contracts";
+import type { ProviderCoreEvent, ProviderSession } from "@t3tools/contracts";
 
 export type SessionPhase = "disconnected" | "connecting" | "ready" | "running";
 export type RuntimeMode = "approval-required" | "full-access";
@@ -28,11 +28,17 @@ export interface Thread {
   model: string;
   session: ProviderSession | null;
   messages: ChatMessage[];
-  events: ProviderEvent[];
+  events: ThreadEvent[];
   error: string | null;
   createdAt: string;
   latestTurnId?: string | undefined;
   latestTurnStartedAt?: string | undefined;
   latestTurnCompletedAt?: string | undefined;
   latestTurnDurationMs?: number | undefined;
+}
+
+export interface ThreadEvent {
+  seq: number;
+  at: string;
+  event: ProviderCoreEvent;
 }
