@@ -986,6 +986,24 @@ describe("runtimeApiServer", () => {
     expect(unauthorizedClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
     expect(unauthorizedMessageCount).toBe(0);
 
+    const missingTokenWithExtraQueryUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?debug=1`;
+    const missingTokenWithExtraQueryClient = new WebSocket(missingTokenWithExtraQueryUrl);
+    let missingTokenWithExtraQueryMessageCount = 0;
+    missingTokenWithExtraQueryClient.on("message", () => {
+      missingTokenWithExtraQueryMessageCount += 1;
+    });
+    const missingTokenWithExtraQueryClose = await withTimeout(
+      new Promise<{ code: number; reason: string }>((resolve, reject) => {
+        missingTokenWithExtraQueryClient.once("close", (code, reason) =>
+          resolve({ code, reason: reason.toString() }),
+        );
+        missingTokenWithExtraQueryClient.once("error", (error) => reject(error));
+      }),
+    );
+    expect(missingTokenWithExtraQueryClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(missingTokenWithExtraQueryClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
+    expect(missingTokenWithExtraQueryMessageCount).toBe(0);
+
     const wrongTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=wrong-token`;
     const wrongTokenClient = new WebSocket(wrongTokenUrl);
     let wrongTokenMessageCount = 0;

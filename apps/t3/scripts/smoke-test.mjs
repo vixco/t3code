@@ -1547,6 +1547,14 @@ async function main() {
     const unauthorizedWs = new WebSocket(unauthorizedWsUrl);
     await waitForUnauthorizedCloseWithoutMessages(unauthorizedWs, "missing-token");
 
+    const missingTokenWithExtraQueryWs = new WebSocket(
+      `${parsedWsUrl.origin}${parsedWsUrl.pathname}?debug=1`,
+    );
+    await waitForUnauthorizedCloseWithoutMessages(
+      missingTokenWithExtraQueryWs,
+      "missing-token-with-extra-query",
+    );
+
     const wrongTokenWs = new WebSocket(
       `${parsedWsUrl.origin}${parsedWsUrl.pathname}?token=wrong-token`,
     );
