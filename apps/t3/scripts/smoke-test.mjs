@@ -1640,6 +1640,24 @@ async function main() {
       ws.send(encodedBinaryRequest);
     });
 
+    ws.send("not-json");
+    ws.send(JSON.stringify({ foo: "bar" }));
+    const postMalformedHealthResponse = await sendWsRequest(ws, {
+      id: "smoke-health-after-malformed",
+      method: "app.health",
+    });
+    if (
+      postMalformedHealthResponse.ok !== true ||
+      postMalformedHealthResponse.result?.status !== "ok" ||
+      postMalformedHealthResponse.result?.launchCwd !== appRoot
+    ) {
+      throw new Error(
+        `Smoke test failed: expected healthy response after malformed websocket messages, got ${JSON.stringify(
+          postMalformedHealthResponse,
+        )}.`,
+      );
+    }
+
     const bootstrapResponse = await sendWsRequest(ws, {
       id: "smoke-bootstrap",
       method: "app.bootstrap",
@@ -1916,6 +1934,40 @@ async function main() {
       writableExitEvent.payload?.code !== 0
     ) {
       throw new Error("Smoke test failed: unexpected writable agent exit payload.");
+    }
+
+    const unknownAgentWriteResponse = await sendWsRequest(ws, {
+      id: "smoke-agent-write-unknown-session",
+      method: "agent.write",
+      params: {
+        sessionId: "missing-agent-session",
+        data: "ping\n",
+      },
+    });
+    if (
+      unknownAgentWriteResponse.ok !== false ||
+      unknownAgentWriteResponse.error?.code !== "request_failed" ||
+      typeof unknownAgentWriteResponse.error?.message !== "string" ||
+      !unknownAgentWriteResponse.error.message.includes("No session")
+    ) {
+      throw new Error(
+        `Smoke test failed: expected structured unknown-session agent.write error, got ${JSON.stringify(
+          unknownAgentWriteResponse,
+        )}.`,
+      );
+    }
+
+    const unknownAgentKillResponse = await sendWsRequest(ws, {
+      id: "smoke-agent-kill-unknown-session",
+      method: "agent.kill",
+      params: "missing-agent-session",
+    });
+    if (unknownAgentKillResponse.ok !== true) {
+      throw new Error(
+        `Smoke test failed: expected successful unknown-session agent.kill no-op, got ${JSON.stringify(
+          unknownAgentKillResponse,
+        )}.`,
+      );
     }
 
     const duplicateTokenWhileConnectedWs = new WebSocket(
