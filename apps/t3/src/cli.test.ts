@@ -121,6 +121,22 @@ describe("parseCliOptions", () => {
     expect(noOpenThenOpen.noOpen).toBe(false);
   });
 
+  it("respects last equals-style open/no-open override", () => {
+    const noOpenThenOpenFalse = parseCliOptions(
+      ["--no-open=1", "--open=0"],
+      {},
+      "/workspace",
+    );
+    expect(noOpenThenOpenFalse.noOpen).toBe(true);
+
+    const openFalseThenNoOpenFalse = parseCliOptions(
+      ["--open=0", "--no-open=0"],
+      {},
+      "/workspace",
+    );
+    expect(openFalseThenNoOpenFalse.noOpen).toBe(false);
+  });
+
   it("throws for invalid equals-style --open values", () => {
     expect(() => parseCliOptions(["--open=maybe"], {}, "/workspace")).toThrow(
       "Invalid value for --open",
