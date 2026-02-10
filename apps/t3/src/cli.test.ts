@@ -463,6 +463,10 @@ describe("validateLaunchDirectory", () => {
     expect(validateLaunchDirectory(tempDir)).toBe(path.resolve(tempDir));
   });
 
+  it("resolves relative directory paths against process cwd", () => {
+    expect(validateLaunchDirectory(".")).toBe(path.resolve("."));
+  });
+
   it("throws for missing launch directories", () => {
     const missing = path.join(os.tmpdir(), `t3-missing-dir-${Date.now()}`);
     expect(() => validateLaunchDirectory(missing)).toThrow("Launch directory does not exist");
