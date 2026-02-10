@@ -1040,8 +1040,22 @@ describe("parseByteRangeHeader", () => {
     });
   });
 
+  it("parses whitespace-padded open-ended ranges", () => {
+    expect(parseByteRangeHeader("bytes = 10 - ", 100)).toEqual({
+      start: 10,
+      end: 99,
+    });
+  });
+
   it("parses suffix ranges", () => {
     expect(parseByteRangeHeader("bytes=-5", 100)).toEqual({
+      start: 95,
+      end: 99,
+    });
+  });
+
+  it("parses whitespace-padded suffix ranges", () => {
+    expect(parseByteRangeHeader("bytes = - 5", 100)).toEqual({
       start: 95,
       end: 99,
     });
