@@ -97,6 +97,11 @@ describe("parseCliOptions", () => {
     expect(options.noOpen).toBe(false);
   });
 
+  it("supports off as equals-style --no-open false value", () => {
+    const options = parseCliOptions(["--no-open=off"], { T3_NO_OPEN: "true" }, "/workspace");
+    expect(options.noOpen).toBe(false);
+  });
+
   it("parses case-insensitive and trimmed T3_NO_OPEN truthy values", () => {
     const options = parseCliOptions(
       [],
