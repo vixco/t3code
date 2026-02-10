@@ -43,4 +43,13 @@ describe("runtime architecture boundaries", () => {
     expect(tsupConfigSource).toContain("\"@acme/runtime-core\"");
     expect(tsupConfigSource).toContain("noExternal");
   });
+
+  it("keeps smoke tests independent from real codex installation", () => {
+    const smokeScriptPath = path.resolve(import.meta.dirname, "..", "scripts", "smoke-test.mjs");
+    const smokeScriptSource = fs.readFileSync(smokeScriptPath, "utf8");
+
+    expect(smokeScriptSource).toContain("createFakeCodexAppServerBinary");
+    expect(smokeScriptSource).toContain("PATH: `${fakeCodex.tempDir}${path.delimiter}");
+    expect(smokeScriptSource).toContain("fs.rmSync(fakeCodex.tempDir");
+  });
 });
