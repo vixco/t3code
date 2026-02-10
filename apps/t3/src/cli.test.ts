@@ -992,6 +992,11 @@ describe("ifMatchSatisfied", () => {
     expect(ifMatchSatisfied("\"abc\"", "\"abc\"")).toBe(true);
   });
 
+  it("supports comma-separated header values", () => {
+    expect(ifMatchSatisfied("\"foo\", \"abc\"", "\"abc\"")).toBe(true);
+    expect(ifMatchSatisfied("\"foo\", *", "\"abc\"")).toBe(true);
+  });
+
   it("rejects weak validators and mismatches", () => {
     expect(ifMatchSatisfied("W/\"abc\"", "\"abc\"")).toBe(false);
     expect(ifMatchSatisfied("\"xyz\"", "\"abc\"")).toBe(false);
