@@ -82,7 +82,7 @@ Runtime command semantics:
 - After reconnect, renderer ignores stale events from prior sockets (including provider and agent streams) to avoid cross-connection state corruption.
 - Initial websocket connect failures now include underlying socket error details (including nested error payload messages when present).
 - Subsequent requests automatically reconnect after close/error disconnects, including idle (no pending request) error scenarios.
-- Renderer now proactively resets the websocket after request send failures so later requests reconnect cleanly.
+- Renderer now proactively resets the websocket after request send failures, rejects any in-flight requests, and reconnects cleanly on later requests.
 - Runtime validates request payloads with shared Zod contracts.
 - Codex execution sandbox policy (`read-only`, `workspace-write`, `danger-full-access`) is still selected per session startup options.
 - Static HTML responses are served with `Cache-Control: no-store`; built `/assets/*` files are served with long-lived immutable cache headers.
