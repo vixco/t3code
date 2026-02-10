@@ -2001,6 +2001,65 @@ async function main() {
       throw new Error("Smoke test failed: expected structured invalid-cwd terminal.run error.");
     }
 
+    const invalidShellCwdResponse = await sendWsRequest(ws, {
+      id: "smoke-shell-invalid-cwd",
+      method: "shell.openInEditor",
+      params: {
+        cwd: path.join(appRoot, "__missing_shell_dir__"),
+        editor: "cursor",
+      },
+    });
+    if (
+      invalidShellCwdResponse.ok !== false ||
+      invalidShellCwdResponse.error?.code !== "request_failed" ||
+      typeof invalidShellCwdResponse.error?.message !== "string" ||
+      !invalidShellCwdResponse.error.message.includes("Editor target does not exist")
+    ) {
+      throw new Error(
+        `Smoke test failed: expected structured invalid-cwd shell.openInEditor error, got ${JSON.stringify(
+          invalidShellCwdResponse,
+        )}.`,
+      );
+    }
+
+    const invalidTodoAddResponse = await sendWsRequest(ws, {
+      id: "smoke-todo-add-invalid",
+      method: "todos.add",
+      params: {
+        title: "",
+      },
+    });
+    if (
+      invalidTodoAddResponse.ok !== false ||
+      invalidTodoAddResponse.error?.code !== "request_failed" ||
+      typeof invalidTodoAddResponse.error?.message !== "string" ||
+      invalidTodoAddResponse.error.message.length === 0
+    ) {
+      throw new Error(
+        `Smoke test failed: expected structured invalid todos.add error, got ${JSON.stringify(
+          invalidTodoAddResponse,
+        )}.`,
+      );
+    }
+
+    const invalidTodoToggleResponse = await sendWsRequest(ws, {
+      id: "smoke-todo-toggle-invalid",
+      method: "todos.toggle",
+      params: "",
+    });
+    if (
+      invalidTodoToggleResponse.ok !== false ||
+      invalidTodoToggleResponse.error?.code !== "request_failed" ||
+      typeof invalidTodoToggleResponse.error?.message !== "string" ||
+      invalidTodoToggleResponse.error.message.length === 0
+    ) {
+      throw new Error(
+        `Smoke test failed: expected structured invalid todos.toggle error, got ${JSON.stringify(
+          invalidTodoToggleResponse,
+        )}.`,
+      );
+    }
+
     const invalidProviderRespondResponse = await sendWsRequest(ws, {
       id: "smoke-provider-respond-invalid",
       method: "providers.respondToRequest",
