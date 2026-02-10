@@ -767,6 +767,7 @@ export async function startRuntimeApiServer(
         processManager.killAll();
         providerManager.stopAll();
         providerManager.dispose();
+        activeClient = null;
         for (const client of wss.clients) {
           client.terminate();
         }
