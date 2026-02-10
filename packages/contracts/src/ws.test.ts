@@ -43,6 +43,21 @@ describe("wsServerMessageSchema", () => {
     ).toThrow();
   });
 
+  it("rejects errors for successful responses", () => {
+    expect(() =>
+      wsServerMessageSchema.parse({
+        type: "response",
+        id: "req-1",
+        ok: true,
+        result: { status: "ok" },
+        error: {
+          code: "unexpected",
+          message: "should-not-be-present",
+        },
+      }),
+    ).toThrow();
+  });
+
   it("accepts typed event channels", () => {
     const parsed = wsServerMessageSchema.parse({
       type: "event",
@@ -51,6 +66,26 @@ describe("wsServerMessageSchema", () => {
     });
 
     expect(parsed.type).toBe("event");
+  });
+
+  it("rejects unknown event channels", () => {
+    expect(() =>
+      wsServerMessageSchema.parse({
+        type: "event",
+        channel: "provider:unknown",
+        payload: {},
+      }),
+    ).toThrow();
+  });
+
+  it("accepts hello server messages", () => {
+    const parsed = wsServerMessageSchema.parse({
+      type: "hello",
+      version: 1,
+      launchCwd: "/workspace",
+    });
+
+    expect(parsed.type).toBe("hello");
   });
 });
 
