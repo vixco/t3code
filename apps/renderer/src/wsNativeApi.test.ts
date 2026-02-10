@@ -10,6 +10,10 @@ class MockWebSocket {
   static failOpen = false;
   static failConstruct = false;
   static failCloseBeforeOpen = false;
+  static failCloseBeforeOpenEvent: { code: number; reason?: string } = {
+    code: WS_CLOSE_CODES.unauthorized,
+    reason: WS_CLOSE_REASONS.unauthorized,
+  };
 
   readyState = 0;
   binaryType = "blob";
@@ -24,10 +28,7 @@ class MockWebSocket {
     queueMicrotask(() => {
       if (MockWebSocket.failCloseBeforeOpen) {
         this.readyState = 3;
-        this.emit("close", {
-          code: WS_CLOSE_CODES.unauthorized,
-          reason: WS_CLOSE_REASONS.unauthorized,
-        });
+        this.emit("close", MockWebSocket.failCloseBeforeOpenEvent);
         return;
       }
       if (MockWebSocket.failOpen) {
@@ -56,6 +57,11 @@ class MockWebSocket {
   close() {
     this.readyState = 3;
     this.emit("close", { code: 1000 });
+  }
+
+  closeWith(event: { code: number; reason?: string }) {
+    this.readyState = 3;
+    this.emit("close", event);
   }
 
   emitMessage(data: unknown) {
@@ -113,6 +119,10 @@ describe("wsNativeApi", () => {
     MockWebSocket.failOpen = false;
     MockWebSocket.failConstruct = false;
     MockWebSocket.failCloseBeforeOpen = false;
+    MockWebSocket.failCloseBeforeOpenEvent = {
+      code: WS_CLOSE_CODES.unauthorized,
+      reason: WS_CLOSE_REASONS.unauthorized,
+    };
     vi.stubGlobal("WebSocket", MockWebSocket as unknown as typeof WebSocket);
   });
 
@@ -411,6 +421,22 @@ describe("wsNativeApi", () => {
     socket?.close();
 
     await expect(request).rejects.toThrow("websocket disconnected (code 1000)");
+  });
+
+  it("includes close reason details when pending request disconnects", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4450");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    socket?.closeWith({
+      code: WS_CLOSE_CODES.unauthorized,
+      reason: WS_CLOSE_REASONS.unauthorized,
+    });
+
+    await expect(request).rejects.toThrow("websocket disconnected (code 4001: unauthorized)");
   });
 
   it("reconnects on subsequent requests after websocket close", async () => {
@@ -1007,6 +1033,36 @@ describe("wsNativeApi", () => {
 
     await expect(api.todos.list()).rejects.toThrow(
       "Failed to connect to local t3 runtime: unauthorized websocket connection.",
+    );
+  });
+
+  it("reports replacement details when websocket closes before opening", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4451");
+    MockWebSocket.failCloseBeforeOpen = true;
+    MockWebSocket.failCloseBeforeOpenEvent = {
+      code: WS_CLOSE_CODES.replacedByNewClient,
+      reason: WS_CLOSE_REASONS.replacedByNewClient,
+    };
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to connect to local t3 runtime: replaced by a newer websocket client.",
+    );
+  });
+
+  it("reports generic close code and reason when websocket closes before opening", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4452");
+    MockWebSocket.failCloseBeforeOpen = true;
+    MockWebSocket.failCloseBeforeOpenEvent = {
+      code: 4200,
+      reason: "custom-close",
+    };
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to connect to local t3 runtime (close code 4200: custom-close).",
     );
   });
 
