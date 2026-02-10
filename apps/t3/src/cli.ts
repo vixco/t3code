@@ -238,6 +238,7 @@ function printHelp(): void {
       "  --web-port <port>       Override web UI port (default: 4318)",
       "  --cwd <path>            Launch project directory (default: current directory)",
       "  [path]                  Positional shorthand for --cwd <path>",
+      "  --                      End options (useful for paths beginning with '-')",
       "  -v, --version           Print CLI version",
       "  -h, --help              Show this help message",
       "",
