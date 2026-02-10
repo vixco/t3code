@@ -121,6 +121,16 @@ afterEach(async () => {
 });
 
 describe("runtimeApiServer", () => {
+  it("allows runtime server close to be called multiple times", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+
+    await expect(server.close()).resolves.toBeUndefined();
+    await expect(server.close()).resolves.toBeUndefined();
+  });
+
   it("rejects empty auth token configuration", async () => {
     await expect(
       startRuntimeApiServer({
