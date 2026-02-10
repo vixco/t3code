@@ -76,6 +76,7 @@ Runtime command semantics:
 - Static non-range requests support `If-None-Match` and `If-Modified-Since` conditional caching via `304 Not Modified`.
 - Static range requests support `If-Range` semantics (matched validator keeps `206`; mismatched validator falls back to full `200` response).
 - `If-None-Match` / `If-Modified-Since` preconditions are evaluated before range handling, so satisfied validators return `304` even when a `Range` header is present.
+- Static precondition headers `If-Match` and `If-Unmodified-Since` are enforced with `412 Precondition Failed` semantics.
 
 ## Runtime modes
 
