@@ -609,6 +609,19 @@ describe("wsNativeApi", () => {
     await expect(request).rejects.toThrow("websocket disconnected (unauthorized)");
   });
 
+  it("prioritizes unauthorized reason over non-auth close code on disconnect", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4482");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    socket?.closeWith({ code: 1000, reason: WS_CLOSE_REASONS.unauthorized });
+
+    await expect(request).rejects.toThrow("websocket disconnected (unauthorized)");
+  });
+
   it("maps replacement reason-only disconnects to explicit replacement errors", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4462");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -1701,6 +1714,21 @@ describe("wsNativeApi", () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4464");
     MockWebSocket.failCloseBeforeOpen = true;
     MockWebSocket.failCloseBeforeOpenEvent = {
+      reason: WS_CLOSE_REASONS.replacedByNewClient,
+    };
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to connect to local t3 runtime: replaced by a newer websocket client.",
+    );
+  });
+
+  it("prioritizes replacement reason over non-replacement pre-open close code", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4483");
+    MockWebSocket.failCloseBeforeOpen = true;
+    MockWebSocket.failCloseBeforeOpenEvent = {
+      code: 1000,
       reason: WS_CLOSE_REASONS.replacedByNewClient,
     };
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
