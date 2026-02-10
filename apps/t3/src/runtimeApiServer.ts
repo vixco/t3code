@@ -616,24 +616,38 @@ export async function startRuntimeApiServer(
     });
   });
 
-  await new Promise<void>((resolve, reject) => {
-    if (wss.address()) {
-      resolve();
-      return;
-    }
+  try {
+    await new Promise<void>((resolve, reject) => {
+      if (wss.address()) {
+        resolve();
+        return;
+      }
 
-    const onListening = () => {
-      wss.off("error", onError);
-      resolve();
-    };
-    const onError = (error: Error) => {
-      wss.off("listening", onListening);
-      reject(error);
-    };
+      const onListening = () => {
+        wss.off("error", onError);
+        resolve();
+      };
+      const onError = (error: Error) => {
+        wss.off("listening", onListening);
+        reject(error);
+      };
 
-    wss.once("listening", onListening);
-    wss.once("error", onError);
-  });
+      wss.once("listening", onListening);
+      wss.once("error", onError);
+    });
+  } catch (error) {
+    processManager.killAll();
+    providerManager.stopAll();
+    providerManager.dispose();
+    await new Promise<void>((resolve) => {
+      try {
+        wss.close(() => resolve());
+      } catch {
+        resolve();
+      }
+    });
+    throw error;
+  }
 
   const address = wss.address();
   const resolvedPort =

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { createServer as createNetServer } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 
@@ -122,6 +123,39 @@ afterEach(async () => {
 });
 
 describe("runtimeApiServer", () => {
+  it("fails startup when websocket port is already in use", async () => {
+    const blockingServer = createNetServer();
+    await new Promise<void>((resolve, reject) => {
+      blockingServer.listen(0, "127.0.0.1", () => resolve());
+      blockingServer.once("error", (error) => reject(error));
+    });
+    const address = blockingServer.address();
+    if (!address || typeof address !== "object") {
+      throw new Error("Expected blocking server to have an address.");
+    }
+
+    try {
+      await expect(
+        startRuntimeApiServer({
+          port: address.port,
+          launchCwd: process.cwd(),
+        }),
+      ).rejects.toMatchObject({
+        code: "EADDRINUSE",
+      });
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        blockingServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+    }
+  });
+
   it("allows runtime server close to be called multiple times", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
