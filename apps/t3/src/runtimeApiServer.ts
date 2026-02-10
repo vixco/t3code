@@ -708,6 +708,9 @@ export async function startRuntimeApiServer(
     socket.on("error", () => {
       // Connection-level protocol/socket errors are expected occasionally
       // (for example oversized client payloads). Keep server process alive.
+      if (activeClient === socket && socket.readyState !== WebSocket.OPEN) {
+        activeClient = null;
+      }
     });
   });
 
