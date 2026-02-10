@@ -6,6 +6,8 @@ import {
   dialogsPickFolderResultSchema,
   editorIdSchema,
   shellOpenInEditorInputSchema,
+  WS_NATIVE_API_METHODS,
+  wsNativeApiMethodSchema,
 } from "./ipc";
 
 describe("appBootstrapResultSchema", () => {
@@ -186,5 +188,21 @@ describe("editor and shell-open schemas", () => {
         unexpected: true,
       }),
     ).toThrow();
+  });
+});
+
+describe("wsNativeApiMethodSchema", () => {
+  it("accepts every declared websocket native API method", () => {
+    for (const method of WS_NATIVE_API_METHODS) {
+      expect(wsNativeApiMethodSchema.parse(method)).toBe(method);
+    }
+  });
+
+  it("rejects unknown websocket native API methods", () => {
+    expect(() => wsNativeApiMethodSchema.parse("providers.abortTurn")).toThrow();
+  });
+
+  it("keeps declared websocket native API methods unique", () => {
+    expect(new Set(WS_NATIVE_API_METHODS).size).toBe(WS_NATIVE_API_METHODS.length);
   });
 });

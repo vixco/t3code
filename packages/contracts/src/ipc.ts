@@ -19,6 +19,30 @@ export const EDITORS = [
   { id: "file-manager", label: "File Manager", command: null },
 ] as const;
 
+export const WS_NATIVE_API_METHODS = [
+  "app.bootstrap",
+  "app.health",
+  "todos.list",
+  "todos.add",
+  "todos.toggle",
+  "todos.remove",
+  "dialogs.pickFolder",
+  "terminal.run",
+  "agent.spawn",
+  "agent.kill",
+  "agent.write",
+  "providers.startSession",
+  "providers.sendTurn",
+  "providers.interruptTurn",
+  "providers.respondToRequest",
+  "providers.stopSession",
+  "providers.listSessions",
+  "shell.openInEditor",
+] as const;
+
+export type WsNativeApiMethod = (typeof WS_NATIVE_API_METHODS)[number];
+export const wsNativeApiMethodSchema = z.enum(WS_NATIVE_API_METHODS);
+
 export type EditorId = (typeof EDITORS)[number]["id"];
 export const editorIdSchema = z.enum(EDITORS.map((entry) => entry.id) as [EditorId, ...EditorId[]]);
 

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 
 import {
+  WS_NATIVE_API_METHODS,
   WS_METHOD_MAX_CHARS,
   WS_REQUEST_ID_MAX_CHARS,
   WS_ERROR_MESSAGE_MAX_CHARS,
@@ -112,6 +113,38 @@ async function sendRequest(
 
   return waitForMatchingResponse();
 }
+
+type WsNativeApiMethod = (typeof WS_NATIVE_API_METHODS)[number];
+
+const METHOD_COVERAGE_PARAMS: Record<WsNativeApiMethod, unknown> = {
+  "app.bootstrap": undefined,
+  "app.health": undefined,
+  "todos.list": undefined,
+  "todos.add": { text: "coverage todo" },
+  "todos.toggle": "missing-todo-id",
+  "todos.remove": "missing-todo-id",
+  "dialogs.pickFolder": undefined,
+  "terminal.run": { command: "echo runtime-method-coverage" },
+  "agent.spawn": {
+    command: process.execPath,
+    args: ["-e", "process.exit(0)"],
+  },
+  "agent.kill": "missing-session-id",
+  "agent.write": {
+    sessionId: "missing-session-id",
+    data: "coverage",
+  },
+  "providers.startSession": null,
+  "providers.sendTurn": null,
+  "providers.interruptTurn": null,
+  "providers.respondToRequest": null,
+  "providers.stopSession": null,
+  "providers.listSessions": undefined,
+  "shell.openInEditor": {
+    cwd: process.cwd(),
+    editor: "file-manager",
+  },
+};
 
 async function waitForAgentEvent(
   nextMessage: () => Promise<WsServerMessage>,
@@ -1829,6 +1862,48 @@ describe("runtimeApiServer", () => {
 
     client.socket.close();
   });
+
+  it(
+    "supports every websocket native API method declared in contracts",
+    async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const responses: WsResponseMessage[] = [];
+    await WS_NATIVE_API_METHODS.reduce(
+      (chain, method, index) =>
+        chain.then(async () => {
+          const response = await sendRequest(
+            client.socket,
+            client.nextMessage,
+            `method-coverage-${index}`,
+            method,
+            METHOD_COVERAGE_PARAMS[method],
+          );
+          responses.push(response);
+        }),
+      Promise.resolve(),
+    );
+
+    for (const response of responses) {
+      if (response.ok) {
+        continue;
+      }
+
+      expect(response.error?.code).toBe("request_failed");
+      expect(response.error?.message).not.toContain("Unknown API method");
+    }
+
+      client.socket.close();
+    },
+    20_000,
+  );
 
   it("returns structured errors for unknown methods at max method length", async () => {
     const server = await startRuntimeApiServer({

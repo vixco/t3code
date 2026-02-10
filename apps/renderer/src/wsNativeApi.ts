@@ -3,6 +3,7 @@ import type {
   NativeApi,
   OutputChunk,
   ProviderEvent,
+  WsNativeApiMethod,
   WsClientMessage,
   WsEventMessage,
   WsResponseMessage,
@@ -288,7 +289,7 @@ class WsNativeApiClient {
     return connectAttempt;
   }
 
-  private async request(method: string, params?: unknown) {
+  private async request(method: WsNativeApiMethod, params?: unknown) {
     const socket = await this.connect();
     const id = String(this.nextRequestId);
     this.nextRequestId += 1;
@@ -337,7 +338,7 @@ class WsNativeApiClient {
   }
 
   private async requestParsed<TValue>(
-    method: string,
+    method: WsNativeApiMethod,
     schema: SchemaLike<TValue>,
     params?: unknown,
   ): Promise<TValue> {
@@ -349,7 +350,7 @@ class WsNativeApiClient {
     return parsed.data;
   }
 
-  private async requestNullResult(method: string, params?: unknown): Promise<void> {
+  private async requestNullResult(method: WsNativeApiMethod, params?: unknown): Promise<void> {
     const value = await this.request(method, params);
     if (value !== null) {
       throw new Error(`Runtime method '${method}' returned invalid response payload.`);
