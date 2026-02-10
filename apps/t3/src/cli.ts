@@ -512,6 +512,62 @@ function cacheControlFor(filePath: string): string {
   return "public, max-age=31536000, immutable";
 }
 
+export function parseByteRangeHeader(
+  rangeHeaderValue: string | undefined,
+  fileSize: number,
+): { start: number; end: number } | null | "invalid" {
+  if (!rangeHeaderValue) {
+    return null;
+  }
+  if (!Number.isInteger(fileSize) || fileSize < 0) {
+    return "invalid";
+  }
+
+  const match = rangeHeaderValue.trim().match(/^bytes=(\d*)-(\d*)$/i);
+  if (!match) {
+    return "invalid";
+  }
+
+  const startRaw = match[1] ?? "";
+  const endRaw = match[2] ?? "";
+  if (startRaw.length === 0 && endRaw.length === 0) {
+    return "invalid";
+  }
+
+  if (startRaw.length === 0) {
+    const suffixLength = Number.parseInt(endRaw, 10);
+    if (!Number.isInteger(suffixLength) || suffixLength <= 0 || fileSize === 0) {
+      return "invalid";
+    }
+    const start = Math.max(fileSize - suffixLength, 0);
+    return {
+      start,
+      end: fileSize - 1,
+    };
+  }
+
+  const start = Number.parseInt(startRaw, 10);
+  if (!Number.isInteger(start) || start < 0 || start >= fileSize) {
+    return "invalid";
+  }
+
+  const end =
+    endRaw.length === 0
+      ? fileSize - 1
+      : (() => {
+          const parsed = Number.parseInt(endRaw, 10);
+          if (!Number.isInteger(parsed) || parsed < 0) {
+            return null;
+          }
+          return Math.min(parsed, fileSize - 1);
+        })();
+  if (end === null || start > end) {
+    return "invalid";
+  }
+
+  return { start, end };
+}
+
 function isPathInside(parent: string, child: string): boolean {
   const relative = path.relative(parent, child);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
@@ -726,10 +782,23 @@ function startStaticWebServer(distRoot: string, port: number) {
           respondText(404, "Not found");
           return;
         }
-        response.statusCode = 200;
+        const resolvedRange = parseByteRangeHeader(request.headers.range, stats.size);
+        if (resolvedRange === "invalid") {
+          respondText(416, "Range Not Satisfiable", {
+            "Content-Range": `bytes */${stats.size}`,
+          });
+          return;
+        }
+        response.statusCode = resolvedRange ? 206 : 200;
         response.setHeader("Content-Type", contentTypeFor(targetPath));
-        response.setHeader("Content-Length", String(stats.size));
+        response.setHeader(
+          "Content-Length",
+          String(resolvedRange ? resolvedRange.end - resolvedRange.start + 1 : stats.size),
+        );
         response.setHeader("Accept-Ranges", "bytes");
+        if (resolvedRange) {
+          response.setHeader("Content-Range", `bytes ${resolvedRange.start}-${resolvedRange.end}/${stats.size}`);
+        }
         applyStaticSecurityHeaders(response, {
           cacheControl: cacheControlFor(targetPath),
         });
@@ -744,15 +813,36 @@ function startStaticWebServer(distRoot: string, port: number) {
         return;
       }
 
-      response.statusCode = 200;
+      const resolvedRange = parseByteRangeHeader(request.headers.range, stats.size);
+      if (resolvedRange === "invalid") {
+        respondText(416, "Range Not Satisfiable", {
+          "Content-Range": `bytes */${stats.size}`,
+        });
+        return;
+      }
+      response.statusCode = resolvedRange ? 206 : 200;
       response.setHeader("Content-Type", contentTypeFor(targetPath));
-      response.setHeader("Content-Length", String(stats.size));
+      response.setHeader(
+        "Content-Length",
+        String(resolvedRange ? resolvedRange.end - resolvedRange.start + 1 : stats.size),
+      );
       response.setHeader("Accept-Ranges", "bytes");
+      if (resolvedRange) {
+        response.setHeader("Content-Range", `bytes ${resolvedRange.start}-${resolvedRange.end}/${stats.size}`);
+      }
       applyStaticSecurityHeaders(response, {
         cacheControl: cacheControlFor(targetPath),
       });
 
-      const stream = fs.createReadStream(targetPath);
+      const stream = fs.createReadStream(
+        targetPath,
+        resolvedRange
+          ? {
+              start: resolvedRange.start,
+              end: resolvedRange.end,
+            }
+          : undefined,
+      );
       response.on("close", () => {
         stream.destroy();
       });

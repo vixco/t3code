@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatStartupError,
+  parseByteRangeHeader,
   parseCliOptions,
   readCliVersion,
   resolveStaticAssetReadTarget,
@@ -881,6 +882,48 @@ describe("resolveStaticAssetPath", () => {
     expect(result).toEqual({
       kind: "bad_request",
     });
+  });
+});
+
+describe("parseByteRangeHeader", () => {
+  it("returns null when range header is missing", () => {
+    expect(parseByteRangeHeader(undefined, 100)).toBeNull();
+  });
+
+  it("parses explicit start/end ranges", () => {
+    expect(parseByteRangeHeader("bytes=0-9", 100)).toEqual({
+      start: 0,
+      end: 9,
+    });
+  });
+
+  it("parses open-ended ranges", () => {
+    expect(parseByteRangeHeader("bytes=10-", 100)).toEqual({
+      start: 10,
+      end: 99,
+    });
+  });
+
+  it("parses suffix ranges", () => {
+    expect(parseByteRangeHeader("bytes=-5", 100)).toEqual({
+      start: 95,
+      end: 99,
+    });
+  });
+
+  it("clamps explicit range ends to file size", () => {
+    expect(parseByteRangeHeader("bytes=90-1000", 100)).toEqual({
+      start: 90,
+      end: 99,
+    });
+  });
+
+  it("rejects malformed and unsatisfiable ranges", () => {
+    expect(parseByteRangeHeader("items=0-1", 100)).toBe("invalid");
+    expect(parseByteRangeHeader("bytes=-", 100)).toBe("invalid");
+    expect(parseByteRangeHeader("bytes=10-9", 100)).toBe("invalid");
+    expect(parseByteRangeHeader("bytes=100-101", 100)).toBe("invalid");
+    expect(parseByteRangeHeader("bytes=-0", 100)).toBe("invalid");
   });
 });
 

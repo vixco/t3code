@@ -235,6 +235,66 @@ async function main() {
     if ((assetResponse.headers.get("accept-ranges") ?? "").toLowerCase() !== "bytes") {
       throw new Error("Smoke test failed: expected accept-ranges=bytes on built asset response.");
     }
+    const assetContentLength = Number(assetResponse.headers.get("content-length") ?? "0");
+    if (!Number.isFinite(assetContentLength) || assetContentLength <= 0) {
+      throw new Error(
+        `Smoke test failed: expected positive content-length on built asset response, got ${String(
+          assetResponse.headers.get("content-length"),
+        )}.`,
+      );
+    }
+    const rangeEnd = Math.min(15, assetContentLength - 1);
+    const rangedAsset = await fetch(assetUrl, {
+      headers: {
+        Range: `bytes=0-${rangeEnd}`,
+      },
+    });
+    if (rangedAsset.status !== 206) {
+      throw new Error(
+        `Smoke test failed: expected ranged asset status 206, received ${rangedAsset.status}.`,
+      );
+    }
+    const expectedContentRange = `bytes 0-${rangeEnd}/${assetContentLength}`;
+    if (rangedAsset.headers.get("content-range") !== expectedContentRange) {
+      throw new Error(
+        `Smoke test failed: expected content-range ${expectedContentRange}, got ${String(
+          rangedAsset.headers.get("content-range"),
+        )}.`,
+      );
+    }
+    const rangedContentLength = Number(rangedAsset.headers.get("content-length") ?? "0");
+    if (!Number.isFinite(rangedContentLength) || rangedContentLength !== rangeEnd + 1) {
+      throw new Error(
+        `Smoke test failed: expected ranged content-length ${String(
+          rangeEnd + 1,
+        )}, got ${String(rangedAsset.headers.get("content-length"))}.`,
+      );
+    }
+    if ((rangedAsset.headers.get("accept-ranges") ?? "").toLowerCase() !== "bytes") {
+      throw new Error("Smoke test failed: expected accept-ranges=bytes on ranged asset response.");
+    }
+    const unsatisfiableRange = await fetch(assetUrl, {
+      headers: {
+        Range: `bytes=${assetContentLength}-${assetContentLength + 10}`,
+      },
+    });
+    if (unsatisfiableRange.status !== 416) {
+      throw new Error(
+        `Smoke test failed: expected unsatisfiable range status 416, received ${unsatisfiableRange.status}.`,
+      );
+    }
+    if (unsatisfiableRange.headers.get("content-range") !== `bytes */${assetContentLength}`) {
+      throw new Error(
+        `Smoke test failed: expected unsatisfiable content-range bytes */${String(
+          assetContentLength,
+        )}, got ${String(unsatisfiableRange.headers.get("content-range"))}.`,
+      );
+    }
+    if ((unsatisfiableRange.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {
+      throw new Error(
+        "Smoke test failed: expected cache-control=no-store on unsatisfiable range response.",
+      );
+    }
     const headAssetResponse = await fetch(assetUrl, { method: "HEAD" });
     if (headAssetResponse.status !== 200) {
       throw new Error(
