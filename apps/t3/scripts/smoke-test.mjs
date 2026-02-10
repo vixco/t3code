@@ -273,6 +273,29 @@ async function main() {
     if ((conditionalAsset.headers.get("cache-control") ?? "").toLowerCase() !== assetCacheControl) {
       throw new Error("Smoke test failed: expected cache-control preserved on conditional asset response.");
     }
+    const conditionalHeadAsset = await fetch(assetUrl, {
+      method: "HEAD",
+      headers: {
+        "If-None-Match": assetEtag,
+      },
+    });
+    if (conditionalHeadAsset.status !== 304) {
+      throw new Error(
+        `Smoke test failed: expected conditional HEAD asset status 304, received ${conditionalHeadAsset.status}.`,
+      );
+    }
+    if (conditionalHeadAsset.headers.get("etag") !== assetEtag) {
+      throw new Error(
+        `Smoke test failed: expected conditional HEAD asset ETag ${assetEtag}, got ${String(
+          conditionalHeadAsset.headers.get("etag"),
+        )}.`,
+      );
+    }
+    if ((conditionalHeadAsset.headers.get("cache-control") ?? "").toLowerCase() !== assetCacheControl) {
+      throw new Error(
+        "Smoke test failed: expected cache-control preserved on conditional HEAD asset response.",
+      );
+    }
     const rangeEnd = Math.min(15, assetContentLength - 1);
     const rangedAsset = await fetch(assetUrl, {
       headers: {
