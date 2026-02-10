@@ -168,6 +168,13 @@ async function main() {
     if (page.headers.get("x-content-type-options") !== "nosniff") {
       throw new Error("Smoke test failed: expected x-content-type-options=nosniff.");
     }
+    if ((page.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {
+      throw new Error(
+        `Smoke test failed: expected cache-control=no-store, got ${String(
+          page.headers.get("cache-control"),
+        )}.`,
+      );
+    }
     const missingAssetUrl = new URL("/assets/missing-bundle.js", parsedAppUrl);
     const missingAsset = await fetch(missingAssetUrl);
     if (missingAsset.status !== 404) {

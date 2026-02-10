@@ -614,6 +614,9 @@ function startStaticWebServer(distRoot: string, port: number) {
         response.setHeader("Content-Type", contentTypeFor(targetPath));
         response.setHeader("Content-Length", String(stats.size));
         response.setHeader("X-Content-Type-Options", "nosniff");
+        if (targetPath.endsWith(".html")) {
+          response.setHeader("Cache-Control", "no-store");
+        }
         response.end();
       });
       return;
@@ -629,6 +632,9 @@ function startStaticWebServer(distRoot: string, port: number) {
       response.setHeader("Content-Type", contentTypeFor(targetPath));
       response.setHeader("X-Content-Type-Options", "nosniff");
       response.setHeader("Content-Length", String(content.byteLength));
+      if (targetPath.endsWith(".html")) {
+        response.setHeader("Cache-Control", "no-store");
+      }
       response.end(content);
     });
   });
