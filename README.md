@@ -84,6 +84,7 @@ Runtime command semantics:
 - Initial websocket connect failures now include detailed diagnostics from socket/open and constructor failures (including nested or string error payload messages when present).
 - Subsequent requests automatically reconnect after close/error disconnects, including idle (no pending request) error scenarios.
 - Renderer now proactively resets the websocket after request send failures, rejects any in-flight requests, and reconnects cleanly on later requests.
+- Send-failure request errors now include non-Error payload details when available (for clearer diagnostics).
 - Runtime validates request payloads with shared Zod contracts.
 - Codex execution sandbox policy (`read-only`, `workspace-write`, `danger-full-access`) is still selected per session startup options.
 - Static HTML responses are served with `Cache-Control: no-store`; built `/assets/*` files are served with long-lived immutable cache headers.
