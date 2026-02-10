@@ -502,6 +502,20 @@ async function main() {
         )} on If-Range mismatch response, got ${String(ifRangeMismatchAsset.headers.get("content-length"))}.`,
       );
     }
+    const ifRangeWeakAsset = await fetch(assetUrl, {
+      headers: {
+        Range: `bytes=0-${rangeEnd}`,
+        "If-Range": `W/${assetEtag}`,
+      },
+    });
+    if (ifRangeWeakAsset.status !== 200) {
+      throw new Error(
+        `Smoke test failed: expected If-Range weak-etag asset status 200, received ${ifRangeWeakAsset.status}.`,
+      );
+    }
+    if (ifRangeWeakAsset.headers.get("content-range") !== null) {
+      throw new Error("Smoke test failed: expected no content-range on If-Range weak-etag response.");
+    }
     const unsatisfiableRange = await fetch(assetUrl, {
       headers: {
         Range: `bytes=${assetContentLength}-${assetContentLength + 10}`,
