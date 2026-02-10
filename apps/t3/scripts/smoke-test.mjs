@@ -168,6 +168,12 @@ async function main() {
     if (page.headers.get("x-content-type-options") !== "nosniff") {
       throw new Error("Smoke test failed: expected x-content-type-options=nosniff.");
     }
+    const headPage = await fetch(parsedAppUrl, { method: "HEAD" });
+    if (headPage.status !== 200) {
+      throw new Error(
+        `Smoke test failed: expected HEAD web status 200, received ${headPage.status}.`,
+      );
+    }
 
     const wsUrl = parsedAppUrl.searchParams.get("ws");
     if (!wsUrl) {

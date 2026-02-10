@@ -520,39 +520,63 @@ function startStaticWebServer(distRoot: string, port: number) {
   })();
 
   const server = createServer((request, response) => {
+    const requestMethod = (request.method ?? "GET").toUpperCase();
+    const respondText = (
+      statusCode: number,
+      message: string,
+      extraHeaders: Record<string, string> = {},
+    ) => {
+      response.statusCode = statusCode;
+      for (const [key, value] of Object.entries(extraHeaders)) {
+        response.setHeader(key, value);
+      }
+      if (requestMethod === "HEAD") {
+        response.end();
+        return;
+      }
+      response.end(message);
+    };
+
+    if (requestMethod !== "GET" && requestMethod !== "HEAD") {
+      respondText(405, "Method Not Allowed", {
+        Allow: "GET, HEAD",
+      });
+      return;
+    }
+
     const resolvedPath = resolveStaticAssetReadTarget(
       request.url,
       normalizedDistRoot,
       resolvedRealDistRoot,
     );
     if (resolvedPath.kind === "bad_request") {
-      response.statusCode = 400;
-      response.end("Invalid request path");
+      respondText(400, "Invalid request path");
       return;
     }
 
     if (resolvedPath.kind === "forbidden") {
-      response.statusCode = 403;
-      response.end("Forbidden");
+      respondText(403, "Forbidden");
       return;
     }
     if (resolvedPath.kind === "not_found") {
-      response.statusCode = 404;
-      response.end("Not found");
+      respondText(404, "Not found");
       return;
     }
 
     const targetPath = resolvedPath.filePath;
     fs.readFile(targetPath, (error, content) => {
       if (error) {
-        response.statusCode = 404;
-        response.end("Not found");
+        respondText(404, "Not found");
         return;
       }
 
       response.statusCode = 200;
       response.setHeader("Content-Type", contentTypeFor(targetPath));
       response.setHeader("X-Content-Type-Options", "nosniff");
+      if (requestMethod === "HEAD") {
+        response.end();
+        return;
+      }
       response.end(content);
     });
   });
