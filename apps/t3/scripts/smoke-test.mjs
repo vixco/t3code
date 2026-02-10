@@ -358,6 +358,12 @@ async function main() {
     if ((ifMatchMismatchAsset.headers.get("x-content-type-options") ?? "").toLowerCase() !== "nosniff") {
       throw new Error("Smoke test failed: expected nosniff on If-Match mismatch response.");
     }
+    if (ifMatchMismatchAsset.headers.get("etag") !== assetEtag) {
+      throw new Error("Smoke test failed: expected ETag on If-Match mismatch response.");
+    }
+    if (ifMatchMismatchAsset.headers.get("last-modified") !== assetLastModified) {
+      throw new Error("Smoke test failed: expected Last-Modified on If-Match mismatch response.");
+    }
     const ifMatchRangeMismatchAsset = await fetch(assetUrl, {
       headers: {
         Range: "bytes=0-15",
@@ -389,6 +395,9 @@ async function main() {
       throw new Error(
         "Smoke test failed: expected cache-control=no-store on stale If-Unmodified-Since response.",
       );
+    }
+    if (ifUnmodifiedSinceStaleAsset.headers.get("etag") !== assetEtag) {
+      throw new Error("Smoke test failed: expected ETag on stale If-Unmodified-Since response.");
     }
     const ifUnmodifiedSinceRangeStaleAsset = await fetch(assetUrl, {
       headers: {
@@ -508,6 +517,12 @@ async function main() {
       throw new Error(
         "Smoke test failed: expected cache-control=no-store on HEAD If-Match mismatch response.",
       );
+    }
+    if (ifMatchMismatchHeadAsset.headers.get("etag") !== assetEtag) {
+      throw new Error("Smoke test failed: expected ETag on HEAD If-Match mismatch response.");
+    }
+    if (ifMatchMismatchHeadAsset.headers.get("last-modified") !== assetLastModified) {
+      throw new Error("Smoke test failed: expected Last-Modified on HEAD If-Match mismatch response.");
     }
     const ifMatchRangeMismatchHeadAsset = await fetch(assetUrl, {
       method: "HEAD",

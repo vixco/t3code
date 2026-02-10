@@ -903,7 +903,22 @@ function startStaticWebServer(distRoot: string, port: number) {
           ? false
           : ifModifiedSinceSatisfied(request.headers["if-modified-since"], stats.mtimeMs);
         if (!ifMatchMatches || !ifUnmodifiedSinceMatches) {
-          respondText(412, "Precondition Failed");
+          const body = Buffer.from("Precondition Failed", "utf8");
+          response.statusCode = 412;
+          response.setHeader("Content-Type", "text/plain; charset=utf-8");
+          response.setHeader("Content-Length", String(body.byteLength));
+          response.setHeader("ETag", etag);
+          response.setHeader("Last-Modified", lastModified);
+          response.setHeader("Accept-Ranges", "bytes");
+          response.setHeader("Vary", "Range");
+          applyStaticSecurityHeaders(response, {
+            cacheControl: "no-store",
+          });
+          if (requestMethod === "HEAD") {
+            response.end();
+            return;
+          }
+          response.end(body);
           return;
         }
         const shouldReturnNotModified = ifNoneMatchMatches || ifModifiedSinceMatches;
