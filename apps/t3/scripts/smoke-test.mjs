@@ -217,6 +217,12 @@ async function main() {
     if ((assetResponse.headers.get("x-content-type-options") ?? "").toLowerCase() !== "nosniff") {
       throw new Error("Smoke test failed: expected nosniff on built asset response.");
     }
+    if ((assetResponse.headers.get("x-frame-options") ?? "").toUpperCase() !== "DENY") {
+      throw new Error("Smoke test failed: expected x-frame-options=DENY on built asset response.");
+    }
+    if ((assetResponse.headers.get("referrer-policy") ?? "").toLowerCase() !== "no-referrer") {
+      throw new Error("Smoke test failed: expected referrer-policy=no-referrer on built asset response.");
+    }
     if ((assetResponse.headers.get("cross-origin-resource-policy") ?? "").toLowerCase() !== "same-origin") {
       throw new Error("Smoke test failed: expected CORP header on built asset response.");
     }
