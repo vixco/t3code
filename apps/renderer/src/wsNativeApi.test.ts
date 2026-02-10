@@ -1710,11 +1710,41 @@ describe("wsNativeApi", () => {
     );
   });
 
+  it("prioritizes unauthorized code over non-auth reason on pre-open close", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4484");
+    MockWebSocket.failCloseBeforeOpen = true;
+    MockWebSocket.failCloseBeforeOpenEvent = {
+      code: WS_CLOSE_CODES.unauthorized,
+      reason: "not-unauthorized-reason",
+    };
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to connect to local t3 runtime: unauthorized websocket connection.",
+    );
+  });
+
   it("maps replacement reason-only pre-open closes to explicit replacement errors", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4464");
     MockWebSocket.failCloseBeforeOpen = true;
     MockWebSocket.failCloseBeforeOpenEvent = {
       reason: WS_CLOSE_REASONS.replacedByNewClient,
+    };
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to connect to local t3 runtime: replaced by a newer websocket client.",
+    );
+  });
+
+  it("prioritizes replacement code over non-replacement reason on pre-open close", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4485");
+    MockWebSocket.failCloseBeforeOpen = true;
+    MockWebSocket.failCloseBeforeOpenEvent = {
+      code: WS_CLOSE_CODES.replacedByNewClient,
+      reason: "not-replacement-reason",
     };
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
     const api = getOrCreateWsNativeApi();
