@@ -1589,6 +1589,31 @@ describe("wsNativeApi", () => {
     await expect(request).resolves.toBeUndefined();
   });
 
+  it("rejects shell.openInEditor responses with invalid payload shape", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4532");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.shell.openInEditor("/workspace", "cursor");
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: {
+          unexpected: true,
+        },
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'shell.openInEditor' returned invalid response payload.",
+    );
+  });
+
   it("sends terminal.run requests with expected payload", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4414");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -1985,6 +2010,34 @@ describe("wsNativeApi", () => {
     );
   });
 
+  it("rejects providers.sendTurn responses with invalid payload shape", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4530");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.providers.sendTurn({
+      sessionId: "sess-1",
+      input: "hello",
+    });
+    const socket = await waitForSocket();
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: {
+          threadId: "thread-1",
+        },
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'providers.sendTurn' returned invalid response payload.",
+    );
+  });
+
   it("sends todo mutation requests with expected payloads", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4416");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -2169,6 +2222,33 @@ describe("wsNativeApi", () => {
 
     await expect(request).rejects.toThrow(
       "Runtime method 'agent.kill' returned invalid response payload.",
+    );
+  });
+
+  it("rejects agent.spawn responses with invalid payload shape", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4529");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.agent.spawn({
+      command: "bash",
+      args: ["-lc", "echo hi"],
+      cwd: "/workspace",
+    });
+    const socket = await waitForSocket();
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: "",
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'agent.spawn' returned invalid response payload.",
     );
   });
 
