@@ -117,8 +117,15 @@ function waitForCloseCode(socket, expectedCode, label, timeoutMs = 10_000) {
 
 function sendWsRequest(socket, request, timeoutMs = 20_000) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
+    const cleanup = () => {
+      clearTimeout(timer);
       socket.removeEventListener("message", onMessage);
+      socket.removeEventListener("error", onError);
+      socket.removeEventListener("close", onClose);
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
       reject(
         new Error(
           `Smoke test failed: websocket request ${request.id} (${request.method}) timed out.`,
@@ -138,12 +145,31 @@ function sendWsRequest(socket, request, timeoutMs = 20_000) {
         return;
       }
 
-      clearTimeout(timer);
-      socket.removeEventListener("message", onMessage);
+      cleanup();
       resolve(message);
     };
 
+    const onError = () => {
+      cleanup();
+      reject(
+        new Error(
+          `Smoke test failed: websocket request ${request.id} (${request.method}) errored before response.`,
+        ),
+      );
+    };
+
+    const onClose = (event) => {
+      cleanup();
+      reject(
+        new Error(
+          `Smoke test failed: websocket request ${request.id} (${request.method}) closed before response (code ${event.code}).`,
+        ),
+      );
+    };
+
     socket.addEventListener("message", onMessage);
+    socket.addEventListener("error", onError);
+    socket.addEventListener("close", onClose);
     socket.send(
       JSON.stringify({
         type: "request",
@@ -157,8 +183,15 @@ function sendWsRequest(socket, request, timeoutMs = 20_000) {
 
 function waitForWsEvent(socket, matcher, label, timeoutMs = 20_000) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
+    const cleanup = () => {
+      clearTimeout(timer);
       socket.removeEventListener("message", onMessage);
+      socket.removeEventListener("error", onError);
+      socket.removeEventListener("close", onClose);
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
       reject(new Error(`Smoke test failed: ${label} websocket event timed out.`));
     }, timeoutMs);
 
@@ -177,12 +210,27 @@ function waitForWsEvent(socket, matcher, label, timeoutMs = 20_000) {
         return;
       }
 
-      clearTimeout(timer);
-      socket.removeEventListener("message", onMessage);
+      cleanup();
       resolve(message);
     };
 
+    const onError = () => {
+      cleanup();
+      reject(new Error(`Smoke test failed: ${label} websocket errored before matching event.`));
+    };
+
+    const onClose = (event) => {
+      cleanup();
+      reject(
+        new Error(
+          `Smoke test failed: ${label} websocket closed before matching event (code ${event.code}).`,
+        ),
+      );
+    };
+
     socket.addEventListener("message", onMessage);
+    socket.addEventListener("error", onError);
+    socket.addEventListener("close", onClose);
   });
 }
 
