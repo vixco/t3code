@@ -4,6 +4,16 @@ import { createServer } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+const WS_CLOSE_CODES = {
+  replacedByNewClient: 4000,
+  unauthorized: 4001,
+};
+
+const WS_CLOSE_REASONS = {
+  replacedByNewClient: "replaced-by-new-client",
+  unauthorized: "unauthorized",
+};
+
 function getFreePort() {
   return new Promise((resolve, reject) => {
     const server = createServer();
@@ -65,15 +75,15 @@ function waitForUnauthorizedCloseWithoutMessages(socket, label, timeoutMs = 10_0
     });
     socket.addEventListener("close", (event) => {
       clearTimeout(timer);
-      if (event.code !== 4001) {
+      if (event.code !== WS_CLOSE_CODES.unauthorized) {
         reject(
           new Error(
-            `Smoke test failed: expected unauthorized close code 4001 for ${label}, received ${event.code}.`,
+            `Smoke test failed: expected unauthorized close code ${WS_CLOSE_CODES.unauthorized} for ${label}, received ${event.code}.`,
           ),
         );
         return;
       }
-      if (event.reason !== "unauthorized") {
+      if (event.reason !== WS_CLOSE_REASONS.unauthorized) {
         reject(
           new Error(
             `Smoke test failed: expected unauthorized close reason for ${label}, received ${JSON.stringify(
@@ -116,10 +126,13 @@ function waitForCloseCode(socket, expectedCode, label, timeoutMs = 10_000) {
         );
         return;
       }
-      if (label === "replaced-client" && event.reason !== "replaced-by-new-client") {
+      if (
+        label === "replaced-client" &&
+        event.reason !== WS_CLOSE_REASONS.replacedByNewClient
+      ) {
         reject(
           new Error(
-            `Smoke test failed: expected replaced-client close reason "replaced-by-new-client", received ${JSON.stringify(
+            `Smoke test failed: expected replaced-client close reason "${WS_CLOSE_REASONS.replacedByNewClient}", received ${JSON.stringify(
               event.reason,
             )}.`,
           ),
@@ -2447,7 +2460,11 @@ async function main() {
       );
     }
 
-    const replacedClientClosed = waitForCloseCode(ws, 4000, "replaced-client");
+    const replacedClientClosed = waitForCloseCode(
+      ws,
+      WS_CLOSE_CODES.replacedByNewClient,
+      "replaced-client",
+    );
     const replacementWs = new WebSocket(wsUrl);
     await new Promise((resolve, reject) => {
       let sawHello = false;
