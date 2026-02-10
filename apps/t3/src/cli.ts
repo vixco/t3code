@@ -903,6 +903,23 @@ function startStaticWebServer(distRoot: string, port: number) {
       response.end(body);
     };
 
+    const respondPreconditionFailed = (validators: { etag: string; lastModified: string }) => {
+      const body = Buffer.from("Precondition Failed", "utf8");
+      response.statusCode = 412;
+      response.setHeader("Content-Type", "text/plain; charset=utf-8");
+      response.setHeader("Content-Length", String(body.byteLength));
+      applyStaticValidatorHeaders(response, validators);
+      applyRangeCapabilityHeaders(response);
+      applyStaticSecurityHeaders(response, {
+        cacheControl: "no-store",
+      });
+      if (requestMethod === "HEAD") {
+        response.end();
+        return;
+      }
+      response.end(body);
+    };
+
     const respondWithStaticFile = (targetPath: string, requestMethod: "GET" | "HEAD") => {
       fs.stat(targetPath, (error, stats) => {
         if (error || !stats.isFile()) {
@@ -923,23 +940,10 @@ function startStaticWebServer(distRoot: string, port: number) {
           ? false
           : ifModifiedSinceSatisfied(request.headers["if-modified-since"], stats.mtimeMs);
         if (!ifMatchMatches || !ifUnmodifiedSinceMatches) {
-          const body = Buffer.from("Precondition Failed", "utf8");
-          response.statusCode = 412;
-          response.setHeader("Content-Type", "text/plain; charset=utf-8");
-          response.setHeader("Content-Length", String(body.byteLength));
-          applyStaticValidatorHeaders(response, {
+          respondPreconditionFailed({
             etag,
             lastModified,
           });
-          applyRangeCapabilityHeaders(response);
-          applyStaticSecurityHeaders(response, {
-            cacheControl: "no-store",
-          });
-          if (requestMethod === "HEAD") {
-            response.end();
-            return;
-          }
-          response.end(body);
           return;
         }
         const shouldReturnNotModified = ifNoneMatchMatches || ifModifiedSinceMatches;
