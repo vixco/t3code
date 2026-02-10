@@ -1615,6 +1615,19 @@ async function main() {
       throw new Error("Smoke test failed: app.bootstrap response payload mismatch.");
     }
 
+    const listedSessionsResponse = await sendWsRequest(ws, {
+      id: "smoke-providers-list-sessions",
+      method: "providers.listSessions",
+    });
+    if (listedSessionsResponse.ok !== true || !Array.isArray(listedSessionsResponse.result)) {
+      throw new Error("Smoke test failed: expected providers.listSessions array response.");
+    }
+    for (const session of listedSessionsResponse.result) {
+      if (typeof session?.sessionId !== "string" || session.sessionId.length === 0) {
+        throw new Error("Smoke test failed: providers.listSessions entry missing sessionId.");
+      }
+    }
+
     const todoTitle = `Smoke todo ${String(backendPort)}-${String(webPort)}-${Date.now()}`;
     const addedTodosResponse = await sendWsRequest(ws, {
       id: "smoke-todos-add",
