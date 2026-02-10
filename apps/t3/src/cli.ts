@@ -516,6 +516,11 @@ function staticEtagFor(stats: fs.Stats): string {
   return `"${stats.size.toString(16)}-${Math.trunc(stats.mtimeMs).toString(16)}"`;
 }
 
+function normalizeWeakEtag(etag: string): string {
+  const trimmed = etag.trim();
+  return trimmed.startsWith("W/") ? trimmed.slice(2).trim() : trimmed;
+}
+
 export function ifNoneMatchSatisfied(ifNoneMatchHeader: string | undefined, etag: string): boolean {
   if (!ifNoneMatchHeader) {
     return false;
@@ -529,7 +534,12 @@ export function ifNoneMatchSatisfied(ifNoneMatchHeader: string | undefined, etag
     return false;
   }
 
-  return candidates.includes("*") || candidates.includes(etag);
+  if (candidates.includes("*")) {
+    return true;
+  }
+
+  const normalizedEtag = normalizeWeakEtag(etag);
+  return candidates.some((candidate) => normalizeWeakEtag(candidate) === normalizedEtag);
 }
 
 export function parseByteRangeHeader(

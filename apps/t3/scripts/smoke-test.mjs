@@ -273,6 +273,16 @@ async function main() {
     if ((conditionalAsset.headers.get("cache-control") ?? "").toLowerCase() !== assetCacheControl) {
       throw new Error("Smoke test failed: expected cache-control preserved on conditional asset response.");
     }
+    const weakConditionalAsset = await fetch(assetUrl, {
+      headers: {
+        "If-None-Match": `W/${assetEtag}`,
+      },
+    });
+    if (weakConditionalAsset.status !== 304) {
+      throw new Error(
+        `Smoke test failed: expected weak conditional asset status 304, received ${weakConditionalAsset.status}.`,
+      );
+    }
     const conditionalHeadAsset = await fetch(assetUrl, {
       method: "HEAD",
       headers: {

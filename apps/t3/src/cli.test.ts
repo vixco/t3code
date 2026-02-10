@@ -951,6 +951,11 @@ describe("ifNoneMatchSatisfied", () => {
     expect(ifNoneMatchSatisfied("\"foo\", \"bar\", \"abc\"", "\"abc\"")).toBe(true);
   });
 
+  it("matches weak and strong forms using weak comparison semantics", () => {
+    expect(ifNoneMatchSatisfied("W/\"abc\"", "\"abc\"")).toBe(true);
+    expect(ifNoneMatchSatisfied("\"abc\"", "W/\"abc\"")).toBe(true);
+  });
+
   it("does not match non-identical etags", () => {
     expect(ifNoneMatchSatisfied("\"foo\", \"bar\"", "\"abc\"")).toBe(false);
   });
