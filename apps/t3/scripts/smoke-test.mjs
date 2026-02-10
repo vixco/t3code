@@ -174,6 +174,14 @@ async function main() {
         `Smoke test failed: expected HEAD web status 200, received ${headPage.status}.`,
       );
     }
+    const headContentLength = Number(headPage.headers.get("content-length") ?? "0");
+    if (!Number.isFinite(headContentLength) || headContentLength <= 0) {
+      throw new Error(
+        `Smoke test failed: expected positive content-length for HEAD response, got ${String(
+          headPage.headers.get("content-length"),
+        )}.`,
+      );
+    }
 
     const wsUrl = parsedAppUrl.searchParams.get("ws");
     if (!wsUrl) {

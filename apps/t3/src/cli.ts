@@ -564,6 +564,21 @@ function startStaticWebServer(distRoot: string, port: number) {
     }
 
     const targetPath = resolvedPath.filePath;
+    if (requestMethod === "HEAD") {
+      fs.stat(targetPath, (error, stats) => {
+        if (error || !stats.isFile()) {
+          respondText(404, "Not found");
+          return;
+        }
+        response.statusCode = 200;
+        response.setHeader("Content-Type", contentTypeFor(targetPath));
+        response.setHeader("Content-Length", String(stats.size));
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.end();
+      });
+      return;
+    }
+
     fs.readFile(targetPath, (error, content) => {
       if (error) {
         respondText(404, "Not found");
@@ -573,10 +588,7 @@ function startStaticWebServer(distRoot: string, port: number) {
       response.statusCode = 200;
       response.setHeader("Content-Type", contentTypeFor(targetPath));
       response.setHeader("X-Content-Type-Options", "nosniff");
-      if (requestMethod === "HEAD") {
-        response.end();
-        return;
-      }
+      response.setHeader("Content-Length", String(content.byteLength));
       response.end(content);
     });
   });
