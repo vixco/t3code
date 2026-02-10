@@ -7,9 +7,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@acme/contracts": "workspace:*",
-    "@acme/runtime-core": "workspace:*",
-    "node-pty": "^1.0.0"
+    "@acme/runtime-core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
