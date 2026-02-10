@@ -243,6 +243,12 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("treats known flags after --backend-port as missing values", () => {
+    expect(() => parseCliOptions(["--backend-port", "--web-port"], {}, "/workspace")).toThrow(
+      "Missing value for --backend-port",
+    );
+  });
+
   it("throws when web port value is missing", () => {
     expect(() => parseCliOptions(["--web-port"], {}, "/workspace")).toThrow(
       "Missing value for --web-port",
@@ -252,6 +258,12 @@ describe("parseCliOptions", () => {
   it("rejects negative web port values provided as separate args", () => {
     expect(() => parseCliOptions(["--web-port", "-1"], {}, "/workspace")).toThrow(
       "Invalid value for --web-port",
+    );
+  });
+
+  it("treats known flags after --web-port as missing values", () => {
+    expect(() => parseCliOptions(["--web-port", "--cwd"], {}, "/workspace")).toThrow(
+      "Missing value for --web-port",
     );
   });
 
