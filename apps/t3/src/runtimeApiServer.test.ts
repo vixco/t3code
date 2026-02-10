@@ -1,3 +1,5 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { createServer as createNetServer } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
@@ -1239,6 +1241,40 @@ describe("runtimeApiServer", () => {
     }
     expect(response.error?.code).toBe("request_failed");
     expect(response.error?.message).toContain("Working directory does not exist");
+
+    client.socket.close();
+  });
+
+  it("returns structured errors when terminal cwd is not a directory", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-terminal-file-cwd-"));
+    const fileCwd = path.join(tempDir, "file.txt");
+    writeFileSync(fileCwd, "not-a-dir", "utf8");
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "terminal-file-cwd-1",
+      "terminal.run",
+      {
+        command: "pwd",
+        cwd: fileCwd,
+      },
+    );
+    expect(response.ok).toBe(false);
+    if (response.ok) {
+      throw new Error("Expected terminal file cwd response to fail.");
+    }
+    expect(response.error?.code).toBe("request_failed");
+    expect(response.error?.message).toContain("Working directory is not a directory");
 
     client.socket.close();
   });
