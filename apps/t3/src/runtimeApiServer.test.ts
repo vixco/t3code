@@ -1108,6 +1108,42 @@ describe("runtimeApiServer", () => {
     authorizedClient.socket.close();
   });
 
+  it("does not evict active client when unexpected-query client connects without auth", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const activeClient = await connectClient(server.wsUrl);
+    await activeClient.nextMessage();
+
+    const activeClose = new Promise<{ code: number }>((resolve) => {
+      activeClient.socket.once("close", (code) => resolve({ code }));
+    });
+
+    const unauthorizedUnexpectedQueryClient = new WebSocket(`${server.wsUrl}?debug=1`);
+    const unauthorizedUnexpectedQueryClose = await withTimeout(
+      new Promise<{ code: number }>((resolve, reject) => {
+        unauthorizedUnexpectedQueryClient.once("close", (code) => resolve({ code }));
+        unauthorizedUnexpectedQueryClient.once("error", (error) => reject(error));
+      }),
+    );
+    expect(unauthorizedUnexpectedQueryClose.code).toBe(4001);
+
+    const response = await sendRequest(
+      activeClient.socket,
+      activeClient.nextMessage,
+      "todos-authless-unexpected-query-1",
+      "todos.list",
+    );
+    expect(response.ok).toBe(true);
+
+    activeClient.socket.close();
+    const closed = await withTimeout(activeClose);
+    expect([1000, 1005]).toContain(closed.code);
+  });
+
   it("does not evict authorized client when unauthorized client connects", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
