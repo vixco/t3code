@@ -73,7 +73,7 @@ Runtime command semantics:
 - Static HTML responses are served with `Cache-Control: no-store`; built `/assets/*` files are served with long-lived immutable cache headers.
 - Static file success responses include `Accept-Ranges: bytes`, `Vary: Range`, deterministic `ETag` values, plus hardened browser headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Cross-Origin-Resource-Policy`, `Cross-Origin-Opener-Policy`).
 - Static files support single-range byte requests (`Range: bytes=...`) with standards-compliant `206` / `416` behavior.
-- Static non-range requests support `If-None-Match` conditional caching via `304 Not Modified`.
+- Static non-range requests support `If-None-Match` and `If-Modified-Since` conditional caching via `304 Not Modified`.
 
 ## Runtime modes
 
