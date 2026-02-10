@@ -465,6 +465,12 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("throws for zero backend explicit port values", () => {
+    expect(() => parseCliOptions(["--backend-port", "0"], {}, "/workspace")).toThrow(
+      "Invalid value for --backend-port",
+    );
+  });
+
   it("throws for empty equals-style backend port values", () => {
     expect(() => parseCliOptions(["--backend-port="], {}, "/workspace")).toThrow(
       "Invalid value for --backend-port",
@@ -539,6 +545,12 @@ describe("parseCliOptions", () => {
 
   it("rejects negative web port values provided as separate args", () => {
     expect(() => parseCliOptions(["--web-port", "-1"], {}, "/workspace")).toThrow(
+      "Invalid value for --web-port",
+    );
+  });
+
+  it("rejects zero web port values provided as separate args", () => {
+    expect(() => parseCliOptions(["--web-port", "0"], {}, "/workspace")).toThrow(
       "Invalid value for --web-port",
     );
   });
