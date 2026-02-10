@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
@@ -249,6 +250,26 @@ async function pickFolder(): Promise<string | null> {
 }
 
 async function runTerminalCommand(parsed: z.infer<typeof terminalCommandInputSchema>) {
+  const resolvedCwd = (() => {
+    if (!parsed.cwd) {
+      return undefined;
+    }
+
+    const candidate = path.resolve(parsed.cwd);
+    let stats: fs.Stats;
+    try {
+      stats = fs.statSync(candidate);
+    } catch {
+      throw new Error(`Working directory does not exist: ${candidate}`);
+    }
+
+    if (!stats.isDirectory()) {
+      throw new Error(`Working directory is not a directory: ${candidate}`);
+    }
+
+    return candidate;
+  })();
+
   const shellPath =
     process.platform === "win32"
       ? (process.env.ComSpec ?? "cmd.exe")
@@ -264,7 +285,7 @@ async function runTerminalCommand(parsed: z.infer<typeof terminalCommandInputSch
     timedOut: boolean;
   }>((resolve, reject) => {
     const child = spawn(shellPath, args, {
-      cwd: parsed.cwd,
+      cwd: resolvedCwd,
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
     });

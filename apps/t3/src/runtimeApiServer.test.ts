@@ -1212,6 +1212,37 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("returns structured errors when terminal cwd does not exist", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const missingCwd = path.join(process.cwd(), `missing-cwd-${Date.now()}`);
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "terminal-missing-cwd-1",
+      "terminal.run",
+      {
+        command: "pwd",
+        cwd: missingCwd,
+      },
+    );
+    expect(response.ok).toBe(false);
+    if (response.ok) {
+      throw new Error("Expected terminal missing cwd response to fail.");
+    }
+    expect(response.error?.code).toBe("request_failed");
+    expect(response.error?.message).toContain("Working directory does not exist");
+
+    client.socket.close();
+  });
+
   it("returns non-zero terminal exit codes without request failure", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
