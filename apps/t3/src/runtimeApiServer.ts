@@ -495,7 +495,8 @@ export async function startRuntimeApiServer(
 
     try {
       const request = new URL(requestUrl, "ws://127.0.0.1");
-      return request.searchParams.get("token") === authToken;
+      const tokens = request.searchParams.getAll("token");
+      return tokens.length === 1 && tokens[0] === authToken;
     } catch {
       return false;
     }

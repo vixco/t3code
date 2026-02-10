@@ -1016,6 +1016,21 @@ describe("runtimeApiServer", () => {
     expect(whitespaceTokenClose.code).toBe(4001);
     expect(whitespaceTokenMessageCount).toBe(0);
 
+    const duplicateTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=secret-token&token=wrong-token`;
+    const duplicateTokenClient = new WebSocket(duplicateTokenUrl);
+    let duplicateTokenMessageCount = 0;
+    duplicateTokenClient.on("message", () => {
+      duplicateTokenMessageCount += 1;
+    });
+    const duplicateTokenClose = await withTimeout(
+      new Promise<{ code: number }>((resolve, reject) => {
+        duplicateTokenClient.once("close", (code) => resolve({ code }));
+        duplicateTokenClient.once("error", (error) => reject(error));
+      }),
+    );
+    expect(duplicateTokenClose.code).toBe(4001);
+    expect(duplicateTokenMessageCount).toBe(0);
+
     const authorizedClient = await connectClient(server.wsUrl);
     const hello = await authorizedClient.nextMessage();
     expect(hello.type).toBe("hello");
