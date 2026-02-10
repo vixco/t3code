@@ -2707,6 +2707,29 @@ describe("wsNativeApi", () => {
     socket?.emitMessage(JSON.stringify({ type: "event", channel: "unknown", payload: null }));
     socket?.emitMessage(
       JSON.stringify({
+        type: "hello",
+        version: 1,
+        launchCwd: "/workspace",
+        unexpected: true,
+      }),
+    );
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "event",
+        channel: "provider:event",
+        payload: {
+          id: "evt-1",
+          kind: "notification",
+          provider: "codex",
+          sessionId: "sess-1",
+          createdAt: "2026-02-01T00:00:00.000Z",
+          method: "turn/started",
+        },
+        unexpected: true,
+      }),
+    );
+    socket?.emitMessage(
+      JSON.stringify({
         type: "response",
         id: requestEnvelope.id,
         ok: true,
@@ -2722,6 +2745,15 @@ describe("wsNativeApi", () => {
           code: "request_failed",
           message: "invalid-error-shape",
         },
+      }),
+    );
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: [],
+        unexpected: true,
       }),
     );
     socket?.emitMessage(
