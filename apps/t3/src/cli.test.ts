@@ -59,6 +59,28 @@ describe("parseCliOptions", () => {
     expect(options.noOpen).toBe(true);
   });
 
+  it("supports explicit equals-style --no-open boolean overrides", () => {
+    const options = parseCliOptions(
+      ["--no-open=false"],
+      {
+        T3_NO_OPEN: "true",
+      },
+      "/workspace",
+    );
+    expect(options.noOpen).toBe(false);
+  });
+
+  it("supports falsey equals-style --no-open values", () => {
+    const options = parseCliOptions(["--no-open=0"], {}, "/workspace");
+    expect(options.noOpen).toBe(false);
+  });
+
+  it("throws for invalid equals-style --no-open values", () => {
+    expect(() => parseCliOptions(["--no-open=maybe"], {}, "/workspace")).toThrow(
+      "Invalid value for --no-open",
+    );
+  });
+
   it("parses case-insensitive and trimmed T3_NO_OPEN truthy values", () => {
     const options = parseCliOptions(
       [],

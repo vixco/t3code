@@ -63,6 +63,20 @@ function parseBooleanEnvFlag(value: string | undefined): boolean {
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
+function parseBooleanCliValue(value: string, key: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on") {
+    return true;
+  }
+  if (normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off") {
+    return false;
+  }
+
+  throw new Error(
+    `Invalid value for ${key}: '${value}'. Expected one of true/false, 1/0, yes/no, on/off.`,
+  );
+}
+
 interface CliOptions {
   backendPort: number;
   webPort: number;
@@ -194,6 +208,11 @@ export function parseCliOptions(
       continue;
     }
 
+    if (arg.startsWith("--no-open=")) {
+      noOpen = parseBooleanCliValue(arg.split("=")[1] ?? "", "--no-open");
+      continue;
+    }
+
     if (arg.startsWith("--backend-port=")) {
       backendPort = parseExplicitPort(arg.split("=")[1] ?? "", "--backend-port");
       backendPortLocked = true;
@@ -271,7 +290,7 @@ function printHelp(): void {
       "Usage: t3 [options]",
       "",
       "Options:",
-      "  --no-open               Start runtime without opening browser",
+      "  --no-open[=bool]        Start runtime without opening browser (or explicitly set bool)",
       "  --backend-port <port>   Override WebSocket API port (default: 4317)",
       "  --web-port <port>       Override web UI port (default: 4318)",
       "  --cwd <path>            Launch project directory (default: current directory)",
