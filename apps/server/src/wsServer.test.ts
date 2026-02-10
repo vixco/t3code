@@ -97,12 +97,14 @@ describe("WebSocket Server", () => {
     });
   }
 
-  afterEach(() => {
+  afterEach(async () => {
     for (const ws of connections) {
       ws.close();
     }
     connections.length = 0;
-    server?.stop();
+    if (server) {
+      await server.stop();
+    }
     server = null;
     for (const dir of tempDirs.splice(0, tempDirs.length)) {
       fs.rmSync(dir, { recursive: true, force: true });

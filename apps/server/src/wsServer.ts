@@ -331,7 +331,7 @@ export function createServer(options: ServerOptions) {
     });
   }
 
-  function stop() {
+  async function stop(): Promise<void> {
     providerManager.stopAll();
     providerManager.dispose();
 
@@ -340,8 +340,33 @@ export function createServer(options: ServerOptions) {
     }
     clients.clear();
 
-    wss.close();
-    httpServer.close();
+    const isServerNotRunningError = (error: unknown): boolean => {
+      if (!(error instanceof Error)) return false;
+      const maybeCode = (error as NodeJS.ErrnoException).code;
+      return maybeCode === "ERR_SERVER_NOT_RUNNING" || error.message.toLowerCase().includes("not running");
+    };
+
+    const closeWebSocketServer = new Promise<void>((resolve, reject) => {
+      wss.close((error) => {
+        if (error && !isServerNotRunningError(error)) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+
+    const closeHttpServer = new Promise<void>((resolve, reject) => {
+      httpServer.close((error) => {
+        if (error && !isServerNotRunningError(error)) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+
+    await Promise.all([closeWebSocketServer, closeHttpServer]);
   }
 
   return { start, stop, httpServer };

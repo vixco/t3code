@@ -148,14 +148,26 @@ async function main() {
   }
 
   // Graceful shutdown
-  const shutdown = () => {
+  let shuttingDown = false;
+  async function shutdown() {
+    if (shuttingDown) return;
+    shuttingDown = true;
     logger.info("shutting down");
-    server.stop();
-    process.exit(0);
-  };
+    try {
+      await server.stop();
+      process.exit(0);
+    } catch (error) {
+      logger.error("failed to stop server cleanly", { error });
+      process.exit(1);
+    }
+  }
 
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", () => {
+    void shutdown();
+  });
+  process.on("SIGTERM", () => {
+    void shutdown();
+  });
 }
 
 main().catch((err) => {
