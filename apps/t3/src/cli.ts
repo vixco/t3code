@@ -108,6 +108,23 @@ const KNOWN_CLI_FLAGS = new Set([
   "--",
 ]);
 
+function isKnownFlagToken(value: string): boolean {
+  if (KNOWN_CLI_FLAGS.has(value)) {
+    return true;
+  }
+
+  for (const flag of KNOWN_CLI_FLAGS) {
+    if (!flag.startsWith("--") || flag === "--") {
+      continue;
+    }
+    if (value.startsWith(`${flag}=`)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function readArgValue(
   args: string[],
   index: number,
@@ -125,7 +142,7 @@ function readArgValue(
   if (!options?.allowDashPrefixed && dashPrefixed) {
     throw new Error(`Missing value for ${key}.`);
   }
-  if (options?.allowDashPrefixed && dashPrefixed && KNOWN_CLI_FLAGS.has(value)) {
+  if (options?.allowDashPrefixed && dashPrefixed && isKnownFlagToken(value)) {
     throw new Error(`Missing value for ${key}.`);
   }
 

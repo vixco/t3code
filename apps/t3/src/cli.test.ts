@@ -378,6 +378,12 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("treats equals-style flag tokens after --backend-port as missing values", () => {
+    expect(() =>
+      parseCliOptions(["--backend-port", "--web-port=7000"], {}, "/workspace"),
+    ).toThrow("Missing value for --backend-port");
+  });
+
   it("treats end-of-options marker after --backend-port as missing value", () => {
     expect(() => parseCliOptions(["--backend-port", "--"], {}, "/workspace")).toThrow(
       "Missing value for --backend-port",
@@ -400,6 +406,12 @@ describe("parseCliOptions", () => {
     expect(() => parseCliOptions(["--web-port", "--cwd"], {}, "/workspace")).toThrow(
       "Missing value for --web-port",
     );
+  });
+
+  it("treats equals-style flag tokens after --web-port as missing values", () => {
+    expect(() =>
+      parseCliOptions(["--web-port", "--backend-port=7000"], {}, "/workspace"),
+    ).toThrow("Missing value for --web-port");
   });
 
   it("treats end-of-options marker after --web-port as missing value", () => {
@@ -497,6 +509,12 @@ describe("parseCliOptions", () => {
 
   it("treats known flags after --cwd as missing values", () => {
     expect(() => parseCliOptions(["--cwd", "--help"], {}, "/workspace")).toThrow(
+      "Missing value for --cwd",
+    );
+  });
+
+  it("treats equals-style flag tokens after --cwd as missing values", () => {
+    expect(() => parseCliOptions(["--cwd", "--open=false"], {}, "/workspace")).toThrow(
       "Missing value for --cwd",
     );
   });
