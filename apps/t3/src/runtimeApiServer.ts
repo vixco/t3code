@@ -332,6 +332,9 @@ async function runTerminalCommand(
 export async function startRuntimeApiServer(
   options: RuntimeApiServerOptions,
 ): Promise<RuntimeApiServer> {
+  if (!Number.isInteger(options.port) || options.port < 0 || options.port > 65_535) {
+    throw new Error("Invalid runtime port: expected integer between 0 and 65535.");
+  }
   const launchCwd = path.resolve(options.launchCwd);
   let launchCwdStats: fs.Stats;
   try {
