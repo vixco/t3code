@@ -568,6 +568,18 @@ describe("parseCliOptions", () => {
       "Unknown argument: --wat",
     );
   });
+
+  it("throws for unknown equals-style arguments", () => {
+    expect(() => parseCliOptions(["--wat=value"], {}, "/workspace")).toThrow(
+      "Unknown argument: --wat=value",
+    );
+  });
+
+  it("throws for unknown short arguments", () => {
+    expect(() => parseCliOptions(["-x"], {}, "/workspace")).toThrow(
+      "Unknown argument: -x",
+    );
+  });
 });
 
 describe("readCliVersion", () => {
