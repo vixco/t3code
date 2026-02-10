@@ -70,6 +70,7 @@ Runtime command semantics:
 - Connections with duplicate token query parameters are also rejected to avoid ambiguous auth parsing.
 - Connections with unexpected query parameters are rejected (auth mode requires only `token`; no-auth mode allows no query params).
 - WebSocket control connections are accepted only on the root runtime path (`/`) to keep the API surface narrow.
+- Unauthorized websocket attempts close with code `4001` and reason `unauthorized`.
 - Browser renderer talks through a typed `NativeApi` adapter over that WebSocket.
 - Runtime currently enforces a single active browser client (new client replaces old one).
 - When replaced by a newer connection, the previous active websocket is closed with code `4000`.
