@@ -273,6 +273,32 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("handles shell.openInEditor file-manager requests", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "shell-open-fm-1",
+      "shell.openInEditor",
+      {
+        cwd: process.cwd(),
+        editor: "file-manager",
+      },
+    );
+    expect(response.ok).toBe(true);
+    expect(response.result).toBeNull();
+
+    client.socket.close();
+  });
+
   it("ignores malformed client messages and continues processing", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
