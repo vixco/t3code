@@ -1359,6 +1359,39 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("defaults terminal commands to launch cwd when cwd is omitted", async () => {
+    const launchCwd = path.dirname(process.cwd());
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd,
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "terminal-default-cwd-1",
+      "terminal.run",
+      {
+        command: "pwd",
+      },
+    );
+    expect(response.ok).toBe(true);
+    if (!response.ok) {
+      throw new Error("Expected terminal default cwd response to succeed.");
+    }
+
+    const payload = response.result as {
+      stdout: string;
+    };
+    expect(payload.stdout.trim()).toBe(launchCwd);
+
+    client.socket.close();
+  });
+
   it("resolves relative terminal cwd paths against runtime working directory", async () => {
     const server = await startRuntimeApiServer({
       port: 0,

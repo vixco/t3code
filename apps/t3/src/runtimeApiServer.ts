@@ -250,13 +250,13 @@ async function pickFolder(): Promise<string | null> {
   return null;
 }
 
-async function runTerminalCommand(parsed: z.infer<typeof terminalCommandInputSchema>) {
+async function runTerminalCommand(
+  parsed: z.infer<typeof terminalCommandInputSchema>,
+  defaultCwd: string,
+) {
+  const providedCwd = parsed.cwd ?? defaultCwd;
   const resolvedCwd = (() => {
-    if (!parsed.cwd) {
-      return undefined;
-    }
-
-    const candidate = path.resolve(parsed.cwd);
+    const candidate = path.resolve(providedCwd);
     let stats: fs.Stats;
     try {
       stats = fs.statSync(candidate);
@@ -531,7 +531,7 @@ export async function startRuntimeApiServer(
 
     if (method === "dialogs.pickFolder") return pickFolder();
     if (method === "terminal.run") {
-      return runTerminalCommand(terminalCommandInputSchema.parse(params));
+      return runTerminalCommand(terminalCommandInputSchema.parse(params), launchCwd);
     }
 
     if (method === "agent.spawn") return processManager.spawn(agentConfigSchema.parse(params));
