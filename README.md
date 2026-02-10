@@ -33,6 +33,7 @@ CLI flags:
 - `--help` — print CLI usage.
 
 `--cwd` (or positional path) must be a non-empty value pointing to an existing directory; startup fails fast with a clear error otherwise.
+Port values must be decimal integers in the range `1..65535`.
 
 If default ports are busy, `t3` will automatically retry with the next available port pair unless ports are explicitly pinned via CLI flags or environment variables.
 
