@@ -89,6 +89,8 @@ Runtime command semantics:
 - Renderer now proactively resets the websocket after request send failures, rejects any in-flight requests, and reconnects cleanly on later requests.
 - Send-failure request errors now include non-Error payload details when available (for clearer diagnostics).
 - Runtime validates request payloads with shared Zod contracts.
+- Websocket RPC method names are centralized in shared contracts (`WS_NATIVE_API_METHODS`), and runtime dispatch validates method strings against that shared list.
+- Runtime tests now assert that every declared websocket method is wired through the server dispatch path (preventing contract/runtime drift).
 - Runtime and renderer both validate critical success payloads with shared contracts to prevent malformed envelope data from entering app state.
 - Core transport schemas (provider/agent/todo/terminal/app payloads) are strict objects, so unexpected fields are rejected at the contract boundary.
 - Runtime successful responses always include `result` (using `null` for void methods) to keep websocket envelopes schema-safe.
