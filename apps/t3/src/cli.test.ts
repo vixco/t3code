@@ -765,6 +765,23 @@ describe("resolveStaticAssetReadTarget", () => {
     });
   });
 
+  it("resolves absolute-form request targets to in-dist assets", () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-static-absolute-target-"));
+    const assetsDir = path.join(tempDir, "assets");
+    mkdirSync(assetsDir, { recursive: true });
+    writeFileSync(path.join(tempDir, "index.html"), "<html>ok</html>", "utf8");
+    writeFileSync(path.join(assetsDir, "main.js"), "console.log('ok')", "utf8");
+
+    const result = resolveStaticAssetReadTarget(
+      "http://127.0.0.1/assets/main.js?cache=1",
+      tempDir,
+    );
+    expect(result).toEqual({
+      kind: "file",
+      filePath: path.join(assetsDir, "main.js"),
+    });
+  });
+
   it("returns not_found for missing asset files with extensions", () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-static-missing-asset-"));
     writeFileSync(path.join(tempDir, "index.html"), "<html>ok</html>", "utf8");
