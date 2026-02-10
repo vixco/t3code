@@ -1086,6 +1086,7 @@ describe("parseByteRangeHeader", () => {
     expect(parseByteRangeHeader("items=0-1", 100)).toBe("invalid");
     expect(parseByteRangeHeader("bytes=0-1,2-3", 100)).toBe("invalid");
     expect(parseByteRangeHeader("bytes=-", 100)).toBe("invalid");
+    expect(parseByteRangeHeader("bytes = - ", 100)).toBe("invalid");
     expect(parseByteRangeHeader("bytes=10-9", 100)).toBe("invalid");
     expect(parseByteRangeHeader("bytes=100-101", 100)).toBe("invalid");
     expect(parseByteRangeHeader("bytes=-0", 100)).toBe("invalid");
