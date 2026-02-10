@@ -1028,6 +1028,10 @@ describe("ifMatchSatisfied", () => {
     expect(ifMatchSatisfied("\"foo\", *", "\"abc\"")).toBe(true);
   });
 
+  it("trims comma-separated header tokens before comparison", () => {
+    expect(ifMatchSatisfied("   \"foo\"  ,   \"abc\"   ", "\"abc\"")).toBe(true);
+  });
+
   it("rejects weak validators and mismatches", () => {
     expect(ifMatchSatisfied("W/\"abc\"", "\"abc\"")).toBe(false);
     expect(ifMatchSatisfied("w/\"abc\"", "\"abc\"")).toBe(false);
