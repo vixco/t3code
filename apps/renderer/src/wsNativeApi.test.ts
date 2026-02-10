@@ -340,6 +340,24 @@ describe("wsNativeApi", () => {
     await expect(request).rejects.toThrow("websocket disconnected");
   });
 
+  it("rejects requests when runtime does not respond before timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4423");
+      const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+      const api = getOrCreateWsNativeApi();
+
+      const request = api.todos.list();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      vi.advanceTimersByTime(30_001);
+      await expect(request).rejects.toThrow("Request timed out for method 'todos.list'.");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("returns a stable cached native API instance", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4404");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
