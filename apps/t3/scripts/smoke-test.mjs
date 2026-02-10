@@ -613,6 +613,16 @@ async function main() {
     if ((headAssetResponse.headers.get("vary") ?? "").toLowerCase() !== "range") {
       throw new Error("Smoke test failed: expected vary=range on HEAD asset response.");
     }
+    if (headAssetResponse.headers.get("etag") !== assetEtag) {
+      throw new Error(
+        `Smoke test failed: expected HEAD asset ETag ${assetEtag}, got ${String(
+          headAssetResponse.headers.get("etag"),
+        )}.`,
+      );
+    }
+    if (!headAssetResponse.headers.get("last-modified")) {
+      throw new Error("Smoke test failed: expected last-modified on HEAD asset response.");
+    }
     const headRangedAsset = await fetch(assetUrl, {
       method: "HEAD",
       headers: {
