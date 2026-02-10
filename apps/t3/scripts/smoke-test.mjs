@@ -1360,6 +1360,11 @@ async function main() {
     const emptyTokenWs = new WebSocket(`${parsedWsUrl.origin}${parsedWsUrl.pathname}?token=`);
     await waitForUnauthorizedCloseWithoutMessages(emptyTokenWs);
 
+    const whitespaceTokenWs = new WebSocket(
+      `${parsedWsUrl.origin}${parsedWsUrl.pathname}?token=%20%20`,
+    );
+    await waitForUnauthorizedCloseWithoutMessages(whitespaceTokenWs);
+
     const ws = new WebSocket(wsUrl);
     await new Promise((resolve, reject) => {
       let sawHello = false;
