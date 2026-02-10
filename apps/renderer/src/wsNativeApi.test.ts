@@ -240,6 +240,41 @@ describe("wsNativeApi", () => {
     await expect(secondRequest).resolves.toEqual([]);
   });
 
+  it("rejects existing pending requests when a later websocket send fails", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4490");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const firstPending = api.todos.list();
+    const socket = await waitForSocket();
+    await waitForCondition(() => socket.sentMessages.length === 1);
+
+    MockWebSocket.failSend = true;
+    const secondPending = api.app.health();
+    await expect(secondPending).rejects.toThrow(
+      "Failed to send runtime request 'app.health': mock send failure",
+    );
+    await expect(firstPending).rejects.toThrow("websocket errored (mock send failure)");
+
+    MockWebSocket.failSend = false;
+    const recoveryRequest = api.todos.list();
+    await waitForCondition(() => MockWebSocket.instances.length >= 2);
+    const recoverySocket = MockWebSocket.instances[1];
+    await waitForCondition(() => (recoverySocket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(recoverySocket?.sentMessages[0] ?? "{}") as {
+      id: string;
+    };
+    recoverySocket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: [],
+      }),
+    );
+    await expect(recoveryRequest).resolves.toEqual([]);
+  });
+
   it("sends app.health requests to runtime", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4411");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");

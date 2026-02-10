@@ -125,6 +125,14 @@ class WsNativeApiClient {
 
   constructor(private readonly wsUrl: string) {}
 
+  private rejectPendingRequests(errorForRequest: (id: string) => Error) {
+    for (const [id, pending] of this.pending.entries()) {
+      clearTimeout(pending.timeout);
+      pending.reject(errorForRequest(id));
+    }
+    this.pending.clear();
+  }
+
   private connect() {
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
       return Promise.resolve(this.socket);
@@ -182,11 +190,7 @@ class WsNativeApiClient {
         }
 
         this.socket = null;
-        for (const [id, pending] of this.pending.entries()) {
-          clearTimeout(pending.timeout);
-          pending.reject(requestSocketError(id, event));
-        }
-        this.pending.clear();
+        this.rejectPendingRequests((id) => requestSocketError(id, event));
         try {
           socket.close();
         } catch {
@@ -214,11 +218,7 @@ class WsNativeApiClient {
           rejectConnection(runtimeConnectErrorFromClose(event));
           return;
         }
-        for (const [id, pending] of this.pending.entries()) {
-          clearTimeout(pending.timeout);
-          pending.reject(requestDisconnectError(id, event));
-        }
-        this.pending.clear();
+        this.rejectPendingRequests((id) => requestDisconnectError(id, event));
       });
     });
 
@@ -267,6 +267,7 @@ class WsNativeApiClient {
           ),
         );
       }
+      this.rejectPendingRequests((requestId) => requestSocketError(requestId, error));
       if (this.socket === socket) {
         this.socket = null;
       }
