@@ -168,6 +168,9 @@ async function main() {
     if (page.headers.get("x-content-type-options") !== "nosniff") {
       throw new Error("Smoke test failed: expected x-content-type-options=nosniff.");
     }
+    if ((page.headers.get("referrer-policy") ?? "").toLowerCase() !== "no-referrer") {
+      throw new Error("Smoke test failed: expected referrer-policy=no-referrer.");
+    }
     if ((page.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {
       throw new Error(
         `Smoke test failed: expected cache-control=no-store, got ${String(
@@ -234,6 +237,9 @@ async function main() {
     }
     if ((postPage.headers.get("x-content-type-options") ?? "").toLowerCase() !== "nosniff") {
       throw new Error("Smoke test failed: expected nosniff on POST response.");
+    }
+    if ((postPage.headers.get("referrer-policy") ?? "").toLowerCase() !== "no-referrer") {
+      throw new Error("Smoke test failed: expected referrer-policy=no-referrer on POST response.");
     }
     const headPage = await fetch(parsedAppUrl, { method: "HEAD" });
     if (headPage.status !== 200) {

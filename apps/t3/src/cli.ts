@@ -594,6 +594,7 @@ function startStaticWebServer(distRoot: string, port: number) {
       response.setHeader("Content-Type", "text/plain; charset=utf-8");
       response.setHeader("Content-Length", String(body.byteLength));
       response.setHeader("X-Content-Type-Options", "nosniff");
+      response.setHeader("Referrer-Policy", "no-referrer");
       response.setHeader("Cache-Control", "no-store");
       for (const [key, value] of Object.entries(extraHeaders)) {
         response.setHeader(key, value);
@@ -642,6 +643,7 @@ function startStaticWebServer(distRoot: string, port: number) {
         response.setHeader("Content-Type", contentTypeFor(targetPath));
         response.setHeader("Content-Length", String(stats.size));
         response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setHeader("Referrer-Policy", "no-referrer");
         response.setHeader("Cache-Control", cacheControlFor(targetPath));
         response.end();
       });
@@ -657,6 +659,7 @@ function startStaticWebServer(distRoot: string, port: number) {
       response.statusCode = 200;
       response.setHeader("Content-Type", contentTypeFor(targetPath));
       response.setHeader("X-Content-Type-Options", "nosniff");
+      response.setHeader("Referrer-Policy", "no-referrer");
       response.setHeader("Content-Length", String(content.byteLength));
       response.setHeader("Cache-Control", cacheControlFor(targetPath));
       response.end(content);
