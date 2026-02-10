@@ -536,6 +536,12 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("treats -o=bool after --web-port as missing value", () => {
+    expect(() => parseCliOptions(["--web-port", "-o=0"], {}, "/workspace")).toThrow(
+      "Missing value for --web-port",
+    );
+  });
+
   it("treats equals-style flag tokens after --web-port as missing values", () => {
     expect(() =>
       parseCliOptions(["--web-port", "--backend-port=7000"], {}, "/workspace"),
