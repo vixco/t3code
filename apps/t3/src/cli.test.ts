@@ -166,12 +166,23 @@ describe("parseCliOptions", () => {
     expect(options.launchCwd).toBe(path.resolve("/workspace", "-project"));
   });
 
+  it("treats known flag tokens as positional values after end-of-options marker", () => {
+    const options = parseCliOptions(["--", "--help"], {}, "/workspace");
+    expect(options.launchCwd).toBe(path.resolve("/workspace", "--help"));
+  });
+
   it("throws when end-of-options marker has no positional value", () => {
     expect(() => parseCliOptions(["--"], {}, "/workspace")).toThrow("Missing value for [path]");
   });
 
   it("throws when end-of-options marker has multiple positional values", () => {
     expect(() => parseCliOptions(["--", "apps/renderer", "apps/t3"], {}, "/workspace")).toThrow(
+      "Unexpected positional argument: apps/t3",
+    );
+  });
+
+  it("throws when end-of-options marker has extra values after flag-like path", () => {
+    expect(() => parseCliOptions(["--", "--help", "apps/t3"], {}, "/workspace")).toThrow(
       "Unexpected positional argument: apps/t3",
     );
   });
