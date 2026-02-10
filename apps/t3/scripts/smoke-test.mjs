@@ -249,6 +249,12 @@ async function main() {
     if (!assetLastModified || assetLastModified.length === 0) {
       throw new Error("Smoke test failed: expected Last-Modified on built asset response.");
     }
+    const parsedLastModifiedMs = Date.parse(assetLastModified);
+    if (!Number.isFinite(parsedLastModifiedMs)) {
+      throw new Error(
+        `Smoke test failed: expected parseable last-modified date, got ${assetLastModified}.`,
+      );
+    }
     const assetContentLength = Number(assetResponse.headers.get("content-length") ?? "0");
     if (!Number.isFinite(assetContentLength) || assetContentLength <= 0) {
       throw new Error(
@@ -336,6 +342,37 @@ async function main() {
         `Smoke test failed: expected If-None-Match precedence status 200, received ${precedenceAsset.status}.`,
       );
     }
+    const ifMatchMismatchAsset = await fetch(assetUrl, {
+      headers: {
+        "If-Match": "\"definitely-different-etag\"",
+      },
+    });
+    if (ifMatchMismatchAsset.status !== 412) {
+      throw new Error(
+        `Smoke test failed: expected If-Match mismatch status 412, received ${ifMatchMismatchAsset.status}.`,
+      );
+    }
+    const staleUnmodifiedSince = new Date(parsedLastModifiedMs - 1_000).toUTCString();
+    const ifUnmodifiedSinceStaleAsset = await fetch(assetUrl, {
+      headers: {
+        "If-Unmodified-Since": staleUnmodifiedSince,
+      },
+    });
+    if (ifUnmodifiedSinceStaleAsset.status !== 412) {
+      throw new Error(
+        `Smoke test failed: expected stale If-Unmodified-Since status 412, received ${ifUnmodifiedSinceStaleAsset.status}.`,
+      );
+    }
+    const ifUnmodifiedSinceCurrentAsset = await fetch(assetUrl, {
+      headers: {
+        "If-Unmodified-Since": assetLastModified,
+      },
+    });
+    if (ifUnmodifiedSinceCurrentAsset.status !== 200) {
+      throw new Error(
+        `Smoke test failed: expected current If-Unmodified-Since status 200, received ${ifUnmodifiedSinceCurrentAsset.status}.`,
+      );
+    }
     const conditionalHeadAsset = await fetch(assetUrl, {
       method: "HEAD",
       headers: {
@@ -407,6 +444,17 @@ async function main() {
         `Smoke test failed: expected If-Modified-Since HEAD asset status 304, received ${modifiedSinceHeadAsset.status}.`,
       );
     }
+    const ifMatchMismatchHeadAsset = await fetch(assetUrl, {
+      method: "HEAD",
+      headers: {
+        "If-Match": "\"definitely-different-etag\"",
+      },
+    });
+    if (ifMatchMismatchHeadAsset.status !== 412) {
+      throw new Error(
+        `Smoke test failed: expected HEAD If-Match mismatch status 412, received ${ifMatchMismatchHeadAsset.status}.`,
+      );
+    }
     const rangeEnd = Math.min(15, assetContentLength - 1);
     const rangedAsset = await fetch(assetUrl, {
       headers: {
@@ -476,12 +524,6 @@ async function main() {
     if (ifRangeDateAsset.status !== 206) {
       throw new Error(
         `Smoke test failed: expected If-Range(date) asset status 206, received ${ifRangeDateAsset.status}.`,
-      );
-    }
-    const parsedLastModifiedMs = Date.parse(assetLastModified);
-    if (!Number.isFinite(parsedLastModifiedMs)) {
-      throw new Error(
-        `Smoke test failed: expected parseable last-modified date, got ${assetLastModified}.`,
       );
     }
     const staleIfRangeDate = new Date(parsedLastModifiedMs - 1_000).toUTCString();

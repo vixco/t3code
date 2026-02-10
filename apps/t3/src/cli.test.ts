@@ -5,9 +5,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatStartupError,
+  ifMatchSatisfied,
   ifModifiedSinceSatisfied,
   ifNoneMatchSatisfied,
   ifRangeSatisfied,
+  ifUnmodifiedSinceSatisfied,
   parseByteRangeHeader,
   parseCliOptions,
   readCliVersion,
@@ -975,6 +977,26 @@ describe("ifNoneMatchSatisfied", () => {
   });
 });
 
+describe("ifMatchSatisfied", () => {
+  it("defaults to true when header is missing", () => {
+    expect(ifMatchSatisfied(undefined, "\"abc\"")).toBe(true);
+  });
+
+  it("supports wildcard and exact strong matches", () => {
+    expect(ifMatchSatisfied("*", "\"abc\"")).toBe(true);
+    expect(ifMatchSatisfied("\"abc\"", "\"abc\"")).toBe(true);
+  });
+
+  it("rejects weak validators and mismatches", () => {
+    expect(ifMatchSatisfied("W/\"abc\"", "\"abc\"")).toBe(false);
+    expect(ifMatchSatisfied("\"xyz\"", "\"abc\"")).toBe(false);
+  });
+
+  it("supports array-valued headers", () => {
+    expect(ifMatchSatisfied(["\"foo\"", "\"abc\""], "\"abc\"")).toBe(true);
+  });
+});
+
 describe("ifModifiedSinceSatisfied", () => {
   it("returns false for missing or invalid dates", () => {
     expect(ifModifiedSinceSatisfied(undefined, Date.now())).toBe(false);
@@ -994,6 +1016,23 @@ describe("ifModifiedSinceSatisfied", () => {
   it("supports array-valued header representations", () => {
     const modifiedAt = Date.parse("2026-01-01T12:00:00.000Z");
     expect(ifModifiedSinceSatisfied(["Thu, 01 Jan 2026 12:00:00 GMT"], modifiedAt)).toBe(true);
+  });
+});
+
+describe("ifUnmodifiedSinceSatisfied", () => {
+  it("defaults to true for missing and invalid values", () => {
+    expect(ifUnmodifiedSinceSatisfied(undefined, Date.now())).toBe(true);
+    expect(ifUnmodifiedSinceSatisfied("not-a-date", Date.now())).toBe(true);
+  });
+
+  it("returns true when resource has not changed since timestamp", () => {
+    const modifiedAt = Date.parse("2026-01-01T12:00:00.100Z");
+    expect(ifUnmodifiedSinceSatisfied("Thu, 01 Jan 2026 12:00:00 GMT", modifiedAt)).toBe(true);
+  });
+
+  it("returns false when resource changed after timestamp", () => {
+    const modifiedAt = Date.parse("2026-01-01T12:00:01.000Z");
+    expect(ifUnmodifiedSinceSatisfied("Thu, 01 Jan 2026 12:00:00 GMT", modifiedAt)).toBe(false);
   });
 });
 

@@ -521,21 +521,23 @@ function normalizeWeakEtag(etag: string): string {
   return trimmed.startsWith("W/") ? trimmed.slice(2).trim() : trimmed;
 }
 
+function normalizeEtagHeaderValue(value: string | string[] | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  const rawHeaderValue = Array.isArray(value) ? value.join(",") : value;
+  return rawHeaderValue
+    .split(",")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+}
+
 export function ifNoneMatchSatisfied(
   ifNoneMatchHeader: string | string[] | undefined,
   etag: string,
 ): boolean {
-  if (!ifNoneMatchHeader) {
-    return false;
-  }
-
-  const rawHeaderValue = Array.isArray(ifNoneMatchHeader)
-    ? ifNoneMatchHeader.join(",")
-    : ifNoneMatchHeader;
-  const candidates = rawHeaderValue
-    .split(",")
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0);
+  const candidates = normalizeEtagHeaderValue(ifNoneMatchHeader);
   if (candidates.length === 0) {
     return false;
   }
@@ -546,6 +548,31 @@ export function ifNoneMatchSatisfied(
 
   const normalizedEtag = normalizeWeakEtag(etag);
   return candidates.some((candidate) => normalizeWeakEtag(candidate) === normalizedEtag);
+}
+
+export function ifMatchSatisfied(ifMatchHeader: string | string[] | undefined, etag: string): boolean {
+  const candidates = normalizeEtagHeaderValue(ifMatchHeader);
+  if (candidates.length === 0) {
+    return true;
+  }
+
+  if (candidates.includes("*")) {
+    return true;
+  }
+
+  const normalizedCurrentTag = etag.trim();
+  if (normalizedCurrentTag.startsWith("W/")) {
+    return false;
+  }
+
+  return candidates.some((candidate) => {
+    const normalizedCandidate = candidate.trim();
+    if (normalizedCandidate.startsWith("W/")) {
+      return false;
+    }
+
+    return normalizedCandidate === normalizedCurrentTag;
+  });
 }
 
 export function ifModifiedSinceSatisfied(
@@ -566,6 +593,29 @@ export function ifModifiedSinceSatisfied(
   const parsedTimestamp = Date.parse(rawHeaderValue);
   if (!Number.isFinite(parsedTimestamp)) {
     return false;
+  }
+
+  return Math.floor(modifiedAtMs / 1_000) <= Math.floor(parsedTimestamp / 1_000);
+}
+
+export function ifUnmodifiedSinceSatisfied(
+  ifUnmodifiedSinceHeader: string | string[] | undefined,
+  modifiedAtMs: number,
+): boolean {
+  if (!ifUnmodifiedSinceHeader) {
+    return true;
+  }
+
+  const rawHeaderValue = Array.isArray(ifUnmodifiedSinceHeader)
+    ? ifUnmodifiedSinceHeader[0]
+    : ifUnmodifiedSinceHeader;
+  if (!rawHeaderValue) {
+    return true;
+  }
+
+  const parsedTimestamp = Date.parse(rawHeaderValue);
+  if (!Number.isFinite(parsedTimestamp)) {
+    return true;
   }
 
   return Math.floor(modifiedAtMs / 1_000) <= Math.floor(parsedTimestamp / 1_000);
@@ -842,11 +892,20 @@ function startStaticWebServer(distRoot: string, port: number) {
 
         const etag = staticEtagFor(stats);
         const lastModified = stats.mtime.toUTCString();
+        const hasIfMatchHeader = request.headers["if-match"] !== undefined;
+        const ifMatchMatches = ifMatchSatisfied(request.headers["if-match"], etag);
+        const ifUnmodifiedSinceMatches = hasIfMatchHeader
+          ? true
+          : ifUnmodifiedSinceSatisfied(request.headers["if-unmodified-since"], stats.mtimeMs);
         const hasIfNoneMatchHeader = request.headers["if-none-match"] !== undefined;
         const ifNoneMatchMatches = ifNoneMatchSatisfied(request.headers["if-none-match"], etag);
         const ifModifiedSinceMatches = hasIfNoneMatchHeader
           ? false
           : ifModifiedSinceSatisfied(request.headers["if-modified-since"], stats.mtimeMs);
+        if (!ifMatchMatches || !ifUnmodifiedSinceMatches) {
+          respondText(412, "Precondition Failed");
+          return;
+        }
         const shouldReturnNotModified = ifNoneMatchMatches || ifModifiedSinceMatches;
 
         if (shouldReturnNotModified) {
