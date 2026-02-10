@@ -1330,6 +1330,58 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("returns structured errors when writing to unknown agent session", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "agent-write-unknown-1",
+      "agent.write",
+      {
+        sessionId: "missing-session-id",
+        data: "hello",
+      },
+    );
+    expect(response.ok).toBe(false);
+    if (response.ok) {
+      throw new Error("Expected unknown agent.write session to fail.");
+    }
+    expect(response.error?.code).toBe("request_failed");
+
+    client.socket.close();
+  });
+
+  it("treats agent.kill for unknown session as successful no-op", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "agent-kill-unknown-1",
+      "agent.kill",
+      "missing-session-id",
+    );
+    expect(response.ok).toBe(true);
+    expect(response.result).toBeNull();
+
+    client.socket.close();
+  });
+
   it("reports runtime health metadata", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
