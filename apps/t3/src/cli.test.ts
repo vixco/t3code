@@ -3,7 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { formatStartupError, parseCliOptions, readCliVersion } from "./cli";
+import {
+  formatStartupError,
+  parseCliOptions,
+  readCliVersion,
+  resolveStaticAssetPath,
+} from "./cli";
 
 describe("parseCliOptions", () => {
   it("reads defaults from environment variables", () => {
@@ -144,6 +149,11 @@ describe("parseCliOptions", () => {
     expect(options.webPortLocked).toBe(false);
   });
 
+  it("normalizes the parser cwd for default launch path", () => {
+    const options = parseCliOptions([], {}, "apps/t3");
+    expect(options.launchCwd).toBe(path.resolve("apps/t3"));
+  });
+
   it("supports help flag", () => {
     const options = parseCliOptions(["--help"], {}, "/workspace");
     expect(options.showHelp).toBe(true);
@@ -281,5 +291,46 @@ describe("formatStartupError", () => {
   it("falls back to generic startup error text", () => {
     const message = formatStartupError({}, options);
     expect(message).toBe("Failed to start t3 runtime.");
+  });
+});
+
+describe("resolveStaticAssetPath", () => {
+  const distRoot = "/workspace/apps/renderer/dist";
+
+  it("maps root path to index.html", () => {
+    const result = resolveStaticAssetPath("/", distRoot);
+    expect(result).toEqual({
+      kind: "file",
+      filePath: path.join(distRoot, "index.html"),
+    });
+  });
+
+  it("maps request paths without query strings", () => {
+    const result = resolveStaticAssetPath("/assets/main.js?v=123", distRoot);
+    expect(result).toEqual({
+      kind: "file",
+      filePath: path.join(distRoot, "assets", "main.js"),
+    });
+  });
+
+  it("rejects traversal attempts with decoded dot-dot segments", () => {
+    const result = resolveStaticAssetPath("/../package.json", distRoot);
+    expect(result).toEqual({
+      kind: "forbidden",
+    });
+  });
+
+  it("rejects traversal attempts with encoded dot-dot segments", () => {
+    const result = resolveStaticAssetPath("/%2e%2e/%2e%2e/package.json", distRoot);
+    expect(result).toEqual({
+      kind: "forbidden",
+    });
+  });
+
+  it("rejects malformed encoded paths", () => {
+    const result = resolveStaticAssetPath("/%E0%A4%A", distRoot);
+    expect(result).toEqual({
+      kind: "bad_request",
+    });
   });
 });

@@ -104,6 +104,7 @@ export function parseCliOptions(
   env: NodeJS.ProcessEnv,
   cwd: string,
 ): CliOptions {
+  const parserCwd = path.resolve(cwd);
   const backendPortFromEnv = parseEnvPort(
     env.T3_BACKEND_PORT,
     "T3_BACKEND_PORT",
@@ -115,7 +116,7 @@ export function parseCliOptions(
   let webPort = webPortFromEnv.port;
   let backendPortLocked = backendPortFromEnv.locked;
   let webPortLocked = webPortFromEnv.locked;
-  let launchCwd = cwd;
+  let launchCwd = parserCwd;
   let usedPositionalCwd = false;
   let noOpen = parseBooleanEnvFlag(env.T3_NO_OPEN);
   let showHelp = false;
@@ -170,12 +171,12 @@ export function parseCliOptions(
     }
 
     if (arg.startsWith("--cwd=")) {
-      launchCwd = parseExplicitPath(arg.split("=")[1] ?? "", "--cwd", cwd);
+      launchCwd = parseExplicitPath(arg.split("=")[1] ?? "", "--cwd", parserCwd);
       continue;
     }
 
     if (arg === "--cwd") {
-      launchCwd = parseExplicitPath(readArgValue(argv, index, "--cwd"), "--cwd", cwd);
+      launchCwd = parseExplicitPath(readArgValue(argv, index, "--cwd"), "--cwd", parserCwd);
       index += 1;
       continue;
     }
@@ -184,7 +185,7 @@ export function parseCliOptions(
       if (usedPositionalCwd) {
         throw new Error(`Unexpected positional argument: ${arg}`);
       }
-      launchCwd = parseExplicitPath(arg, "[path]", cwd);
+      launchCwd = parseExplicitPath(arg, "[path]", parserCwd);
       usedPositionalCwd = true;
       continue;
     }
@@ -354,22 +355,60 @@ function contentTypeFor(filePath: string): string {
   return "application/octet-stream";
 }
 
+function isPathInside(parent: string, child: string): boolean {
+  const relative = path.relative(parent, child);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+export function resolveStaticAssetPath(
+  requestUrl: string | undefined,
+  distRoot: string,
+): { kind: "file"; filePath: string } | { kind: "forbidden" } | { kind: "bad_request" } {
+  const pathWithoutQuery = requestUrl ? requestUrl.split("?")[0] : "/";
+  const rawPath = pathWithoutQuery || "/";
+  let decodedPath: string;
+  try {
+    decodedPath = decodeURIComponent(rawPath);
+  } catch {
+    return { kind: "bad_request" };
+  }
+
+  const normalizedPath =
+    decodedPath === "/" ? "index.html" : decodedPath.replace(/^\/+/, "");
+  const candidateFilePath = path.resolve(distRoot, normalizedPath);
+  if (!isPathInside(distRoot, candidateFilePath)) {
+    return { kind: "forbidden" };
+  }
+
+  return { kind: "file", filePath: candidateFilePath };
+}
+
+function isExistingFile(filePath: string): boolean {
+  try {
+    return fs.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function startStaticWebServer(distRoot: string, port: number) {
   const server = createServer((request, response) => {
-    const requestPath = request.url ? request.url.split("?")[0] : "/";
-    const normalized =
-      requestPath === "/" ? "index.html" : (requestPath ?? "/").replace(/^\/+/, "");
-    const safePath = path.normalize(normalized).replace(/^(\.\.[/\\])+/, "");
-    const filePath = path.join(distRoot, safePath);
+    const resolvedPath = resolveStaticAssetPath(request.url, distRoot);
+    if (resolvedPath.kind === "bad_request") {
+      response.statusCode = 400;
+      response.end("Invalid request path");
+      return;
+    }
 
-    if (!filePath.startsWith(distRoot)) {
+    if (resolvedPath.kind === "forbidden") {
       response.statusCode = 403;
       response.end("Forbidden");
       return;
     }
 
-    const exists = fs.existsSync(filePath);
-    const targetPath = exists ? filePath : path.join(distRoot, "index.html");
+    const targetPath = isExistingFile(resolvedPath.filePath)
+      ? resolvedPath.filePath
+      : path.join(distRoot, "index.html");
     fs.readFile(targetPath, (error, content) => {
       if (error) {
         response.statusCode = 404;
