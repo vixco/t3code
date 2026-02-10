@@ -168,6 +168,13 @@ async function main() {
     if (page.headers.get("x-content-type-options") !== "nosniff") {
       throw new Error("Smoke test failed: expected x-content-type-options=nosniff.");
     }
+    const missingAssetUrl = new URL("/assets/missing-bundle.js", parsedAppUrl);
+    const missingAsset = await fetch(missingAssetUrl);
+    if (missingAsset.status !== 404) {
+      throw new Error(
+        `Smoke test failed: expected missing asset status 404, received ${missingAsset.status}.`,
+      );
+    }
     const headPage = await fetch(parsedAppUrl, { method: "HEAD" });
     if (headPage.status !== 200) {
       throw new Error(
