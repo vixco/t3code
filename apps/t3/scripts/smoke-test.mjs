@@ -749,6 +749,16 @@ async function main() {
     if ((rangedAsset.headers.get("vary") ?? "").toLowerCase() !== "range") {
       throw new Error("Smoke test failed: expected vary=range on ranged asset response.");
     }
+    const spacedRangedAsset = await fetch(assetUrl, {
+      headers: {
+        Range: `bytes = 0 - ${rangeEnd}`,
+      },
+    });
+    if (spacedRangedAsset.status !== 206) {
+      throw new Error(
+        `Smoke test failed: expected spaced range asset status 206, received ${spacedRangedAsset.status}.`,
+      );
+    }
     const conditionalRangedAsset = await fetch(assetUrl, {
       headers: {
         Range: `bytes=0-${rangeEnd}`,
