@@ -13,6 +13,7 @@ import {
   type ProviderSession,
   type WsClientMessage,
   type WsResponseMessage,
+  type WsServerMessage,
   WS_EVENT_CHANNELS,
   WS_CLOSE_CODES,
   WS_CLOSE_REASONS,
@@ -67,6 +68,8 @@ interface BootstrapSessionResult {
   session: ProviderSession;
   bootstrapError: string | undefined;
 }
+
+type WsServerEventMessage = Extract<WsServerMessage, { type: "event" }>;
 
 function raceWithTimeout<T>(
   promise: Promise<T>,
@@ -368,7 +371,10 @@ export async function startRuntimeApiServer(
   let launchSessionPromise: Promise<BootstrapSessionResult> | null = null;
   let bootstrapFallbackSession: ProviderSession | null = null;
 
-  const emitEvent = (channel: string, payload: unknown) => {
+  const emitEvent = <TChannel extends WsServerEventMessage["channel"]>(
+    channel: TChannel,
+    payload: Extract<WsServerEventMessage, { channel: TChannel }>["payload"],
+  ) => {
     if (!activeClient) {
       return;
     }
