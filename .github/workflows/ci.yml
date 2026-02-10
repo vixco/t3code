@@ -8,7 +8,7 @@ on:
 
 jobs:
   quality:
-    name: Lint, Typecheck, Test
+    name: Lint, Typecheck, Test, Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -40,3 +40,11 @@ jobs:
 
       - name: Test
         run: bun run test
+
+      - name: Build desktop pipeline
+        run: bun run build:desktop
+
+      - name: Verify preload bundle output
+        run: |
+          test -f apps/desktop/dist-electron/preload.js
+          grep -nE "desktopBridge|getWsUrl|PICK_FOLDER_CHANNEL|wsUrl" apps/desktop/dist-electron/preload.js
