@@ -307,6 +307,13 @@ describe("readCliVersion", () => {
     expect(value).toBe("9.9.9");
   });
 
+  it("trims npm_package_version from environment", () => {
+    const value = readCliVersion("/tmp/does-not-matter.json", {
+      npm_package_version: " 9.9.9 ",
+    });
+    expect(value).toBe("9.9.9");
+  });
+
   it("falls back to package json version when env is missing", () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-version-test-"));
     const packageJsonPath = path.join(tempDir, "package.json");
@@ -318,6 +325,14 @@ describe("readCliVersion", () => {
   it("returns default when env and package file are unavailable", () => {
     const value = readCliVersion("/tmp/no-such-package.json", {});
     expect(value).toBe("0.1.0");
+  });
+
+  it("trims package json version before returning", () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-version-trim-test-"));
+    const packageJsonPath = path.join(tempDir, "package.json");
+    writeFileSync(packageJsonPath, JSON.stringify({ version: " 1.2.3 " }), "utf8");
+    const value = readCliVersion(packageJsonPath, {});
+    expect(value).toBe("1.2.3");
   });
 });
 

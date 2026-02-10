@@ -281,15 +281,21 @@ export function readCliVersion(
   env = process.env,
 ): string {
   const envVersion = env.npm_package_version;
-  if (typeof envVersion === "string" && envVersion.length > 0) {
-    return envVersion;
+  if (typeof envVersion === "string") {
+    const trimmed = envVersion.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
   }
 
   try {
     const raw = fs.readFileSync(packageJsonPath, "utf8");
     const parsed = JSON.parse(raw) as { version?: unknown };
-    if (typeof parsed.version === "string" && parsed.version.length > 0) {
-      return parsed.version;
+    if (typeof parsed.version === "string") {
+      const trimmed = parsed.version.trim();
+      if (trimmed.length > 0) {
+        return trimmed;
+      }
     }
   } catch {
     // Ignore read/parse failures and return fallback.
