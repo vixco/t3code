@@ -51,15 +51,32 @@ class WsNativeApiClient {
       }
       socket.binaryType = "arraybuffer";
       this.socket = socket;
-
-      socket.addEventListener("open", () => {
+      let hasOpened = false;
+      let connectionSettled = false;
+      const rejectConnection = () => {
+        if (connectionSettled) {
+          return;
+        }
+        connectionSettled = true;
+        this.connectPromise = null;
+        reject(new Error("Failed to connect to local t3 runtime."));
+      };
+      const resolveConnection = () => {
+        if (connectionSettled) {
+          return;
+        }
+        connectionSettled = true;
         this.connectPromise = null;
         resolve(socket);
+      };
+
+      socket.addEventListener("open", () => {
+        hasOpened = true;
+        resolveConnection();
       });
 
       socket.addEventListener("error", () => {
-        this.connectPromise = null;
-        reject(new Error("Failed to connect to local t3 runtime."));
+        rejectConnection();
       });
 
       socket.addEventListener("message", (event) => {
@@ -68,6 +85,10 @@ class WsNativeApiClient {
 
       socket.addEventListener("close", () => {
         this.socket = null;
+        if (!hasOpened) {
+          rejectConnection();
+          return;
+        }
         for (const [id, pending] of this.pending.entries()) {
           clearTimeout(pending.timeout);
           pending.reject(new Error(`Request ${id} failed: websocket disconnected.`));

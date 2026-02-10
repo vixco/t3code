@@ -8,6 +8,7 @@ class MockWebSocket {
   static failSend = false;
   static failOpen = false;
   static failConstruct = false;
+  static failCloseBeforeOpen = false;
 
   readyState = 0;
   binaryType = "blob";
@@ -20,6 +21,11 @@ class MockWebSocket {
     }
     MockWebSocket.instances.push(this);
     queueMicrotask(() => {
+      if (MockWebSocket.failCloseBeforeOpen) {
+        this.readyState = 3;
+        this.emit("close", { code: 4001 });
+        return;
+      }
       if (MockWebSocket.failOpen) {
         this.emit("error", { message: "mock open failure" });
         return;
@@ -102,6 +108,7 @@ describe("wsNativeApi", () => {
     MockWebSocket.failSend = false;
     MockWebSocket.failOpen = false;
     MockWebSocket.failConstruct = false;
+    MockWebSocket.failCloseBeforeOpen = false;
     vi.stubGlobal("WebSocket", MockWebSocket as unknown as typeof WebSocket);
   });
 
@@ -986,6 +993,43 @@ describe("wsNativeApi", () => {
     const api = getOrCreateWsNativeApi();
 
     await expect(api.todos.list()).rejects.toThrow("Failed to connect to local t3 runtime.");
+  });
+
+  it("rejects requests when websocket closes before opening", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4432");
+    MockWebSocket.failCloseBeforeOpen = true;
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow("Failed to connect to local t3 runtime.");
+  });
+
+  it("recovers after websocket pre-open close on a later request", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4433");
+    MockWebSocket.failCloseBeforeOpen = true;
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow("Failed to connect to local t3 runtime.");
+
+    MockWebSocket.failCloseBeforeOpen = false;
+    const secondRequest = api.todos.list();
+    await waitForCondition(() => MockWebSocket.instances.length >= 2);
+    const socket = MockWebSocket.instances[1];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as {
+      id: string;
+    };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: [],
+      }),
+    );
+
+    await expect(secondRequest).resolves.toEqual([]);
   });
 
   it("recovers after websocket open failure on a later request", async () => {
