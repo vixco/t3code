@@ -965,6 +965,41 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("returns non-zero terminal exit codes without request failure", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "terminal-exit-code-1",
+      "terminal.run",
+      {
+        command: "exit 3",
+        cwd: process.cwd(),
+      },
+    );
+    expect(response.ok).toBe(true);
+    if (!response.ok) {
+      throw new Error("Expected terminal non-zero exit response to succeed.");
+    }
+
+    const payload = response.result as {
+      code: number | null;
+      timedOut: boolean;
+    };
+    expect(payload.code).toBe(3);
+    expect(payload.timedOut).toBe(false);
+
+    client.socket.close();
+  });
+
   it("supports todo mutation lifecycle over websocket RPC", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
