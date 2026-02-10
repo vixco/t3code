@@ -1,6 +1,4 @@
 import type {
-  AppBootstrapResult,
-  AppHealthResult,
   AgentExit,
   NativeApi,
   OutputChunk,
@@ -15,7 +13,10 @@ import {
   WS_EVENT_CHANNELS,
   agentSessionIdSchema,
   agentExitSchema,
+  appBootstrapResultSchema,
+  appHealthResultSchema,
   outputChunkSchema,
+  providerSessionListSchema,
   providerSessionSchema,
   providerTurnStartResultSchema,
   providerEventSchema,
@@ -169,10 +170,6 @@ function normalizeCloseCode(value: unknown) {
   }
 
   return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 class WsNativeApiClient {
@@ -361,99 +358,6 @@ class WsNativeApiClient {
     }
   }
 
-  private parseAppHealthResult(method: string, value: unknown): AppHealthResult {
-    if (!isRecord(value)) {
-      throw new Error(`Runtime method '${method}' returned invalid response payload.`);
-    }
-    const launchCwd = value.launchCwd;
-    const sessionCount = value.sessionCount;
-    const activeClientConnected = value.activeClientConnected;
-    if (
-      value.status !== "ok" ||
-      typeof launchCwd !== "string" ||
-      launchCwd.length === 0 ||
-      typeof sessionCount !== "number" ||
-      !Number.isInteger(sessionCount) ||
-      sessionCount < 0 ||
-      typeof activeClientConnected !== "boolean"
-    ) {
-      throw new Error(`Runtime method '${method}' returned invalid response payload.`);
-    }
-    const normalizedSessionCount = sessionCount as number;
-
-    return {
-      status: "ok",
-      launchCwd,
-      sessionCount: normalizedSessionCount,
-      activeClientConnected,
-    };
-  }
-
-  private parseAppBootstrapResult(method: string, value: unknown): AppBootstrapResult {
-    if (!isRecord(value)) {
-      throw new Error(`Runtime method '${method}' returned invalid response payload.`);
-    }
-
-    const launchCwd = value.launchCwd;
-    const projectName = value.projectName;
-    const provider = value.provider;
-    const model = value.model;
-    const bootstrapError = value.bootstrapError;
-    const parsedSession = providerSessionSchema.safeParse(value.session);
-    if (
-      !parsedSession.success ||
-      typeof launchCwd !== "string" ||
-      launchCwd.length === 0 ||
-      typeof projectName !== "string" ||
-      projectName.length === 0 ||
-      typeof model !== "string" ||
-      model.length === 0 ||
-      (bootstrapError !== undefined &&
-        (typeof bootstrapError !== "string" || bootstrapError.length === 0))
-    ) {
-      throw new Error(`Runtime method '${method}' returned invalid response payload.`);
-    }
-    if (provider !== "codex" && provider !== "claudeCode") {
-      throw new Error(`Runtime method '${method}' returned invalid response payload.`);
-    }
-    const normalizedProvider = provider as AppBootstrapResult["provider"];
-
-    const baseResult = {
-      launchCwd,
-      projectName,
-      provider: normalizedProvider,
-      model,
-      session: parsedSession.data,
-    };
-    if (bootstrapError !== undefined) {
-      return {
-        ...baseResult,
-        bootstrapError,
-      };
-    }
-
-    return baseResult;
-  }
-
-  private parseProviderSessionList(
-    method: string,
-    value: unknown,
-  ): Awaited<ReturnType<NativeApi["providers"]["listSessions"]>> {
-    if (!Array.isArray(value)) {
-      throw new Error(`Runtime method '${method}' returned invalid response payload.`);
-    }
-
-    const parsedSessions: Awaited<ReturnType<NativeApi["providers"]["listSessions"]>> = [];
-    for (const session of value) {
-      const parsedSession = providerSessionSchema.safeParse(session);
-      if (!parsedSession.success) {
-        throw new Error(`Runtime method '${method}' returned invalid response payload.`);
-      }
-      parsedSessions.push(parsedSession.data);
-    }
-    return parsedSessions;
-  }
-
   private handleResponse(message: WsResponseMessage) {
     const pending = this.pending.get(message.id);
     if (!pending) {
@@ -560,8 +464,8 @@ class WsNativeApiClient {
   asNativeApi(): NativeApi {
     return {
       app: {
-        bootstrap: async () => this.parseAppBootstrapResult("app.bootstrap", await this.request("app.bootstrap")),
-        health: async () => this.parseAppHealthResult("app.health", await this.request("app.health")),
+        bootstrap: async () => this.requestParsed("app.bootstrap", appBootstrapResultSchema),
+        health: async () => this.requestParsed("app.health", appHealthResultSchema),
       },
       todos: {
         list: async () => this.requestParsed("todos.list", todoListSchema),
@@ -607,7 +511,7 @@ class WsNativeApiClient {
         respondToRequest: async (input) => this.requestNullResult("providers.respondToRequest", input),
         stopSession: async (input) => this.requestNullResult("providers.stopSession", input),
         listSessions: async () =>
-          this.parseProviderSessionList("providers.listSessions", await this.request("providers.listSessions")),
+          this.requestParsed("providers.listSessions", providerSessionListSchema),
         onEvent: (callback) => {
           this.providerEventListeners.add(callback);
           return () => {
