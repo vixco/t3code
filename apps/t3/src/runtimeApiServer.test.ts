@@ -236,6 +236,24 @@ describe("runtimeApiServer", () => {
     ).rejects.toThrow("Invalid launchCwd does not exist");
   });
 
+  it("rejects startup when launchCwd is empty", async () => {
+    await expect(
+      startRuntimeApiServer({
+        port: 0,
+        launchCwd: "",
+      }),
+    ).rejects.toThrow("Invalid launchCwd must be a non-empty path");
+  });
+
+  it("rejects startup when launchCwd is not a string", async () => {
+    await expect(
+      startRuntimeApiServer({
+        port: 0,
+        launchCwd: 123 as unknown as string,
+      }),
+    ).rejects.toThrow("Invalid launchCwd must be a non-empty path");
+  });
+
   it("rejects startup when launchCwd is not a directory", async () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-launch-cwd-file-"));
     const filePath = path.join(tempDir, "launch.txt");

@@ -284,6 +284,10 @@ async function runTerminalCommand(
 }
 
 function resolveExistingDirectory(targetPath: string, label: string): string {
+  if (typeof targetPath !== "string" || targetPath.trim().length === 0) {
+    throw new Error(`${label} must be a non-empty path.`);
+  }
+
   const candidate = path.resolve(targetPath);
   let stats: fs.Stats;
   try {
