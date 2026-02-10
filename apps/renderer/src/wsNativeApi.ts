@@ -24,6 +24,7 @@ type PendingRequest = {
 
 type SubscriptionSet<TValue> = Set<(value: TValue) => void>;
 const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_NESTED_ERROR_EXTRACTION_DEPTH = 8;
 const textDecoder = new TextDecoder();
 
 function closeDetailsFromEvent(event: unknown) {
@@ -112,7 +113,7 @@ function socketErrorMessage(event: unknown) {
 }
 
 function messageFromUnknown(value: unknown, depth = 0): string | null {
-  if (depth > 4) {
+  if (depth > MAX_NESTED_ERROR_EXTRACTION_DEPTH) {
     return null;
   }
 

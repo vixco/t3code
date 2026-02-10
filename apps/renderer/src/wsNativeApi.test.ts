@@ -124,6 +124,14 @@ async function waitForSocket() {
   return socket;
 }
 
+function nestedErrorPayload(depth: number, terminalMessage: string) {
+  let current: unknown = { message: terminalMessage };
+  for (let index = 0; index < depth; index += 1) {
+    current = { error: current };
+  }
+  return current;
+}
+
 describe("wsNativeApi", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -652,6 +660,32 @@ describe("wsNativeApi", () => {
     });
 
     await expect(request).rejects.toThrow("websocket errored (deep-socket-error)");
+  });
+
+  it("extracts websocket error payload messages nested beyond five levels", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4522");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    socket?.emitErrorEvent(nestedErrorPayload(6, "very-deep-socket-error"));
+
+    await expect(request).rejects.toThrow("websocket errored (very-deep-socket-error)");
+  });
+
+  it("falls back when websocket error payload message exceeds extraction depth", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4523");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    socket?.emitErrorEvent(nestedErrorPayload(12, "too-deep-socket-error"));
+
+    await expect(request).rejects.toThrow("websocket errored.");
   });
 
   it("rejects all concurrent pending requests on websocket error and then reconnects", async () => {
@@ -1946,6 +1980,16 @@ describe("wsNativeApi", () => {
     await expect(api.todos.list()).rejects.toThrow(
       "Failed to connect to local t3 runtime: websocket error (deep-open-error).",
     );
+  });
+
+  it("falls back when websocket open error payload message exceeds extraction depth", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4524");
+    MockWebSocket.failOpen = true;
+    MockWebSocket.failOpenEvent = nestedErrorPayload(12, "too-deep-open-error");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow("Failed to connect to local t3 runtime.");
   });
 
   it("uses trimmed nested websocket open error message when direct message is whitespace", async () => {
