@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,6 +7,7 @@ import {
   formatStartupError,
   parseCliOptions,
   readCliVersion,
+  resolveStaticAssetReadTarget,
   resolveStaticAssetPath,
 } from "./cli";
 
@@ -343,6 +344,46 @@ describe("resolveStaticAssetPath", () => {
     const result = resolveStaticAssetPath("/%E0%A4%A", distRoot);
     expect(result).toEqual({
       kind: "bad_request",
+    });
+  });
+});
+
+describe("resolveStaticAssetReadTarget", () => {
+  it("falls back to index for unknown routes", () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-static-route-"));
+    writeFileSync(path.join(tempDir, "index.html"), "<html>ok</html>", "utf8");
+
+    const result = resolveStaticAssetReadTarget("/unknown/route", tempDir);
+    expect(result).toEqual({
+      kind: "file",
+      filePath: path.join(tempDir, "index.html"),
+    });
+  });
+
+  it("returns concrete file paths for existing assets", () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-static-asset-"));
+    const assetsDir = path.join(tempDir, "assets");
+    mkdirSync(assetsDir, { recursive: true });
+    writeFileSync(path.join(tempDir, "index.html"), "<html>ok</html>", "utf8");
+    writeFileSync(path.join(assetsDir, "main.js"), "console.log('ok')", "utf8");
+
+    const result = resolveStaticAssetReadTarget("/assets/main.js", tempDir);
+    expect(result).toEqual({
+      kind: "file",
+      filePath: path.join(assetsDir, "main.js"),
+    });
+  });
+
+  it("rejects symlinked files that escape the dist directory", () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-static-symlink-"));
+    writeFileSync(path.join(tempDir, "index.html"), "<html>ok</html>", "utf8");
+    const outsideFile = path.join(os.tmpdir(), `t3-outside-${Date.now()}.txt`);
+    writeFileSync(outsideFile, "outside", "utf8");
+    symlinkSync(outsideFile, path.join(tempDir, "outside.txt"));
+
+    const result = resolveStaticAssetReadTarget("/outside.txt", tempDir);
+    expect(result).toEqual({
+      kind: "forbidden",
     });
   });
 });

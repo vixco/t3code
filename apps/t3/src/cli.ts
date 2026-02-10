@@ -383,17 +383,85 @@ export function resolveStaticAssetPath(
   return { kind: "file", filePath: candidateFilePath };
 }
 
-function isExistingFile(filePath: string): boolean {
+function resolveSafeFilePathInDist(
+  filePath: string,
+  realDistRoot: string,
+): { kind: "file"; filePath: string } | { kind: "missing" } | { kind: "forbidden" } {
+  let stats: fs.Stats;
   try {
-    return fs.statSync(filePath).isFile();
+    stats = fs.lstatSync(filePath);
   } catch {
-    return false;
+    return { kind: "missing" };
   }
+
+  if (stats.isDirectory()) {
+    return { kind: "missing" };
+  }
+
+  if (!stats.isFile() && !stats.isSymbolicLink()) {
+    return { kind: "missing" };
+  }
+
+  let realFilePath: string;
+  try {
+    realFilePath = fs.realpathSync(filePath);
+  } catch {
+    return { kind: "missing" };
+  }
+
+  if (!isPathInside(realDistRoot, realFilePath)) {
+    return { kind: "forbidden" };
+  }
+
+  try {
+    if (!fs.statSync(realFilePath).isFile()) {
+      return { kind: "missing" };
+    }
+  } catch {
+    return { kind: "missing" };
+  }
+
+  return { kind: "file", filePath: realFilePath };
+}
+
+export function resolveStaticAssetReadTarget(
+  requestUrl: string | undefined,
+  distRoot: string,
+): { kind: "file"; filePath: string } | { kind: "forbidden" } | { kind: "bad_request" } {
+  const normalizedDistRoot = path.resolve(distRoot);
+  const realDistRoot = (() => {
+    try {
+      return fs.realpathSync(normalizedDistRoot);
+    } catch {
+      return normalizedDistRoot;
+    }
+  })();
+
+  const requestedPath = resolveStaticAssetPath(requestUrl, normalizedDistRoot);
+  if (requestedPath.kind === "bad_request" || requestedPath.kind === "forbidden") {
+    return requestedPath;
+  }
+
+  const requestedFile = resolveSafeFilePathInDist(requestedPath.filePath, realDistRoot);
+  if (requestedFile.kind === "forbidden") {
+    return { kind: "forbidden" };
+  }
+  if (requestedFile.kind === "file") {
+    return requestedFile;
+  }
+
+  const indexPath = path.join(normalizedDistRoot, "index.html");
+  const indexFile = resolveSafeFilePathInDist(indexPath, realDistRoot);
+  if (indexFile.kind !== "file") {
+    return { kind: "bad_request" };
+  }
+
+  return indexFile;
 }
 
 function startStaticWebServer(distRoot: string, port: number) {
   const server = createServer((request, response) => {
-    const resolvedPath = resolveStaticAssetPath(request.url, distRoot);
+    const resolvedPath = resolveStaticAssetReadTarget(request.url, distRoot);
     if (resolvedPath.kind === "bad_request") {
       response.statusCode = 400;
       response.end("Invalid request path");
@@ -406,9 +474,7 @@ function startStaticWebServer(distRoot: string, port: number) {
       return;
     }
 
-    const targetPath = isExistingFile(resolvedPath.filePath)
-      ? resolvedPath.filePath
-      : path.join(distRoot, "index.html");
+    const targetPath = resolvedPath.filePath;
     fs.readFile(targetPath, (error, content) => {
       if (error) {
         response.statusCode = 404;
