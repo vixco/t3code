@@ -80,6 +80,17 @@ describe("parseCliOptions", () => {
     expect(options.noOpen).toBe(false);
   });
 
+  it("treats unknown T3_NO_OPEN values as disabled", () => {
+    const options = parseCliOptions(
+      [],
+      {
+        T3_NO_OPEN: "definitely-not-boolean",
+      },
+      "/workspace",
+    );
+    expect(options.noOpen).toBe(false);
+  });
+
   it("allows command line arguments to override defaults", () => {
     const options = parseCliOptions(
       [
