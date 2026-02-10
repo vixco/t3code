@@ -1001,6 +1001,21 @@ describe("runtimeApiServer", () => {
     expect(emptyTokenClose.code).toBe(4001);
     expect(emptyTokenMessageCount).toBe(0);
 
+    const whitespaceTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=%20%20`;
+    const whitespaceTokenClient = new WebSocket(whitespaceTokenUrl);
+    let whitespaceTokenMessageCount = 0;
+    whitespaceTokenClient.on("message", () => {
+      whitespaceTokenMessageCount += 1;
+    });
+    const whitespaceTokenClose = await withTimeout(
+      new Promise<{ code: number }>((resolve, reject) => {
+        whitespaceTokenClient.once("close", (code) => resolve({ code }));
+        whitespaceTokenClient.once("error", (error) => reject(error));
+      }),
+    );
+    expect(whitespaceTokenClose.code).toBe(4001);
+    expect(whitespaceTokenMessageCount).toBe(0);
+
     const authorizedClient = await connectClient(server.wsUrl);
     const hello = await authorizedClient.nextMessage();
     expect(hello.type).toBe("hello");
