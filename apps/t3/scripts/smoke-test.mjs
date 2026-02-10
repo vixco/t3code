@@ -579,6 +579,22 @@ async function main() {
     if (ifMatchMismatchHeadAsset.headers.get("last-modified") !== assetLastModified) {
       throw new Error("Smoke test failed: expected Last-Modified on HEAD If-Match mismatch response.");
     }
+    const ifUnmodifiedSinceStaleHeadAsset = await fetch(assetUrl, {
+      method: "HEAD",
+      headers: {
+        "If-Unmodified-Since": staleUnmodifiedSince,
+      },
+    });
+    if (ifUnmodifiedSinceStaleHeadAsset.status !== 412) {
+      throw new Error(
+        `Smoke test failed: expected HEAD stale If-Unmodified-Since status 412, received ${ifUnmodifiedSinceStaleHeadAsset.status}.`,
+      );
+    }
+    if ((ifUnmodifiedSinceStaleHeadAsset.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {
+      throw new Error(
+        "Smoke test failed: expected cache-control=no-store on HEAD stale If-Unmodified-Since response.",
+      );
+    }
     const ifMatchRangeMismatchHeadAsset = await fetch(assetUrl, {
       method: "HEAD",
       headers: {
