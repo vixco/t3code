@@ -992,6 +992,38 @@ describe("wsNativeApi", () => {
     await expect(request).resolves.toEqual([]);
   });
 
+  it("ignores responses for unknown request ids", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4425");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as {
+      id: string;
+    };
+
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: "unknown-request-id",
+        ok: true,
+        result: ["ignored"],
+      }),
+    );
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: [],
+      }),
+    );
+
+    await expect(request).resolves.toEqual([]);
+  });
+
   it("dispatches provider events to subscribers and supports unsubscribe", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4409");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
