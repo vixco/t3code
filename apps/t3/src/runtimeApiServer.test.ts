@@ -1827,6 +1827,33 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("returns structured errors for unknown methods at max method length", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const maxLengthUnknownMethod = "m".repeat(WS_METHOD_MAX_CHARS);
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "unknown-max-method-1",
+      maxLengthUnknownMethod,
+    );
+    expect(response.ok).toBe(false);
+    if (response.ok) {
+      throw new Error("Expected max-length unknown method to fail.");
+    }
+    expect(response.error?.code).toBe("request_failed");
+    expect(response.error?.message).toContain("Unknown API method");
+
+    client.socket.close();
+  });
+
   it("returns structured errors for invalid shell.openInEditor payloads", async () => {
     const server = await startRuntimeApiServer({
       port: 0,

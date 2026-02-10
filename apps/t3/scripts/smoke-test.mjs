@@ -2637,6 +2637,56 @@ async function main() {
       );
     });
 
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () =>
+          reject(
+            new Error("Smoke test failed: max-length unknown-method websocket request timed out."),
+          ),
+        20_000,
+      );
+      const onMessage = (event) => {
+        const message = parseWsMessage(event.data);
+        if (!message) {
+          return;
+        }
+
+        if (message.type !== "response" || message.id !== "smoke-unknown-method-max-length") {
+          return;
+        }
+
+        ws.removeEventListener("message", onMessage);
+        clearTimeout(timer);
+
+        if (
+          message.ok !== false ||
+          message.error?.code !== "request_failed" ||
+          typeof message.error?.message !== "string" ||
+          !message.error.message.includes("Unknown API method")
+        ) {
+          reject(
+            new Error(
+              `Smoke test failed: expected structured max-length unknown-method error response, got ${JSON.stringify(
+                message,
+              )}.`,
+            ),
+          );
+          return;
+        }
+
+        resolve();
+      };
+
+      ws.addEventListener("message", onMessage);
+      ws.send(
+        JSON.stringify({
+          type: "request",
+          id: "smoke-unknown-method-max-length",
+          method: "m".repeat(WS_METHOD_MAX_CHARS),
+        }),
+      );
+    });
+
     const invalidShellEditorResponse = await sendWsRequest(ws, {
       id: "smoke-shell-invalid-editor",
       method: "shell.openInEditor",
