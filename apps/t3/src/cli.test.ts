@@ -483,6 +483,21 @@ describe("resolveStaticAssetReadTarget", () => {
     });
   });
 
+  it("allows symlinked files that resolve inside dist directory", () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-static-symlink-inside-"));
+    const assetsDir = path.join(tempDir, "assets");
+    mkdirSync(assetsDir, { recursive: true });
+    writeFileSync(path.join(tempDir, "index.html"), "<html>ok</html>", "utf8");
+    writeFileSync(path.join(assetsDir, "main.js"), "console.log('ok')", "utf8");
+    symlinkSync(path.join(assetsDir, "main.js"), path.join(tempDir, "linked-main.js"));
+
+    const result = resolveStaticAssetReadTarget("/linked-main.js", tempDir);
+    expect(result).toEqual({
+      kind: "file",
+      filePath: path.join(assetsDir, "main.js"),
+    });
+  });
+
   it("returns not_found when spa fallback file is missing", () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-static-missing-index-"));
     const result = resolveStaticAssetReadTarget("/missing.js", tempDir);
