@@ -745,6 +745,48 @@ describe("wsNativeApi", () => {
     await expect(secondRequest).resolves.toEqual([]);
   });
 
+  it("reconnects after websocket error even when no requests are pending", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4476");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const firstRequest = api.todos.list();
+    const firstSocket = await waitForSocket();
+    await waitForCondition(() => firstSocket.sentMessages.length > 0);
+    const firstEnvelope = JSON.parse(firstSocket.sentMessages[0] ?? "{}") as {
+      id: string;
+    };
+    firstSocket.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: firstEnvelope.id,
+        ok: true,
+        result: [],
+      }),
+    );
+    await expect(firstRequest).resolves.toEqual([]);
+
+    firstSocket.emitError("post-idle-socket-error");
+
+    const secondRequest = api.todos.list();
+    await waitForCondition(() => MockWebSocket.instances.length >= 2);
+    const secondSocket = MockWebSocket.instances[1];
+    await waitForCondition(() => (secondSocket?.sentMessages.length ?? 0) > 0);
+    const secondEnvelope = JSON.parse(secondSocket?.sentMessages[0] ?? "{}") as {
+      id: string;
+    };
+    secondSocket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: secondEnvelope.id,
+        ok: true,
+        result: [],
+      }),
+    );
+
+    await expect(secondRequest).resolves.toEqual([]);
+  });
+
   it("reconnects on subsequent requests after unauthorized websocket close", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4465");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
