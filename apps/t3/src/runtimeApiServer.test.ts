@@ -176,6 +176,15 @@ describe("runtimeApiServer", () => {
     ).rejects.toThrow("Invalid runtime port");
   });
 
+  it("rejects startup when runtime port is non-integer", async () => {
+    await expect(
+      startRuntimeApiServer({
+        port: 4317.5,
+        launchCwd: process.cwd(),
+      }),
+    ).rejects.toThrow("Invalid runtime port");
+  });
+
   it("allows runtime server close to be called multiple times", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
