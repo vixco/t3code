@@ -275,6 +275,15 @@ describe("runtimeApiServer", () => {
     ).rejects.toThrow("Invalid launchCwd must be a non-empty path");
   });
 
+  it("rejects startup when launchCwd is only whitespace", async () => {
+    await expect(
+      startRuntimeApiServer({
+        port: 0,
+        launchCwd: "   ",
+      }),
+    ).rejects.toThrow("Invalid launchCwd must be a non-empty path");
+  });
+
   it("rejects startup when launchCwd is not a string", async () => {
     await expect(
       startRuntimeApiServer({
