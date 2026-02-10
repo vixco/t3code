@@ -386,13 +386,24 @@ function startStaticWebServer(distRoot: string, port: number) {
   return new Promise<{
     close: () => Promise<void>;
   }>((resolve, reject) => {
-    server.on("error", reject);
+    const onError = (error: Error) => {
+      reject(error);
+    };
+    server.once("error", onError);
     server.listen(port, "127.0.0.1", () => {
+      server.off("error", onError);
+      let closePromise: Promise<void> | null = null;
       resolve({
-        close: async () => {
-          await new Promise<void>((closeResolve) => {
+        close: () => {
+          if (closePromise) {
+            return closePromise;
+          }
+
+          closePromise = new Promise<void>((closeResolve) => {
             server.close(() => closeResolve());
           });
+
+          return closePromise;
         },
       });
     });
