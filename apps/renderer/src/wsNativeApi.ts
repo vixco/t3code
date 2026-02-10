@@ -84,7 +84,7 @@ function requestDisconnectError(id: string, event: unknown) {
 }
 
 function requestSocketError(id: string, event: unknown) {
-  const message = (event as { message?: unknown } | null)?.message;
+  const message = socketErrorMessage(event);
   if (typeof message === "string" && message.length > 0) {
     return new Error(`Request ${id} failed: websocket errored (${message}).`);
   }
@@ -92,11 +92,26 @@ function requestSocketError(id: string, event: unknown) {
 }
 
 function runtimeConnectErrorFromSocketError(event: unknown) {
-  const message = (event as { message?: unknown } | null)?.message;
+  const message = socketErrorMessage(event);
   if (typeof message === "string" && message.length > 0) {
     return new Error(`Failed to connect to local t3 runtime: websocket error (${message}).`);
   }
   return new Error("Failed to connect to local t3 runtime.");
+}
+
+function socketErrorMessage(event: unknown) {
+  const directMessage = (event as { message?: unknown } | null)?.message;
+  if (typeof directMessage === "string" && directMessage.length > 0) {
+    return directMessage;
+  }
+
+  const nestedError = (event as { error?: unknown } | null)?.error;
+  const nestedMessage = (nestedError as { message?: unknown } | null)?.message;
+  if (typeof nestedMessage === "string" && nestedMessage.length > 0) {
+    return nestedMessage;
+  }
+
+  return null;
 }
 
 class WsNativeApiClient {

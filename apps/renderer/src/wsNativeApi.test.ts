@@ -8,7 +8,9 @@ class MockWebSocket {
   static instances: MockWebSocket[] = [];
   static failSend = false;
   static failOpen = false;
-  static failOpenEvent: { message?: string } = { message: "mock open failure" };
+  static failOpenEvent: { message?: string; error?: { message?: string } } = {
+    message: "mock open failure",
+  };
   static failConstruct = false;
   static failCloseBeforeOpen = false;
   static failCloseBeforeOpenEvent: { code?: number; reason?: string } = {
@@ -475,6 +477,23 @@ describe("wsNativeApi", () => {
     socket?.emitError("forced-socket-error");
 
     await expect(request).rejects.toThrow("websocket errored (forced-socket-error)");
+  });
+
+  it("uses nested websocket error message when present for pending requests", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4488");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    socket?.emitErrorEvent({
+      error: {
+        message: "nested-socket-error",
+      },
+    });
+
+    await expect(request).rejects.toThrow("websocket errored (nested-socket-error)");
   });
 
   it("rejects all concurrent pending requests on websocket error and then reconnects", async () => {
@@ -1643,6 +1662,22 @@ describe("wsNativeApi", () => {
 
     await expect(api.todos.list()).rejects.toThrow(
       "Failed to connect to local t3 runtime: websocket error (mock open failure).",
+    );
+  });
+
+  it("uses nested websocket open error message when direct message is missing", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4489");
+    MockWebSocket.failOpen = true;
+    MockWebSocket.failOpenEvent = {
+      error: {
+        message: "nested-open-error",
+      },
+    };
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to connect to local t3 runtime: websocket error (nested-open-error).",
     );
   });
 
