@@ -211,6 +211,12 @@ async function main() {
         )}.`,
       );
     }
+    if ((assetResponse.headers.get("x-content-type-options") ?? "").toLowerCase() !== "nosniff") {
+      throw new Error("Smoke test failed: expected nosniff on built asset response.");
+    }
+    if ((assetResponse.headers.get("cross-origin-resource-policy") ?? "").toLowerCase() !== "same-origin") {
+      throw new Error("Smoke test failed: expected CORP header on built asset response.");
+    }
     const missingAssetUrl = new URL("/assets/missing-bundle.js", parsedAppUrl);
     const missingAsset = await fetch(missingAssetUrl);
     if (missingAsset.status !== 404) {
