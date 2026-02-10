@@ -234,6 +234,13 @@ async function main() {
         `Smoke test failed: expected HEAD web status 200, received ${headPage.status}.`,
       );
     }
+    if ((headPage.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {
+      throw new Error(
+        `Smoke test failed: expected HEAD cache-control=no-store, got ${String(
+          headPage.headers.get("cache-control"),
+        )}.`,
+      );
+    }
     const headContentLength = Number(headPage.headers.get("content-length") ?? "0");
     if (!Number.isFinite(headContentLength) || headContentLength <= 0) {
       throw new Error(
