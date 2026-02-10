@@ -1555,6 +1555,13 @@ async function main() {
       "missing-token-with-extra-query",
     );
 
+    const wrongTokenKeyWs = new WebSocket(
+      `${parsedWsUrl.origin}${parsedWsUrl.pathname}?Token=${encodeURIComponent(
+        parsedWsUrl.searchParams.get("token") ?? "",
+      )}`,
+    );
+    await waitForUnauthorizedCloseWithoutMessages(wrongTokenKeyWs, "wrong-token-key");
+
     const wrongTokenWs = new WebSocket(
       `${parsedWsUrl.origin}${parsedWsUrl.pathname}?token=wrong-token`,
     );

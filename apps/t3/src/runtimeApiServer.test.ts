@@ -1004,6 +1004,24 @@ describe("runtimeApiServer", () => {
     expect(missingTokenWithExtraQueryClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
     expect(missingTokenWithExtraQueryMessageCount).toBe(0);
 
+    const wrongTokenKeyUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?Token=secret-token`;
+    const wrongTokenKeyClient = new WebSocket(wrongTokenKeyUrl);
+    let wrongTokenKeyMessageCount = 0;
+    wrongTokenKeyClient.on("message", () => {
+      wrongTokenKeyMessageCount += 1;
+    });
+    const wrongTokenKeyClose = await withTimeout(
+      new Promise<{ code: number; reason: string }>((resolve, reject) => {
+        wrongTokenKeyClient.once("close", (code, reason) =>
+          resolve({ code, reason: reason.toString() }),
+        );
+        wrongTokenKeyClient.once("error", (error) => reject(error));
+      }),
+    );
+    expect(wrongTokenKeyClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(wrongTokenKeyClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
+    expect(wrongTokenKeyMessageCount).toBe(0);
+
     const wrongTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=wrong-token`;
     const wrongTokenClient = new WebSocket(wrongTokenUrl);
     let wrongTokenMessageCount = 0;
