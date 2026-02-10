@@ -956,6 +956,13 @@ describe("parseByteRangeHeader", () => {
     });
   });
 
+  it("clamps oversized suffix ranges to full file", () => {
+    expect(parseByteRangeHeader("bytes=-500", 100)).toEqual({
+      start: 0,
+      end: 99,
+    });
+  });
+
   it("clamps explicit range ends to file size", () => {
     expect(parseByteRangeHeader("bytes=90-1000", 100)).toEqual({
       start: 90,
