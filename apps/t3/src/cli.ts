@@ -13,7 +13,11 @@ const DEFAULT_WEB_PORT = 4318;
 const DEFAULT_CLI_VERSION = "0.1.0";
 
 function parseExplicitPort(value: string, key: string): number {
-  const parsed = Number(value);
+  if (!/^\d+$/.test(value)) {
+    throw new Error(`Invalid value for ${key}: '${value}'. Expected an integer between 1 and 65535.`);
+  }
+
+  const parsed = Number.parseInt(value, 10);
   if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65_535) {
     throw new Error(`Invalid value for ${key}: '${value}'. Expected an integer between 1 and 65535.`);
   }
