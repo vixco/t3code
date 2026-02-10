@@ -155,6 +155,37 @@ function sendWsRequest(socket, request, timeoutMs = 20_000) {
   });
 }
 
+function waitForWsEvent(socket, matcher, label, timeoutMs = 20_000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.removeEventListener("message", onMessage);
+      reject(new Error(`Smoke test failed: ${label} websocket event timed out.`));
+    }, timeoutMs);
+
+    const onMessage = (event) => {
+      let message;
+      try {
+        message = JSON.parse(String(event.data));
+      } catch {
+        return;
+      }
+
+      if (message.type !== "event") {
+        return;
+      }
+      if (!matcher(message)) {
+        return;
+      }
+
+      clearTimeout(timer);
+      socket.removeEventListener("message", onMessage);
+      resolve(message);
+    };
+
+    socket.addEventListener("message", onMessage);
+  });
+}
+
 function waitForStartupUrl(readOutput, processRef, timeoutMs = 20_000) {
   return new Promise((resolve, reject) => {
     const finish = (callback, value) => {
@@ -1649,6 +1680,60 @@ async function main() {
       terminalRunResponse.result?.code !== 0
     ) {
       throw new Error("Smoke test failed: terminal.run response payload mismatch.");
+    }
+
+    const spawnedAgentResponse = await sendWsRequest(ws, {
+      id: "smoke-agent-spawn",
+      method: "agent.spawn",
+      params: {
+        command: process.execPath,
+        args: [
+          "-e",
+          "setTimeout(() => { process.stdout.write('smoke-agent-output\\n'); }, 300); setTimeout(() => { process.exit(0); }, 700);",
+        ],
+        cwd: appRoot,
+      },
+    });
+    if (spawnedAgentResponse.ok !== true || typeof spawnedAgentResponse.result !== "string") {
+      throw new Error("Smoke test failed: expected successful agent.spawn response.");
+    }
+    const spawnedAgentSessionId = spawnedAgentResponse.result;
+    if (spawnedAgentSessionId.length === 0) {
+      throw new Error("Smoke test failed: agent.spawn returned empty session id.");
+    }
+
+    const agentOutputEvent = await waitForWsEvent(
+      ws,
+      (message) =>
+        message.channel === "agent:output" &&
+        message.payload?.sessionId === spawnedAgentSessionId &&
+        message.payload?.stream === "stdout" &&
+        typeof message.payload?.data === "string" &&
+        message.payload.data.includes("smoke-agent-output"),
+      "agent-output",
+      20_000,
+    );
+    if (
+      agentOutputEvent.payload?.sessionId !== spawnedAgentSessionId ||
+      agentOutputEvent.payload?.stream !== "stdout"
+    ) {
+      throw new Error("Smoke test failed: unexpected agent output event payload.");
+    }
+
+    const agentExitEvent = await waitForWsEvent(
+      ws,
+      (message) =>
+        message.channel === "agent:exit" &&
+        message.payload?.sessionId === spawnedAgentSessionId &&
+        message.payload?.code === 0,
+      "agent-exit",
+      20_000,
+    );
+    if (
+      agentExitEvent.payload?.sessionId !== spawnedAgentSessionId ||
+      agentExitEvent.payload?.code !== 0
+    ) {
+      throw new Error("Smoke test failed: unexpected agent exit event payload.");
     }
 
     const duplicateTokenWhileConnectedWs = new WebSocket(
