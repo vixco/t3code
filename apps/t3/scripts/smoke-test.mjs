@@ -180,6 +180,14 @@ async function main() {
 
     const ws = new WebSocket(wsUrl);
     await new Promise((resolve, reject) => {
+      let sawHello = false;
+      let sawHealthResponse = false;
+      const tryResolve = () => {
+        if (sawHello && sawHealthResponse) {
+          clearTimeout(timer);
+          resolve();
+        }
+      };
       const timer = setTimeout(
         () => reject(new Error("Smoke test failed: websocket did not respond in time.")),
         20_000,
@@ -195,6 +203,31 @@ async function main() {
       });
       ws.addEventListener("message", (event) => {
         const message = JSON.parse(String(event.data));
+        if (message.type === "hello") {
+          if (message.version !== 1) {
+            clearTimeout(timer);
+            reject(
+              new Error(
+                `Smoke test failed: expected hello version 1, got ${String(message.version)}.`,
+              ),
+            );
+            return;
+          }
+          if (message.launchCwd !== appRoot) {
+            clearTimeout(timer);
+            reject(
+              new Error(
+                `Smoke test failed: expected hello launch cwd ${appRoot}, got ${String(
+                  message.launchCwd,
+                )}.`,
+              ),
+            );
+            return;
+          }
+          sawHello = true;
+          tryResolve();
+          return;
+        }
         if (message.type !== "response" || message.id !== "smoke" || message.ok !== true) {
           return;
         }
@@ -233,8 +266,8 @@ async function main() {
           return;
         }
 
-        clearTimeout(timer);
-        resolve();
+        sawHealthResponse = true;
+        tryResolve();
       });
       ws.addEventListener("error", () => {
         clearTimeout(timer);
