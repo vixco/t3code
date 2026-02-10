@@ -1092,6 +1092,7 @@ describe("ifRangeSatisfied", () => {
   it("supports array-valued headers and rejects invalid date forms", () => {
     const modifiedAt = Date.parse("2026-01-01T12:00:00.000Z");
     expect(ifRangeSatisfied(["\"etag\""], "\"etag\"", modifiedAt)).toBe(true);
+    expect(ifRangeSatisfied(["\"etag\"", "\"other\""], "\"etag\"", modifiedAt)).toBe(true);
     expect(ifRangeSatisfied("not-a-date", "\"etag\"", modifiedAt)).toBe(false);
   });
 });
