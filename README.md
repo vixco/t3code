@@ -46,7 +46,7 @@ Runtime command semantics:
 
 - `terminal.run` executes in the launch directory when `cwd` is omitted.
 - Relative `cwd` values for `terminal.run` and `shell.openInEditor` resolve from the launch directory.
-- `terminal.run` and `shell.openInEditor` reject missing/non-directory cwd targets with structured request errors.
+- `terminal.run` and `shell.openInEditor` reject empty/whitespace, missing, or non-directory cwd targets with structured request errors.
 
 ## Workspace layout
 
