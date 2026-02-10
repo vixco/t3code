@@ -4,6 +4,8 @@ import {
   appBootstrapResultSchema,
   appHealthResultSchema,
   dialogsPickFolderResultSchema,
+  editorIdSchema,
+  shellOpenInEditorInputSchema,
 } from "./ipc";
 
 describe("appBootstrapResultSchema", () => {
@@ -139,5 +141,50 @@ describe("dialogsPickFolderResultSchema", () => {
 
   it("rejects non-string non-null selections", () => {
     expect(() => dialogsPickFolderResultSchema.parse(123)).toThrow();
+  });
+});
+
+describe("editor and shell-open schemas", () => {
+  it("accepts known editor ids", () => {
+    expect(editorIdSchema.parse("cursor")).toBe("cursor");
+    expect(editorIdSchema.parse("file-manager")).toBe("file-manager");
+  });
+
+  it("rejects unknown editor ids", () => {
+    expect(() => editorIdSchema.parse("vscode")).toThrow();
+  });
+
+  it("accepts valid shell.openInEditor payloads", () => {
+    const parsed = shellOpenInEditorInputSchema.parse({
+      cwd: "/workspace",
+      editor: "cursor",
+    });
+
+    expect(parsed.cwd).toBe("/workspace");
+    expect(parsed.editor).toBe("cursor");
+  });
+
+  it("rejects invalid shell.openInEditor payloads", () => {
+    expect(() =>
+      shellOpenInEditorInputSchema.parse({
+        cwd: "",
+        editor: "cursor",
+      }),
+    ).toThrow();
+
+    expect(() =>
+      shellOpenInEditorInputSchema.parse({
+        cwd: "/workspace",
+        editor: "vscode",
+      }),
+    ).toThrow();
+
+    expect(() =>
+      shellOpenInEditorInputSchema.parse({
+        cwd: "/workspace",
+        editor: "cursor",
+        unexpected: true,
+      }),
+    ).toThrow();
   });
 });

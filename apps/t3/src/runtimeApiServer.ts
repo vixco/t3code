@@ -32,6 +32,7 @@ import {
   providerSessionSchema,
   providerStopSessionInputSchema,
   providerTurnStartResultSchema,
+  shellOpenInEditorInputSchema,
   terminalCommandResultSchema,
   terminalCommandInputSchema,
   todoListSchema,
@@ -45,10 +46,6 @@ import { TodoStore } from "../../desktop/src/todoStore";
 const agentWriteInputSchema = z.object({
   sessionId: z.string().min(1),
   data: z.string(),
-});
-const shellOpenInEditorInputSchema = z.object({
-  cwd: z.string().min(1),
-  editor: z.enum(EDITORS.map((entry) => entry.id) as [string, ...string[]]),
 });
 
 interface RuntimeApiServerOptions {

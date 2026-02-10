@@ -20,6 +20,7 @@ export const EDITORS = [
 ] as const;
 
 export type EditorId = (typeof EDITORS)[number]["id"];
+export const editorIdSchema = z.enum(EDITORS.map((entry) => entry.id) as [EditorId, ...EditorId[]]);
 
 export const appBootstrapResultSchema = z.object({
   launchCwd: z.string().min(1),
@@ -37,6 +38,12 @@ export const appHealthResultSchema = z.object({
   activeClientConnected: z.boolean(),
 }).strict();
 export const dialogsPickFolderResultSchema = z.string().nullable();
+export const shellOpenInEditorInputSchema = z
+  .object({
+    cwd: z.string().min(1),
+    editor: editorIdSchema,
+  })
+  .strict();
 
 export type AppBootstrapResult = z.infer<typeof appBootstrapResultSchema>;
 export type AppHealthResult = z.infer<typeof appHealthResultSchema>;
