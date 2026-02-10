@@ -1661,6 +1661,16 @@ async function main() {
       "duplicate-token-while-connected",
     );
 
+    const extraParamWhileConnectedWs = new WebSocket(
+      `${parsedWsUrl.origin}${parsedWsUrl.pathname}?token=${encodeURIComponent(
+        parsedWsUrl.searchParams.get("token") ?? "",
+      )}&debug=1`,
+    );
+    await waitForUnauthorizedCloseWithoutMessages(
+      extraParamWhileConnectedWs,
+      "extra-param-while-connected",
+    );
+
     await new Promise((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error("Smoke test failed: post-unauthorized websocket health request timed out.")),

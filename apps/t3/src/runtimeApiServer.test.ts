@@ -1187,6 +1187,46 @@ describe("runtimeApiServer", () => {
     expect([1000, 1005]).toContain(closed.code);
   });
 
+  it("does not evict authorized client when extra-query client connects", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+      authToken: "secret-token",
+    });
+    servers.push(server);
+
+    const authorizedClient = await connectClient(server.wsUrl);
+    await authorizedClient.nextMessage();
+
+    const authorizedClose = new Promise<{ code: number }>((resolve) => {
+      authorizedClient.socket.once("close", (code) => resolve({ code }));
+    });
+
+    const authorizedUrl = new URL(server.wsUrl);
+    const extraQueryClient = new WebSocket(
+      `${authorizedUrl.origin}${authorizedUrl.pathname}?token=secret-token&debug=1`,
+    );
+    const extraQueryClose = await withTimeout(
+      new Promise<{ code: number }>((resolve, reject) => {
+        extraQueryClient.once("close", (code) => resolve({ code }));
+        extraQueryClient.once("error", (error) => reject(error));
+      }),
+    );
+    expect(extraQueryClose.code).toBe(4001);
+
+    const response = await sendRequest(
+      authorizedClient.socket,
+      authorizedClient.nextMessage,
+      "todos-auth-extra-query-1",
+      "todos.list",
+    );
+    expect(response.ok).toBe(true);
+
+    authorizedClient.socket.close();
+    const closed = await withTimeout(authorizedClose);
+    expect([1000, 1005]).toContain(closed.code);
+  });
+
   it("returns a bootstrap payload even when codex cannot initialize", async () => {
     const originalPath = process.env.PATH;
     process.env.PATH = "";
