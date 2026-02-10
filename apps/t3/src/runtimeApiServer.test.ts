@@ -17,6 +17,7 @@ import {
   type WsServerMessage,
   wsServerMessageSchema,
 } from "@acme/contracts";
+import { createFakeCodexAppServerBinary } from "../../../test-support/fakeCodexAppServer";
 import { startRuntimeApiServer } from "./runtimeApiServer";
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs = 5_000): Promise<T> {
@@ -145,91 +146,6 @@ const METHOD_COVERAGE_PARAMS: Record<WsNativeApiMethod, unknown> = {
     editor: "file-manager",
   },
 };
-
-function createFakeCodexAppServerBinary() {
-  const tempDir = mkdtempSync(path.join(os.tmpdir(), "codex-app-server-fake-"));
-  const binaryPath = path.join(tempDir, "codex");
-  const script = `#!/usr/bin/env node
-const readline = require("node:readline");
-const rl = readline.createInterface({ input: process.stdin });
-let turnCount = 0;
-const send = (message) => process.stdout.write(\`\${JSON.stringify(message)}\\n\`);
-
-rl.on("line", (line) => {
-  let parsed;
-  try {
-    parsed = JSON.parse(line);
-  } catch {
-    return;
-  }
-
-  if (!parsed || typeof parsed !== "object") {
-    return;
-  }
-
-  if (!("id" in parsed) || typeof parsed.method !== "string") {
-    return;
-  }
-
-  if (parsed.method === "initialize") {
-    send({ id: parsed.id, result: {} });
-    return;
-  }
-
-  if (parsed.method === "thread/start") {
-    send({ id: parsed.id, result: { thread: { id: "thread-fake" } } });
-    return;
-  }
-
-  if (parsed.method === "thread/resume") {
-    const threadId =
-      parsed.params &&
-      typeof parsed.params === "object" &&
-      typeof parsed.params.threadId === "string"
-        ? parsed.params.threadId
-        : "thread-fake";
-    send({ id: parsed.id, result: { thread: { id: threadId } } });
-    return;
-  }
-
-  if (parsed.method === "turn/start") {
-    turnCount += 1;
-    send({ id: parsed.id, result: { turn: { id: \`turn-\${turnCount}\` } } });
-    setTimeout(() => {
-      send({
-        id: \`approval-\${turnCount}\`,
-        method: "item/commandExecution/requestApproval",
-        params: {
-          threadId: "thread-fake",
-          turnId: \`turn-\${turnCount}\`,
-          itemId: \`item-\${turnCount}\`,
-        },
-      });
-    }, 25);
-    return;
-  }
-
-  if (parsed.method === "turn/interrupt") {
-    send({ id: parsed.id, result: {} });
-    return;
-  }
-
-  send({
-    id: parsed.id,
-    error: {
-      code: -32601,
-      message: \`Unsupported fake codex method: \${parsed.method}\`,
-    },
-  });
-});
-`;
-  writeFileSync(binaryPath, script, { encoding: "utf8", mode: 0o755 });
-
-  return {
-    tempDir,
-    binaryPath,
-  };
-}
 
 async function waitForAgentEvent(
   nextMessage: () => Promise<WsServerMessage>,
@@ -787,7 +703,7 @@ describe("runtimeApiServer", () => {
   it(
     "supports provider lifecycle methods with a fake codex app-server",
     async () => {
-      const fakeCodex = createFakeCodexAppServerBinary();
+      const fakeCodex = createFakeCodexAppServerBinary("t3-runtime-fake-codex-");
       const originalPath = process.env.PATH;
       process.env.PATH = `${fakeCodex.tempDir}${path.delimiter}${originalPath ?? ""}`;
 
@@ -2125,7 +2041,7 @@ describe("runtimeApiServer", () => {
   it(
     "returns a ready bootstrap payload when codex app-server is available",
     async () => {
-      const fakeCodex = createFakeCodexAppServerBinary();
+      const fakeCodex = createFakeCodexAppServerBinary("t3-bootstrap-fake-codex-");
       const originalPath = process.env.PATH;
       process.env.PATH = `${fakeCodex.tempDir}${path.delimiter}${originalPath ?? ""}`;
 
