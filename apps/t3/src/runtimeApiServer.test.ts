@@ -528,6 +528,10 @@ describe("runtimeApiServer", () => {
     expect(authorizedUrl.searchParams.get("token")).toBe("secret-token");
     const unauthorizedUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}`;
     const unauthorizedClient = new WebSocket(unauthorizedUrl);
+    let unauthorizedMessageCount = 0;
+    unauthorizedClient.on("message", () => {
+      unauthorizedMessageCount += 1;
+    });
     const unauthorizedClose = await withTimeout(
       new Promise<{ code: number }>((resolve, reject) => {
         unauthorizedClient.once("close", (code) => resolve({ code }));
@@ -535,9 +539,14 @@ describe("runtimeApiServer", () => {
       }),
     );
     expect(unauthorizedClose.code).toBe(4001);
+    expect(unauthorizedMessageCount).toBe(0);
 
     const wrongTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=wrong-token`;
     const wrongTokenClient = new WebSocket(wrongTokenUrl);
+    let wrongTokenMessageCount = 0;
+    wrongTokenClient.on("message", () => {
+      wrongTokenMessageCount += 1;
+    });
     const wrongTokenClose = await withTimeout(
       new Promise<{ code: number }>((resolve, reject) => {
         wrongTokenClient.once("close", (code) => resolve({ code }));
@@ -545,6 +554,7 @@ describe("runtimeApiServer", () => {
       }),
     );
     expect(wrongTokenClose.code).toBe(4001);
+    expect(wrongTokenMessageCount).toBe(0);
 
     const authorizedClient = await connectClient(server.wsUrl);
     const hello = await authorizedClient.nextMessage();
