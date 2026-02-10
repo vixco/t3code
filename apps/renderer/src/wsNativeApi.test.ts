@@ -227,6 +227,37 @@ describe("wsNativeApi", () => {
     );
   });
 
+  it("rejects todos.list responses with unexpected todo fields", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4537");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: [
+          {
+            id: "todo-1",
+            title: "Write tests",
+            completed: false,
+            createdAt: "2026-02-01T00:00:00.000Z",
+            unexpected: true,
+          },
+        ],
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'todos.list' returned invalid response payload.",
+    );
+  });
+
   it("configures websocket binaryType to arraybuffer", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4430");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -1763,6 +1794,39 @@ describe("wsNativeApi", () => {
     );
   });
 
+  it("rejects terminal.run responses with unexpected result fields", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4538");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.terminal.run({
+      command: "pwd",
+      cwd: "/workspace",
+    });
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: {
+          stdout: "/workspace\n",
+          stderr: "",
+          code: 0,
+          signal: null,
+          timedOut: false,
+          unexpected: true,
+        },
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'terminal.run' returned invalid response payload.",
+    );
+  });
+
   it("sends dialogs.pickFolder requests and resolves value", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4417");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -1869,6 +1933,40 @@ describe("wsNativeApi", () => {
         result: [
           {
             sessionId: "",
+          },
+        ],
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'providers.listSessions' returned invalid response payload.",
+    );
+  });
+
+  it("rejects providers.listSessions responses with unexpected session fields", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4539");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.providers.listSessions();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: [
+          {
+            sessionId: "sess-1",
+            provider: "codex",
+            status: "ready",
+            cwd: "/workspace",
+            model: "gpt-5-codex",
+            createdAt: "2026-02-01T00:00:00.000Z",
+            updatedAt: "2026-02-01T00:00:00.000Z",
+            unexpected: true,
           },
         ],
       }),
