@@ -969,12 +969,15 @@ describe("runtimeApiServer", () => {
       unauthorizedMessageCount += 1;
     });
     const unauthorizedClose = await withTimeout(
-      new Promise<{ code: number }>((resolve, reject) => {
-        unauthorizedClient.once("close", (code) => resolve({ code }));
+      new Promise<{ code: number; reason: string }>((resolve, reject) => {
+        unauthorizedClient.once("close", (code, reason) =>
+          resolve({ code, reason: reason.toString() }),
+        );
         unauthorizedClient.once("error", (error) => reject(error));
       }),
     );
     expect(unauthorizedClose.code).toBe(4001);
+    expect(unauthorizedClose.reason).toBe("unauthorized");
     expect(unauthorizedMessageCount).toBe(0);
 
     const wrongTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=wrong-token`;
