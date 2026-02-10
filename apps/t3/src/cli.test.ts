@@ -111,6 +111,11 @@ describe("parseCliOptions", () => {
     expect(options.noOpen).toBe(true);
   });
 
+  it("trims equals-style -o values before parsing", () => {
+    const options = parseCliOptions(["-o=  ON  "], { T3_NO_OPEN: "true" }, "/workspace");
+    expect(options.noOpen).toBe(false);
+  });
+
   it("lets -o=true override truthy no-open environment defaults", () => {
     const options = parseCliOptions(["-o=true"], { T3_NO_OPEN: "yes" }, "/workspace");
     expect(options.noOpen).toBe(false);
