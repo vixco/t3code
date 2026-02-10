@@ -87,6 +87,7 @@ Runtime command semantics:
 - Renderer now proactively resets the websocket after request send failures, rejects any in-flight requests, and reconnects cleanly on later requests.
 - Send-failure request errors now include non-Error payload details when available (for clearer diagnostics).
 - Runtime validates request payloads with shared Zod contracts.
+- Runtime successful responses always include `result` (using `null` for void methods) to keep websocket envelopes schema-safe.
 - Codex execution sandbox policy (`read-only`, `workspace-write`, `danger-full-access`) is still selected per session startup options.
 - Static HTML responses are served with `Cache-Control: no-store`; built `/assets/*` files are served with long-lived immutable cache headers.
 - Static file success responses include `Accept-Ranges: bytes`, `Vary: Range`, deterministic `ETag` and `Last-Modified` validators, plus hardened browser headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Cross-Origin-Resource-Policy`, `Cross-Origin-Opener-Policy`).
