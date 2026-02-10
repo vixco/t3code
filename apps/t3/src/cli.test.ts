@@ -1061,6 +1061,13 @@ describe("parseByteRangeHeader", () => {
     });
   });
 
+  it("parses mixed-case whitespace-padded suffix ranges", () => {
+    expect(parseByteRangeHeader("ByTeS = - 5", 100)).toEqual({
+      start: 95,
+      end: 99,
+    });
+  });
+
   it("clamps oversized suffix ranges to full file", () => {
     expect(parseByteRangeHeader("bytes=-500", 100)).toEqual({
       start: 0,
