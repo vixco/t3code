@@ -195,6 +195,17 @@ rl.on("line", (line) => {
   if (parsed.method === "turn/start") {
     turnCount += 1;
     send({ id: parsed.id, result: { turn: { id: \`turn-\${turnCount}\` } } });
+    setTimeout(() => {
+      send({
+        id: \`approval-\${turnCount}\`,
+        method: "item/commandExecution/requestApproval",
+        params: {
+          threadId: "thread-fake",
+          turnId: \`turn-\${turnCount}\`,
+          itemId: \`item-\${turnCount}\`,
+        },
+      });
+    }, 25);
     return;
   }
 
@@ -237,6 +248,41 @@ async function waitForAgentEvent(
   }
 
   return message;
+}
+
+async function waitForProviderEvent(
+  nextMessage: () => Promise<WsServerMessage>,
+  matcher: (payload: {
+    id: string;
+    kind: string;
+    provider: string;
+    sessionId: string;
+    createdAt: string;
+    method: string;
+    requestId?: string;
+    requestKind?: string;
+  }) => boolean,
+) {
+  const message = await nextMessage();
+  if (message.type !== "event" || message.channel !== WS_EVENT_CHANNELS.providerEvent) {
+    return waitForProviderEvent(nextMessage, matcher);
+  }
+
+  const payload = message.payload as {
+    id: string;
+    kind: string;
+    provider: string;
+    sessionId: string;
+    createdAt: string;
+    method: string;
+    requestId?: string;
+    requestKind?: string;
+  };
+  if (!matcher(payload)) {
+    return waitForProviderEvent(nextMessage, matcher);
+  }
+
+  return payload;
 }
 
 const servers: Array<{ close: () => Promise<void> }> = [];
@@ -738,129 +784,170 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
-  it("supports provider lifecycle methods with a fake codex app-server", async () => {
-    const fakeCodex = createFakeCodexAppServerBinary();
-    const originalPath = process.env.PATH;
-    process.env.PATH = `${fakeCodex.tempDir}${path.delimiter}${originalPath ?? ""}`;
+  it(
+    "supports provider lifecycle methods with a fake codex app-server",
+    async () => {
+      const fakeCodex = createFakeCodexAppServerBinary();
+      const originalPath = process.env.PATH;
+      process.env.PATH = `${fakeCodex.tempDir}${path.delimiter}${originalPath ?? ""}`;
 
-    try {
-      const server = await startRuntimeApiServer({
-        port: 0,
-        launchCwd: process.cwd(),
-      });
-      servers.push(server);
+      try {
+        const server = await startRuntimeApiServer({
+          port: 0,
+          launchCwd: process.cwd(),
+        });
+        servers.push(server);
 
-      const client = await connectClient(server.wsUrl);
-      await client.nextMessage();
+        const client = await connectClient(server.wsUrl);
+        await client.nextMessage();
 
-      const startResponse = await sendRequest(
-        client.socket,
-        client.nextMessage,
-        "providers-start-fake-1",
-        "providers.startSession",
-        {
-          provider: "codex",
-        },
-      );
-      expect(startResponse.ok).toBe(true);
-      if (!startResponse.ok) {
-        throw new Error("Expected fake providers.startSession response to succeed.");
+        const startResponse = await sendRequest(
+          client.socket,
+          client.nextMessage,
+          "providers-start-fake-1",
+          "providers.startSession",
+          {
+            provider: "codex",
+          },
+        );
+        expect(startResponse.ok).toBe(true);
+        if (!startResponse.ok) {
+          throw new Error("Expected fake providers.startSession response to succeed.");
+        }
+
+        const session = startResponse.result as {
+          sessionId: string;
+          provider: string;
+          status: string;
+          threadId?: string;
+        };
+        expect(session.provider).toBe("codex");
+        expect(session.status).toBe("ready");
+        expect(session.threadId).toBe("thread-fake");
+        expect(session.sessionId.length).toBeGreaterThan(0);
+
+        const sendTurnResponse = await sendRequest(
+          client.socket,
+          client.nextMessage,
+          "providers-turn-fake-1",
+          "providers.sendTurn",
+          {
+            sessionId: session.sessionId,
+            input: "hello fake codex",
+          },
+        );
+        expect(sendTurnResponse.ok).toBe(true);
+        if (!sendTurnResponse.ok) {
+          throw new Error("Expected fake providers.sendTurn response to succeed.");
+        }
+        const turnResult = sendTurnResponse.result as {
+          threadId: string;
+          turnId: string;
+        };
+        expect(turnResult.threadId).toBe("thread-fake");
+        expect(turnResult.turnId).toBe("turn-1");
+
+        const approvalEvent = await waitForProviderEvent(
+          client.nextMessage,
+          (payload) =>
+            payload.kind === "request" &&
+            payload.method === "item/commandExecution/requestApproval" &&
+            payload.sessionId === session.sessionId &&
+            typeof payload.requestId === "string" &&
+            payload.requestId.length > 0,
+        );
+        expect(approvalEvent.requestKind).toBe("command");
+        expect(approvalEvent.requestId).toBeTruthy();
+        const approvalRequestId = approvalEvent.requestId;
+        if (!approvalRequestId) {
+          throw new Error("Expected provider approval event requestId.");
+        }
+
+        const respondToRequestResponse = await sendRequest(
+          client.socket,
+          client.nextMessage,
+          "providers-respond-fake-1",
+          "providers.respondToRequest",
+          {
+            sessionId: session.sessionId,
+            requestId: approvalRequestId,
+            decision: "accept",
+          },
+        );
+        expect(respondToRequestResponse.ok).toBe(true);
+        if (!respondToRequestResponse.ok) {
+          throw new Error("Expected fake providers.respondToRequest response to succeed.");
+        }
+        expect(respondToRequestResponse.result).toBeNull();
+
+        const interruptResponse = await sendRequest(
+          client.socket,
+          client.nextMessage,
+          "providers-interrupt-fake-1",
+          "providers.interruptTurn",
+          {
+            sessionId: session.sessionId,
+          },
+        );
+        expect(interruptResponse.ok).toBe(true);
+        if (!interruptResponse.ok) {
+          throw new Error("Expected fake providers.interruptTurn response to succeed.");
+        }
+        expect(interruptResponse.result).toBeNull();
+
+        const beforeStopListResponse = await sendRequest(
+          client.socket,
+          client.nextMessage,
+          "providers-list-before-stop-fake-1",
+          "providers.listSessions",
+        );
+        expect(beforeStopListResponse.ok).toBe(true);
+        if (!beforeStopListResponse.ok) {
+          throw new Error("Expected pre-stop providers.listSessions response to succeed.");
+        }
+        const sessionsBeforeStop = beforeStopListResponse.result as Array<{ sessionId: string }>;
+        expect(sessionsBeforeStop.some((entry) => entry.sessionId === session.sessionId)).toBe(
+          true,
+        );
+
+        const stopResponse = await sendRequest(
+          client.socket,
+          client.nextMessage,
+          "providers-stop-fake-1",
+          "providers.stopSession",
+          {
+            sessionId: session.sessionId,
+          },
+        );
+        expect(stopResponse.ok).toBe(true);
+        if (!stopResponse.ok) {
+          throw new Error("Expected fake providers.stopSession response to succeed.");
+        }
+        expect(stopResponse.result).toBeNull();
+
+        const afterStopListResponse = await sendRequest(
+          client.socket,
+          client.nextMessage,
+          "providers-list-after-stop-fake-1",
+          "providers.listSessions",
+        );
+        expect(afterStopListResponse.ok).toBe(true);
+        if (!afterStopListResponse.ok) {
+          throw new Error("Expected post-stop providers.listSessions response to succeed.");
+        }
+        const sessionsAfterStop = afterStopListResponse.result as Array<{ sessionId: string }>;
+        expect(sessionsAfterStop.some((entry) => entry.sessionId === session.sessionId)).toBe(
+          false,
+        );
+
+        client.socket.close();
+      } finally {
+        process.env.PATH = originalPath;
+        rmSync(fakeCodex.tempDir, { recursive: true, force: true });
       }
-
-      const session = startResponse.result as {
-        sessionId: string;
-        provider: string;
-        status: string;
-        threadId?: string;
-      };
-      expect(session.provider).toBe("codex");
-      expect(session.status).toBe("ready");
-      expect(session.threadId).toBe("thread-fake");
-      expect(session.sessionId.length).toBeGreaterThan(0);
-
-      const sendTurnResponse = await sendRequest(
-        client.socket,
-        client.nextMessage,
-        "providers-turn-fake-1",
-        "providers.sendTurn",
-        {
-          sessionId: session.sessionId,
-          input: "hello fake codex",
-        },
-      );
-      expect(sendTurnResponse.ok).toBe(true);
-      if (!sendTurnResponse.ok) {
-        throw new Error("Expected fake providers.sendTurn response to succeed.");
-      }
-      const turnResult = sendTurnResponse.result as {
-        threadId: string;
-        turnId: string;
-      };
-      expect(turnResult.threadId).toBe("thread-fake");
-      expect(turnResult.turnId).toBe("turn-1");
-
-      const interruptResponse = await sendRequest(
-        client.socket,
-        client.nextMessage,
-        "providers-interrupt-fake-1",
-        "providers.interruptTurn",
-        {
-          sessionId: session.sessionId,
-        },
-      );
-      expect(interruptResponse.ok).toBe(true);
-      if (!interruptResponse.ok) {
-        throw new Error("Expected fake providers.interruptTurn response to succeed.");
-      }
-      expect(interruptResponse.result).toBeNull();
-
-      const beforeStopListResponse = await sendRequest(
-        client.socket,
-        client.nextMessage,
-        "providers-list-before-stop-fake-1",
-        "providers.listSessions",
-      );
-      expect(beforeStopListResponse.ok).toBe(true);
-      if (!beforeStopListResponse.ok) {
-        throw new Error("Expected pre-stop providers.listSessions response to succeed.");
-      }
-      const sessionsBeforeStop = beforeStopListResponse.result as Array<{ sessionId: string }>;
-      expect(sessionsBeforeStop.some((entry) => entry.sessionId === session.sessionId)).toBe(true);
-
-      const stopResponse = await sendRequest(
-        client.socket,
-        client.nextMessage,
-        "providers-stop-fake-1",
-        "providers.stopSession",
-        {
-          sessionId: session.sessionId,
-        },
-      );
-      expect(stopResponse.ok).toBe(true);
-      if (!stopResponse.ok) {
-        throw new Error("Expected fake providers.stopSession response to succeed.");
-      }
-      expect(stopResponse.result).toBeNull();
-
-      const afterStopListResponse = await sendRequest(
-        client.socket,
-        client.nextMessage,
-        "providers-list-after-stop-fake-1",
-        "providers.listSessions",
-      );
-      expect(afterStopListResponse.ok).toBe(true);
-      if (!afterStopListResponse.ok) {
-        throw new Error("Expected post-stop providers.listSessions response to succeed.");
-      }
-      const sessionsAfterStop = afterStopListResponse.result as Array<{ sessionId: string }>;
-      expect(sessionsAfterStop.some((entry) => entry.sessionId === session.sessionId)).toBe(false);
-
-      client.socket.close();
-    } finally {
-      process.env.PATH = originalPath;
-      rmSync(fakeCodex.tempDir, { recursive: true, force: true });
-    }
-  });
+    },
+    20_000,
+  );
 
   it("handles shell.openInEditor file-manager requests", async () => {
     const server = await startRuntimeApiServer({
