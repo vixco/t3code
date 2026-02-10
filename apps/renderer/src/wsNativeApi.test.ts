@@ -2759,6 +2759,14 @@ describe("wsNativeApi", () => {
     socket?.emitMessage(
       JSON.stringify({
         type: "response",
+        id: "x".repeat(257),
+        ok: true,
+        result: [],
+      }),
+    );
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
         id: requestEnvelope.id,
         ok: true,
         result: [],
