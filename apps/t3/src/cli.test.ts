@@ -1041,6 +1041,10 @@ describe("ifMatchSatisfied", () => {
   it("supports array-valued headers", () => {
     expect(ifMatchSatisfied(["\"foo\"", "\"abc\""], "\"abc\"")).toBe(true);
   });
+
+  it("supports wildcard in array-valued headers", () => {
+    expect(ifMatchSatisfied(["\"foo\"", "*"], "\"abc\"")).toBe(true);
+  });
 });
 
 describe("ifModifiedSinceSatisfied", () => {
