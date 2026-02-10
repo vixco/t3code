@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { agentConfigSchema, agentExitSchema, outputChunkSchema } from "./agent";
+import { agentConfigSchema, agentExitSchema, agentWriteInputSchema, outputChunkSchema } from "./agent";
 
 describe("agentConfigSchema", () => {
   it("accepts valid agent configs", () => {
@@ -41,6 +41,34 @@ describe("outputChunkSchema", () => {
         sessionId: "agent-1",
         stream: "stdout",
         data: "hello",
+        unexpected: true,
+      }),
+    ).toThrow();
+  });
+});
+
+describe("agentWriteInputSchema", () => {
+  it("accepts valid write payloads", () => {
+    const parsed = agentWriteInputSchema.parse({
+      sessionId: "agent-1",
+      data: "ping\n",
+    });
+
+    expect(parsed.sessionId).toBe("agent-1");
+  });
+
+  it("rejects invalid write payloads", () => {
+    expect(() =>
+      agentWriteInputSchema.parse({
+        sessionId: "",
+        data: "ping\n",
+      }),
+    ).toThrow();
+
+    expect(() =>
+      agentWriteInputSchema.parse({
+        sessionId: "agent-1",
+        data: "ping\n",
         unexpected: true,
       }),
     ).toThrow();

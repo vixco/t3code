@@ -10,6 +10,13 @@ export const agentConfigSchema = z.object({
   usePty: z.boolean().optional(),
 }).strict();
 
+export const agentWriteInputSchema = z
+  .object({
+    sessionId: z.string().min(1),
+    data: z.string(),
+  })
+  .strict();
+
 export const outputChunkSchema = z.object({
   sessionId: z.string(),
   stream: z.enum(["stdout", "stderr"]),
@@ -23,5 +30,6 @@ export const agentExitSchema = z.object({
 }).strict();
 
 export type AgentConfig = z.infer<typeof agentConfigSchema>;
+export type AgentWriteInput = z.infer<typeof agentWriteInputSchema>;
 export type OutputChunk = z.infer<typeof outputChunkSchema>;
 export type AgentExit = z.infer<typeof agentExitSchema>;

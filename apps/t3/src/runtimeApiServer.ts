@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { z } from "zod";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 
 import {
@@ -22,6 +21,7 @@ import {
   WS_CLOSE_REASONS,
   agentConfigSchema,
   agentSessionIdSchema,
+  agentWriteInputSchema,
   newTodoInputSchema,
   todoIdSchema,
   providerInterruptTurnInputSchema,
@@ -32,6 +32,7 @@ import {
   providerSessionSchema,
   providerStopSessionInputSchema,
   providerTurnStartResultSchema,
+  type TerminalCommandInput,
   shellOpenInEditorInputSchema,
   terminalCommandResultSchema,
   terminalCommandInputSchema,
@@ -42,11 +43,6 @@ import {
 import { ProcessManager } from "../../desktop/src/processManager";
 import { ProviderManager } from "../../desktop/src/providerManager";
 import { TodoStore } from "../../desktop/src/todoStore";
-
-const agentWriteInputSchema = z.object({
-  sessionId: z.string().min(1),
-  data: z.string(),
-});
 
 interface RuntimeApiServerOptions {
   port: number;
@@ -258,7 +254,7 @@ async function pickFolder(): Promise<string | null> {
 }
 
 async function runTerminalCommand(
-  parsed: z.infer<typeof terminalCommandInputSchema>,
+  parsed: TerminalCommandInput,
   defaultCwd: string,
 ) {
   const providedCwd = parsed.cwd ?? defaultCwd;
