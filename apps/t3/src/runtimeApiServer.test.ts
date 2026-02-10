@@ -1,3 +1,4 @@
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 
@@ -628,10 +629,12 @@ describe("runtimeApiServer", () => {
 
       const payload = response.result as {
         launchCwd: string;
+        projectName: string;
         session: { status: string };
         bootstrapError?: string;
       };
       expect(payload.launchCwd).toBe(process.cwd());
+      expect(payload.projectName).toBe(path.basename(process.cwd()) || process.cwd());
       expect(payload.session.status).toBe("error");
       expect(typeof payload.bootstrapError).toBe("string");
       expect((payload.bootstrapError ?? "").length).toBeGreaterThan(0);
@@ -675,8 +678,16 @@ describe("runtimeApiServer", () => {
         throw new Error("Expected both bootstrap responses to succeed.");
       }
 
-      const firstSession = first.result as { session: { sessionId: string; status: string } };
-      const secondSession = second.result as { session: { sessionId: string; status: string } };
+      const firstSession = first.result as {
+        projectName: string;
+        session: { sessionId: string; status: string };
+      };
+      const secondSession = second.result as {
+        projectName: string;
+        session: { sessionId: string; status: string };
+      };
+      expect(firstSession.projectName).toBe(path.basename(process.cwd()) || process.cwd());
+      expect(secondSession.projectName).toBe(path.basename(process.cwd()) || process.cwd());
       expect(firstSession.session.status).toBe("error");
       expect(firstSession.session.sessionId.length).toBeGreaterThan(0);
       expect(secondSession.session.sessionId.length).toBeGreaterThan(0);
