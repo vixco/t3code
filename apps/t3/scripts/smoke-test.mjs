@@ -19,6 +19,8 @@ const WS_EVENT_CHANNELS = {
   agentOutput: "agent:output",
   agentExit: "agent:exit",
 };
+const WS_REQUEST_ID_MAX_CHARS = 256;
+const WS_METHOD_MAX_CHARS = 256;
 
 function isRecord(value) {
   return typeof value === "object" && value !== null;
@@ -76,7 +78,12 @@ function parseWsMessage(raw) {
     return null;
   }
 
-  if (typeof parsed.id !== "string" || typeof parsed.ok !== "boolean") {
+  if (
+    typeof parsed.id !== "string" ||
+    parsed.id.length === 0 ||
+    parsed.id.length > WS_REQUEST_ID_MAX_CHARS ||
+    typeof parsed.ok !== "boolean"
+  ) {
     return null;
   }
 
@@ -2143,7 +2150,7 @@ async function main() {
     ws.send(
       JSON.stringify({
         type: "request",
-        id: "x".repeat(300),
+        id: "x".repeat(WS_REQUEST_ID_MAX_CHARS + 1),
         method: "app.health",
       }),
     );
@@ -2151,7 +2158,7 @@ async function main() {
       JSON.stringify({
         type: "request",
         id: "smoke-malformed-long-method",
-        method: "m".repeat(300),
+        method: "m".repeat(WS_METHOD_MAX_CHARS + 1),
       }),
     );
     const postMalformedHealthResponse = await sendWsRequest(ws, {
