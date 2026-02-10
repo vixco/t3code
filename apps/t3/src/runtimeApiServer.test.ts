@@ -11,6 +11,7 @@ import {
   WS_EVENT_CHANNELS,
   type WsResponseMessage,
   type WsServerMessage,
+  wsServerMessageSchema,
 } from "@acme/contracts";
 import { startRuntimeApiServer } from "./runtimeApiServer";
 
@@ -37,12 +38,18 @@ async function connectClient(url: string) {
   const pendingResolvers: Array<(message: WsServerMessage) => void> = [];
   const socket = new WebSocket(url);
   socket.on("message", (raw) => {
-    let parsed: WsServerMessage;
+    let parsedRaw: unknown;
     try {
-      parsed = JSON.parse(raw.toString()) as WsServerMessage;
+      parsedRaw = JSON.parse(raw.toString()) as unknown;
     } catch {
       return;
     }
+
+    const parsedResult = wsServerMessageSchema.safeParse(parsedRaw);
+    if (!parsedResult.success) {
+      return;
+    }
+    const parsed = parsedResult.data;
 
     const pending = pendingResolvers.shift();
     if (pending) {
