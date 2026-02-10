@@ -372,6 +372,29 @@ async function main() {
         "Smoke test failed: expected accept-ranges=bytes on HEAD ranged asset response.",
       );
     }
+    const headUnsatisfiableRange = await fetch(assetUrl, {
+      method: "HEAD",
+      headers: {
+        Range: `bytes=${assetContentLength}-${assetContentLength + 1}`,
+      },
+    });
+    if (headUnsatisfiableRange.status !== 416) {
+      throw new Error(
+        `Smoke test failed: expected HEAD unsatisfiable range status 416, received ${headUnsatisfiableRange.status}.`,
+      );
+    }
+    if (headUnsatisfiableRange.headers.get("content-range") !== `bytes */${assetContentLength}`) {
+      throw new Error(
+        `Smoke test failed: expected HEAD unsatisfiable content-range bytes */${String(
+          assetContentLength,
+        )}, got ${String(headUnsatisfiableRange.headers.get("content-range"))}.`,
+      );
+    }
+    if ((headUnsatisfiableRange.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {
+      throw new Error(
+        "Smoke test failed: expected cache-control=no-store on HEAD unsatisfiable range response.",
+      );
+    }
     const missingAssetUrl = new URL("/assets/missing-bundle.js", parsedAppUrl);
     const missingAsset = await fetch(missingAssetUrl);
     if (missingAsset.status !== 404) {
