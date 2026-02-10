@@ -299,6 +299,31 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("responds to dialogs.pickFolder requests", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "dialog-pick-folder-1",
+      "dialogs.pickFolder",
+    );
+    expect(response.ok).toBe(true);
+    if (!response.ok) {
+      throw new Error("Expected dialogs.pickFolder response to succeed.");
+    }
+    expect(response.result === null || typeof response.result === "string").toBe(true);
+
+    client.socket.close();
+  });
+
   it("ignores malformed client messages and continues processing", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
