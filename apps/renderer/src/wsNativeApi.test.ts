@@ -486,6 +486,35 @@ describe("wsNativeApi", () => {
     );
   });
 
+  it("rejects app.health responses with unexpected payload fields", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4535");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.app.health();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: {
+          status: "ok",
+          launchCwd: "/workspace",
+          sessionCount: 0,
+          activeClientConnected: true,
+          unexpected: true,
+        },
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'app.health' returned invalid response payload.",
+    );
+  });
+
   it("sends app.bootstrap requests and returns payload", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4412");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -575,6 +604,43 @@ describe("wsNativeApi", () => {
         status: "error",
       },
     });
+  });
+
+  it("rejects app.bootstrap responses with unexpected payload fields", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4536");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.app.bootstrap();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: {
+          launchCwd: "/workspace",
+          projectName: "workspace",
+          provider: "codex",
+          model: "gpt-5-codex",
+          session: {
+            sessionId: "sess-1",
+            provider: "codex",
+            status: "ready",
+            createdAt: "2026-02-01T00:00:00.000Z",
+            updatedAt: "2026-02-01T00:00:00.000Z",
+          },
+          unexpected: true,
+        },
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'app.bootstrap' returned invalid response payload.",
+    );
   });
 
   it("falls back to default local runtime URL when ws query is missing", async () => {
