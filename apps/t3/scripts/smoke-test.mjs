@@ -14,6 +14,76 @@ const WS_CLOSE_REASONS = {
   unauthorized: "unauthorized",
 };
 
+function isRecord(value) {
+  return typeof value === "object" && value !== null;
+}
+
+function hasOwn(value, key) {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function parseWsMessage(raw) {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(raw));
+  } catch {
+    return null;
+  }
+
+  if (!isRecord(parsed) || typeof parsed.type !== "string") {
+    return null;
+  }
+
+  if (parsed.type === "hello") {
+    if (parsed.version !== 1) {
+      return null;
+    }
+    if (typeof parsed.launchCwd !== "string") {
+      return null;
+    }
+    return parsed;
+  }
+
+  if (parsed.type === "event") {
+    if (typeof parsed.channel !== "string") {
+      return null;
+    }
+    if (!hasOwn(parsed, "payload")) {
+      return null;
+    }
+    return parsed;
+  }
+
+  if (parsed.type !== "response") {
+    return null;
+  }
+
+  if (typeof parsed.id !== "string" || typeof parsed.ok !== "boolean") {
+    return null;
+  }
+
+  if (parsed.ok) {
+    if (!hasOwn(parsed, "result") || hasOwn(parsed, "error")) {
+      return null;
+    }
+    return parsed;
+  }
+
+  if (hasOwn(parsed, "result")) {
+    return null;
+  }
+
+  if (
+    !isRecord(parsed.error) ||
+    typeof parsed.error.code !== "string" ||
+    typeof parsed.error.message !== "string"
+  ) {
+    return null;
+  }
+
+  return parsed;
+}
+
 function getFreePort() {
   return new Promise((resolve, reject) => {
     const server = createServer();
@@ -167,10 +237,8 @@ function sendWsRequest(socket, request, timeoutMs = 20_000) {
     }, timeoutMs);
 
     const onMessage = (event) => {
-      let message;
-      try {
-        message = JSON.parse(String(event.data));
-      } catch {
+      const message = parseWsMessage(event.data);
+      if (!message) {
         return;
       }
 
@@ -229,10 +297,8 @@ function waitForWsEvent(socket, matcher, label, timeoutMs = 20_000) {
     }, timeoutMs);
 
     const onMessage = (event) => {
-      let message;
-      try {
-        message = JSON.parse(String(event.data));
-      } catch {
+      const message = parseWsMessage(event.data);
+      if (!message) {
         return;
       }
 
@@ -1619,7 +1685,10 @@ async function main() {
         );
       });
       ws.addEventListener("message", (event) => {
-        const message = JSON.parse(String(event.data));
+        const message = parseWsMessage(event.data);
+        if (!message) {
+          return;
+        }
         if (message.type === "hello") {
           if (message.version !== 1) {
             clearTimeout(timer);
@@ -1698,10 +1767,8 @@ async function main() {
         20_000,
       );
       const onMessage = (event) => {
-        let message;
-        try {
-          message = JSON.parse(String(event.data));
-        } catch {
+        const message = parseWsMessage(event.data);
+        if (!message) {
           return;
         }
 
@@ -1744,10 +1811,8 @@ async function main() {
         20_000,
       );
       const onMessage = (event) => {
-        let message;
-        try {
-          message = JSON.parse(String(event.data));
-        } catch {
+        const message = parseWsMessage(event.data);
+        if (!message) {
           return;
         }
 
@@ -1790,10 +1855,8 @@ async function main() {
         20_000,
       );
       const onMessage = (event) => {
-        let message;
-        try {
-          message = JSON.parse(String(event.data));
-        } catch {
+        const message = parseWsMessage(event.data);
+        if (!message) {
           return;
         }
 
@@ -1834,10 +1897,8 @@ async function main() {
         20_000,
       );
       const onMessage = (event) => {
-        let message;
-        try {
-          message = JSON.parse(String(event.data));
-        } catch {
+        const message = parseWsMessage(event.data);
+        if (!message) {
           return;
         }
 
@@ -1885,10 +1946,8 @@ async function main() {
         20_000,
       );
       const onMessage = (event) => {
-        let message;
-        try {
-          message = JSON.parse(String(event.data));
-        } catch {
+        const message = parseWsMessage(event.data);
+        if (!message) {
           return;
         }
 
@@ -1935,10 +1994,8 @@ async function main() {
         20_000,
       );
       const onMessage = (event) => {
-        let message;
-        try {
-          message = JSON.parse(String(event.data));
-        } catch {
+        const message = parseWsMessage(event.data);
+        if (!message) {
           return;
         }
 
@@ -2357,10 +2414,8 @@ async function main() {
         20_000,
       );
       const onMessage = (event) => {
-        let message;
-        try {
-          message = JSON.parse(String(event.data));
-        } catch {
+        const message = parseWsMessage(event.data);
+        if (!message) {
           return;
         }
 
@@ -2395,10 +2450,8 @@ async function main() {
         20_000,
       );
       const onMessage = (event) => {
-        let message;
-        try {
-          message = JSON.parse(String(event.data));
-        } catch {
+        const message = parseWsMessage(event.data);
+        if (!message) {
           return;
         }
 
@@ -2662,10 +2715,8 @@ async function main() {
         20_000,
       );
       const onMessage = (event) => {
-        let message;
-        try {
-          message = JSON.parse(String(event.data));
-        } catch {
+        const message = parseWsMessage(event.data);
+        if (!message) {
           return;
         }
 
