@@ -81,6 +81,17 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("throws for empty equals-style --no-open values", () => {
+    expect(() => parseCliOptions(["--no-open="], {}, "/workspace")).toThrow(
+      "Invalid value for --no-open",
+    );
+  });
+
+  it("parses case-insensitive equals-style --no-open values", () => {
+    const options = parseCliOptions(["--no-open=ON"], {}, "/workspace");
+    expect(options.noOpen).toBe(true);
+  });
+
   it("parses case-insensitive and trimmed T3_NO_OPEN truthy values", () => {
     const options = parseCliOptions(
       [],
