@@ -115,6 +115,46 @@ function waitForCloseCode(socket, expectedCode, label, timeoutMs = 10_000) {
   });
 }
 
+function sendWsRequest(socket, request, timeoutMs = 20_000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.removeEventListener("message", onMessage);
+      reject(
+        new Error(
+          `Smoke test failed: websocket request ${request.id} (${request.method}) timed out.`,
+        ),
+      );
+    }, timeoutMs);
+
+    const onMessage = (event) => {
+      let message;
+      try {
+        message = JSON.parse(String(event.data));
+      } catch {
+        return;
+      }
+
+      if (message.type !== "response" || message.id !== request.id) {
+        return;
+      }
+
+      clearTimeout(timer);
+      socket.removeEventListener("message", onMessage);
+      resolve(message);
+    };
+
+    socket.addEventListener("message", onMessage);
+    socket.send(
+      JSON.stringify({
+        type: "request",
+        id: request.id,
+        method: request.method,
+        ...(request.params === undefined ? {} : { params: request.params }),
+      }),
+    );
+  });
+}
+
 function waitForStartupUrl(readOutput, processRef, timeoutMs = 20_000) {
   return new Promise((resolve, reject) => {
     const finish = (callback, value) => {
@@ -1518,6 +1558,53 @@ async function main() {
         reject(new Error("Smoke test failed: websocket client error."));
       });
     });
+
+    const todoTitle = `Smoke todo ${String(backendPort)}-${String(webPort)}-${Date.now()}`;
+    const addedTodosResponse = await sendWsRequest(ws, {
+      id: "smoke-todos-add",
+      method: "todos.add",
+      params: { title: todoTitle },
+    });
+    if (addedTodosResponse.ok !== true || !Array.isArray(addedTodosResponse.result)) {
+      throw new Error("Smoke test failed: expected successful todos.add response.");
+    }
+
+    const addedTodo = addedTodosResponse.result.find((todo) => {
+      return (
+        typeof todo?.id === "string" &&
+        todo.id.length > 0 &&
+        todo.title === todoTitle &&
+        todo.completed === false
+      );
+    });
+    if (!addedTodo) {
+      throw new Error("Smoke test failed: could not locate newly-added todo entry.");
+    }
+
+    const toggledTodosResponse = await sendWsRequest(ws, {
+      id: "smoke-todos-toggle",
+      method: "todos.toggle",
+      params: addedTodo.id,
+    });
+    if (toggledTodosResponse.ok !== true || !Array.isArray(toggledTodosResponse.result)) {
+      throw new Error("Smoke test failed: expected successful todos.toggle response.");
+    }
+    const toggledTodo = toggledTodosResponse.result.find((todo) => todo?.id === addedTodo.id);
+    if (!toggledTodo || toggledTodo.completed !== true) {
+      throw new Error("Smoke test failed: expected toggled todo to be completed.");
+    }
+
+    const removedTodosResponse = await sendWsRequest(ws, {
+      id: "smoke-todos-remove",
+      method: "todos.remove",
+      params: addedTodo.id,
+    });
+    if (removedTodosResponse.ok !== true || !Array.isArray(removedTodosResponse.result)) {
+      throw new Error("Smoke test failed: expected successful todos.remove response.");
+    }
+    if (removedTodosResponse.result.some((todo) => todo?.id === addedTodo.id)) {
+      throw new Error("Smoke test failed: removed todo is still present in todos list.");
+    }
 
     const duplicateTokenWhileConnectedWs = new WebSocket(
       `${parsedWsUrl.origin}${parsedWsUrl.pathname}?token=${encodeURIComponent(
