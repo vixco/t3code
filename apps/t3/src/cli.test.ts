@@ -584,6 +584,14 @@ describe("resolveStaticAssetPath", () => {
     });
   });
 
+  it("strips query strings before hash fragments when resolving paths", () => {
+    const result = resolveStaticAssetPath("/assets/main.js?v=123#chunk", distRoot);
+    expect(result).toEqual({
+      kind: "file",
+      filePath: path.join(distRoot, "assets", "main.js"),
+    });
+  });
+
   it("rejects traversal attempts with decoded dot-dot segments", () => {
     const result = resolveStaticAssetPath("/../package.json", distRoot);
     expect(result).toEqual({
