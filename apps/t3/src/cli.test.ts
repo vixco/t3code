@@ -118,6 +118,10 @@ describe("parseCliOptions", () => {
     expect(options.launchCwd).toBe(path.resolve("apps/renderer"));
   });
 
+  it("rejects whitespace-only positional cwd arguments", () => {
+    expect(() => parseCliOptions(["   "], {}, "/workspace")).toThrow("Invalid value for [path]");
+  });
+
   it("rejects multiple positional cwd arguments", () => {
     expect(() => parseCliOptions(["apps/renderer", "apps/t3"], {}, "/workspace")).toThrow(
       "Unexpected positional argument: apps/t3",

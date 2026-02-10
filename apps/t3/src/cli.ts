@@ -184,7 +184,7 @@ export function parseCliOptions(
       if (usedPositionalCwd) {
         throw new Error(`Unexpected positional argument: ${arg}`);
       }
-      launchCwd = path.resolve(arg);
+      launchCwd = parseExplicitPath(arg, "[path]");
       usedPositionalCwd = true;
       continue;
     }
