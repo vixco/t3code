@@ -19,6 +19,26 @@ describe("wsClientMessageSchema", () => {
 
     expect(parsed.method).toBe("providers.startSession");
   });
+
+  it("rejects empty request ids", () => {
+    expect(() =>
+      wsClientMessageSchema.parse({
+        type: "request",
+        id: "",
+        method: "providers.startSession",
+      }),
+    ).toThrow();
+  });
+
+  it("rejects empty request methods", () => {
+    expect(() =>
+      wsClientMessageSchema.parse({
+        type: "request",
+        id: "req-1",
+        method: "",
+      }),
+    ).toThrow();
+  });
 });
 
 describe("wsServerMessageSchema", () => {
@@ -86,6 +106,16 @@ describe("wsServerMessageSchema", () => {
     });
 
     expect(parsed.type).toBe("hello");
+  });
+
+  it("rejects hello messages with unsupported versions", () => {
+    expect(() =>
+      wsServerMessageSchema.parse({
+        type: "hello",
+        version: 2,
+        launchCwd: "/workspace",
+      }),
+    ).toThrow();
   });
 });
 
