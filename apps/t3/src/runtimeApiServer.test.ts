@@ -776,6 +776,8 @@ describe("runtimeApiServer", () => {
 
     client.socket.send("not-json");
     client.socket.send(JSON.stringify({ type: "request", id: "", method: "" }));
+    client.socket.send(JSON.stringify({ type: "request", id: "   ", method: "todos.list" }));
+    client.socket.send(JSON.stringify({ type: "request", id: "malformed-space-method", method: "   " }));
     client.socket.send(
       JSON.stringify({
         type: "request",

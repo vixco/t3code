@@ -34,12 +34,32 @@ describe("wsClientMessageSchema", () => {
     ).toThrow();
   });
 
+  it("rejects whitespace-only request ids", () => {
+    expect(() =>
+      wsClientMessageSchema.parse({
+        type: "request",
+        id: "   ",
+        method: "providers.startSession",
+      }),
+    ).toThrow();
+  });
+
   it("rejects empty request methods", () => {
     expect(() =>
       wsClientMessageSchema.parse({
         type: "request",
         id: "req-1",
         method: "",
+      }),
+    ).toThrow();
+  });
+
+  it("rejects whitespace-only request methods", () => {
+    expect(() =>
+      wsClientMessageSchema.parse({
+        type: "request",
+        id: "req-1",
+        method: "   ",
       }),
     ).toThrow();
   });
@@ -230,6 +250,43 @@ describe("wsServerMessageSchema", () => {
     });
 
     expect(parsed.type).toBe("response");
+  });
+
+  it("rejects whitespace-only response ids", () => {
+    expect(() =>
+      wsServerMessageSchema.parse({
+        type: "response",
+        id: "   ",
+        ok: true,
+        result: {},
+      }),
+    ).toThrow();
+  });
+
+  it("rejects whitespace-only response error fields", () => {
+    expect(() =>
+      wsServerMessageSchema.parse({
+        type: "response",
+        id: "req-1",
+        ok: false,
+        error: {
+          code: "   ",
+          message: "valid",
+        },
+      }),
+    ).toThrow();
+
+    expect(() =>
+      wsServerMessageSchema.parse({
+        type: "response",
+        id: "req-1",
+        ok: false,
+        error: {
+          code: "request_failed",
+          message: "   ",
+        },
+      }),
+    ).toThrow();
   });
 
   it("accepts typed event channels", () => {

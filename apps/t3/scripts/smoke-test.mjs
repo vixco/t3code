@@ -82,7 +82,7 @@ function parseWsMessage(raw) {
 
   if (
     typeof parsed.id !== "string" ||
-    parsed.id.length === 0 ||
+    parsed.id.trim().length === 0 ||
     parsed.id.length > WS_REQUEST_ID_MAX_CHARS ||
     typeof parsed.ok !== "boolean"
   ) {
@@ -111,10 +111,10 @@ function parseWsMessage(raw) {
     !isRecord(parsed.error) ||
     !hasOnlyKeys(parsed.error, ["code", "message"]) ||
     typeof parsed.error.code !== "string" ||
-    parsed.error.code.length === 0 ||
+    parsed.error.code.trim().length === 0 ||
     parsed.error.code.length > WS_ERROR_CODE_MAX_CHARS ||
     typeof parsed.error.message !== "string" ||
-    parsed.error.message.length === 0 ||
+    parsed.error.message.trim().length === 0 ||
     parsed.error.message.length > WS_ERROR_MESSAGE_MAX_CHARS
   ) {
     return null;

@@ -23,22 +23,51 @@ export const WS_METHOD_MAX_CHARS = 256;
 export const WS_ERROR_CODE_MAX_CHARS = 128;
 export const WS_ERROR_MESSAGE_MAX_CHARS = 8_192;
 
+const wsRequestIdSchema = z
+  .string()
+  .min(1)
+  .max(WS_REQUEST_ID_MAX_CHARS)
+  .refine((value) => value.trim().length > 0, {
+    message: "request.id must not be blank",
+  });
+const wsMethodSchema = z
+  .string()
+  .min(1)
+  .max(WS_METHOD_MAX_CHARS)
+  .refine((value) => value.trim().length > 0, {
+    message: "request.method must not be blank",
+  });
+const wsErrorCodeSchema = z
+  .string()
+  .min(1)
+  .max(WS_ERROR_CODE_MAX_CHARS)
+  .refine((value) => value.trim().length > 0, {
+    message: "response.error.code must not be blank",
+  });
+const wsErrorMessageSchema = z
+  .string()
+  .min(1)
+  .max(WS_ERROR_MESSAGE_MAX_CHARS)
+  .refine((value) => value.trim().length > 0, {
+    message: "response.error.message must not be blank",
+  });
+
 const wsRequestSchema = z.object({
   type: z.literal("request"),
-  id: z.string().min(1).max(WS_REQUEST_ID_MAX_CHARS),
-  method: z.string().min(1).max(WS_METHOD_MAX_CHARS),
+  id: wsRequestIdSchema,
+  method: wsMethodSchema,
   params: z.unknown().optional(),
 }).strict();
 
 const wsResponseErrorSchema = z.object({
-  code: z.string().min(1).max(WS_ERROR_CODE_MAX_CHARS),
-  message: z.string().min(1).max(WS_ERROR_MESSAGE_MAX_CHARS),
+  code: wsErrorCodeSchema,
+  message: wsErrorMessageSchema,
 }).strict();
 
 const wsResponseSchema = z
   .object({
     type: z.literal("response"),
-    id: z.string().min(1).max(WS_REQUEST_ID_MAX_CHARS),
+    id: wsRequestIdSchema,
     ok: z.boolean(),
     result: z.unknown().optional(),
     error: wsResponseErrorSchema.optional(),

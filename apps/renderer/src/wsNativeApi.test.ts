@@ -3153,6 +3153,14 @@ describe("wsNativeApi", () => {
     socket?.emitMessage(
       JSON.stringify({
         type: "response",
+        id: "   ",
+        ok: true,
+        result: [],
+      }),
+    );
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
         id: requestEnvelope.id,
         ok: true,
         result: [],
@@ -3165,7 +3173,7 @@ describe("wsNativeApi", () => {
         id: requestEnvelope.id,
         ok: false,
         error: {
-          code: "request_failed",
+          code: "   ",
           message: "m".repeat(WS_ERROR_MESSAGE_MAX_CHARS + 1),
         },
       }),
