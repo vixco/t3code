@@ -2200,7 +2200,7 @@ async function main() {
       method: "agent.kill",
       params: killableAgentSessionId,
     });
-    if (killResponse.ok !== true) {
+    if (killResponse.ok !== true || killResponse.result !== null) {
       throw new Error("Smoke test failed: expected successful agent.kill response.");
     }
     const killableExitEvent = await killableExitPromise;
@@ -2259,7 +2259,7 @@ async function main() {
         data: "ping\n",
       },
     });
-    if (writeResponse.ok !== true) {
+    if (writeResponse.ok !== true || writeResponse.result !== null) {
       throw new Error("Smoke test failed: expected successful agent.write response.");
     }
     const writableOutputEvent = await writableOutputPromise;
@@ -2303,7 +2303,7 @@ async function main() {
       method: "agent.kill",
       params: "missing-agent-session",
     });
-    if (unknownAgentKillResponse.ok !== true) {
+    if (unknownAgentKillResponse.ok !== true || unknownAgentKillResponse.result !== null) {
       throw new Error(
         `Smoke test failed: expected successful unknown-session agent.kill no-op, got ${JSON.stringify(
           unknownAgentKillResponse,
