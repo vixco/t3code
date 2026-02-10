@@ -2189,6 +2189,14 @@ async function main() {
       "extra-param-while-connected",
     );
 
+    const wrongTokenKeyWhileConnectedWs = new WebSocket(
+      `${parsedWsUrl.origin}${parsedWsUrl.pathname}?Token=${runtimeAuthTokenParam}`,
+    );
+    await waitForUnauthorizedCloseWithoutMessages(
+      wrongTokenKeyWhileConnectedWs,
+      "wrong-token-key-while-connected",
+    );
+
     await new Promise((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error("Smoke test failed: post-unauthorized websocket health request timed out.")),

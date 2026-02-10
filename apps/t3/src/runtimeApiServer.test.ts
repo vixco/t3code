@@ -1428,6 +1428,49 @@ describe("runtimeApiServer", () => {
     expect([1000, 1005]).toContain(closed.code);
   });
 
+  it("does not evict authorized client when wrong-token-key client connects", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+      authToken: "secret-token",
+    });
+    servers.push(server);
+
+    const authorizedClient = await connectClient(server.wsUrl);
+    await authorizedClient.nextMessage();
+
+    const authorizedClose = new Promise<{ code: number }>((resolve) => {
+      authorizedClient.socket.once("close", (code) => resolve({ code }));
+    });
+
+    const authorizedUrl = new URL(server.wsUrl);
+    const wrongTokenKeyClient = new WebSocket(
+      `${authorizedUrl.origin}${authorizedUrl.pathname}?Token=secret-token`,
+    );
+    const wrongTokenKeyClose = await withTimeout(
+      new Promise<{ code: number; reason: string }>((resolve, reject) => {
+        wrongTokenKeyClient.once("close", (code, reason) =>
+          resolve({ code, reason: reason.toString() }),
+        );
+        wrongTokenKeyClient.once("error", (error) => reject(error));
+      }),
+    );
+    expect(wrongTokenKeyClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(wrongTokenKeyClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
+
+    const response = await sendRequest(
+      authorizedClient.socket,
+      authorizedClient.nextMessage,
+      "todos-auth-wrong-token-key-1",
+      "todos.list",
+    );
+    expect(response.ok).toBe(true);
+
+    authorizedClient.socket.close();
+    const closed = await withTimeout(authorizedClose);
+    expect([1000, 1005]).toContain(closed.code);
+  });
+
   it("returns a bootstrap payload even when codex cannot initialize", async () => {
     const originalPath = process.env.PATH;
     process.env.PATH = "";
