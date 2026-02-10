@@ -255,7 +255,11 @@ async function runTerminalCommand(
   defaultCwd: string,
 ) {
   const providedCwd = parsed.cwd ?? defaultCwd;
-  const resolvedCwd = resolveExistingDirectory(providedCwd, "Working directory");
+  const resolvedCwd = resolveExistingDirectoryFromBase(
+    providedCwd,
+    "Working directory",
+    defaultCwd,
+  );
 
   const shellPath =
     process.platform === "win32"
@@ -331,22 +335,35 @@ function resolveExistingDirectory(targetPath: string, label: string): string {
   return candidate;
 }
 
+function resolveExistingDirectoryFromBase(
+  targetPath: string,
+  label: string,
+  baseDirectory: string,
+): string {
+  const candidate = path.isAbsolute(targetPath)
+    ? path.resolve(targetPath)
+    : path.resolve(baseDirectory, targetPath);
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(candidate);
+  } catch {
+    throw new Error(`${label} does not exist: ${candidate}`);
+  }
+
+  if (!stats.isDirectory()) {
+    throw new Error(`${label} is not a directory: ${candidate}`);
+  }
+
+  return candidate;
+}
+
 export async function startRuntimeApiServer(
   options: RuntimeApiServerOptions,
 ): Promise<RuntimeApiServer> {
   if (!Number.isInteger(options.port) || options.port < 0 || options.port > 65_535) {
     throw new Error("Invalid runtime port: expected integer between 0 and 65535.");
   }
-  const launchCwd = path.resolve(options.launchCwd);
-  let launchCwdStats: fs.Stats;
-  try {
-    launchCwdStats = fs.statSync(launchCwd);
-  } catch {
-    throw new Error(`Invalid launchCwd: directory does not exist: ${launchCwd}`);
-  }
-  if (!launchCwdStats.isDirectory()) {
-    throw new Error(`Invalid launchCwd: expected directory path: ${launchCwd}`);
-  }
+  const launchCwd = resolveExistingDirectory(options.launchCwd, "Invalid launchCwd");
   const authToken = options.authToken?.trim();
   if (options.authToken !== undefined && !authToken) {
     throw new Error("Invalid runtime auth token: expected non-empty string.");
@@ -582,7 +599,7 @@ export async function startRuntimeApiServer(
 
     if (method === "shell.openInEditor") {
       const parsed = shellOpenInEditorInputSchema.parse(params);
-      const targetPath = resolveExistingDirectory(parsed.cwd, "Editor target");
+      const targetPath = resolveExistingDirectoryFromBase(parsed.cwd, "Editor target", launchCwd);
 
       const editor = EDITORS.find((entry) => entry.id === parsed.editor);
       if (!editor) {

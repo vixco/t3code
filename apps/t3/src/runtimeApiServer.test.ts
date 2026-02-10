@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createServer as createNetServer } from "node:net";
@@ -215,7 +215,7 @@ describe("runtimeApiServer", () => {
         port: 0,
         launchCwd: missingPath,
       }),
-    ).rejects.toThrow("Invalid launchCwd: directory does not exist");
+    ).rejects.toThrow("Invalid launchCwd does not exist");
   });
 
   it("rejects startup when launchCwd is not a directory", async () => {
@@ -227,7 +227,7 @@ describe("runtimeApiServer", () => {
         port: 0,
         launchCwd: filePath,
       }),
-    ).rejects.toThrow("Invalid launchCwd: expected directory path");
+    ).rejects.toThrow("Invalid launchCwd is not a directory");
   });
 
   it("rejects non-positive bootstrap timeout configuration", async () => {
@@ -471,6 +471,36 @@ describe("runtimeApiServer", () => {
       "shell.openInEditor",
       {
         cwd: ".",
+        editor: "file-manager",
+      },
+    );
+    expect(response.ok).toBe(true);
+    expect(response.result).toBeNull();
+
+    client.socket.close();
+  });
+
+  it("resolves relative shell.openInEditor cwd paths from launch cwd", async () => {
+    const launchCwd = mkdtempSync(path.join(os.tmpdir(), "t3-shell-launch-cwd-"));
+    const nestedDir = path.join(launchCwd, "nested");
+    mkdirSync(nestedDir, { recursive: true });
+
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd,
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "shell-open-relative-launch-cwd-1",
+      "shell.openInEditor",
+      {
+        cwd: "nested",
         editor: "file-manager",
       },
     );
@@ -1468,6 +1498,43 @@ describe("runtimeApiServer", () => {
       stdout: string;
     };
     expect(payload.stdout.trim()).toBe(process.cwd());
+
+    client.socket.close();
+  });
+
+  it("resolves relative terminal cwd paths from launch cwd", async () => {
+    const launchCwd = mkdtempSync(path.join(os.tmpdir(), "t3-terminal-launch-cwd-"));
+    const nestedDir = path.join(launchCwd, "nested");
+    mkdirSync(nestedDir, { recursive: true });
+
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd,
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "terminal-cwd-relative-launch-1",
+      "terminal.run",
+      {
+        command: "pwd",
+        cwd: "nested",
+      },
+    );
+    expect(response.ok).toBe(true);
+    if (!response.ok) {
+      throw new Error("Expected relative launch cwd terminal response to succeed.");
+    }
+
+    const payload = response.result as {
+      stdout: string;
+    };
+    expect(payload.stdout.trim()).toBe(nestedDir);
 
     client.socket.close();
   });
