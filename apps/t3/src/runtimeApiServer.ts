@@ -38,6 +38,7 @@ import {
   terminalCommandInputSchema,
   todoListSchema,
   wsClientMessageSchema,
+  wsNativeApiMethodSchema,
   wsServerMessageSchema,
 } from "@acme/contracts";
 import { ProcessManager } from "../../desktop/src/processManager";
@@ -565,112 +566,117 @@ export async function startRuntimeApiServer(
   };
 
   const resolveMethod = async (method: string, params: unknown) => {
-    if (method === "app.bootstrap") {
-      const bootstrap = await ensureLaunchSession();
-      const payload = {
-        launchCwd,
-        projectName: path.basename(launchCwd) || launchCwd,
-        provider: "codex",
-        model: bootstrap.session.model ?? DEFAULT_MODEL,
-        session: bootstrap.session,
-        ...(bootstrap.bootstrapError
-          ? { bootstrapError: bootstrap.bootstrapError }
-          : {}),
-      };
-      return appBootstrapResultSchema.parse(payload);
+    const parsedMethod = wsNativeApiMethodSchema.safeParse(method);
+    if (!parsedMethod.success) {
+      throw new Error(`Unknown API method: ${method}`);
     }
 
-    if (method === "app.health") {
-      const payload = {
-        status: "ok",
-        launchCwd,
-        sessionCount: providerManager.listSessions().length,
-        activeClientConnected: activeClient !== null,
-      };
-      return appHealthResultSchema.parse(payload);
-    }
-
-    if (method === "todos.list") return todoListSchema.parse(await todoStore.list());
-    if (method === "todos.add")
-      return todoListSchema.parse(await todoStore.add(newTodoInputSchema.parse(params)));
-    if (method === "todos.toggle")
-      return todoListSchema.parse(await todoStore.toggle(todoIdSchema.parse(params)));
-    if (method === "todos.remove")
-      return todoListSchema.parse(await todoStore.remove(todoIdSchema.parse(params)));
-
-    if (method === "dialogs.pickFolder")
-      return dialogsPickFolderResultSchema.parse(await pickFolder());
-    if (method === "terminal.run") {
-      return terminalCommandResultSchema.parse(
-        await runTerminalCommand(terminalCommandInputSchema.parse(params), launchCwd),
-      );
-    }
-
-    if (method === "agent.spawn")
-      return agentSessionIdSchema.parse(processManager.spawn(agentConfigSchema.parse(params)));
-    if (method === "agent.kill") {
-      processManager.kill(agentSessionIdSchema.parse(params));
-      return null;
-    }
-    if (method === "agent.write") {
-      const parsed = agentWriteInputSchema.parse(params);
-      processManager.write(parsed.sessionId, parsed.data);
-      return null;
-    }
-
-    if (method === "providers.startSession") {
-      const session = await providerManager.startSession(
-        providerSessionStartInputSchema.parse(params),
-      );
-      bootstrapFallbackSession = null;
-      return providerSessionSchema.parse(session);
-    }
-    if (method === "providers.sendTurn") {
-      return providerTurnStartResultSchema.parse(
-        await providerManager.sendTurn(providerSendTurnInputSchema.parse(params)),
-      );
-    }
-    if (method === "providers.interruptTurn") {
-      await providerManager.interruptTurn(providerInterruptTurnInputSchema.parse(params));
-      return null;
-    }
-    if (method === "providers.respondToRequest") {
-      await providerManager.respondToRequest(providerRespondToRequestInputSchema.parse(params));
-      return null;
-    }
-    if (method === "providers.stopSession") {
-      providerManager.stopSession(providerStopSessionInputSchema.parse(params));
-      return null;
-    }
-    if (method === "providers.listSessions")
-      return providerSessionListSchema.parse(providerManager.listSessions());
-
-    if (method === "shell.openInEditor") {
-      const parsed = shellOpenInEditorInputSchema.parse(params);
-      const targetPath = resolveExistingDirectoryFromBase(parsed.cwd, "Editor target", launchCwd);
-
-      const editor = EDITORS.find((entry) => entry.id === parsed.editor);
-      if (!editor) {
-        throw new Error(`Unknown editor: ${parsed.editor}`);
+    switch (parsedMethod.data) {
+      case "app.bootstrap": {
+        const bootstrap = await ensureLaunchSession();
+        const payload = {
+          launchCwd,
+          projectName: path.basename(launchCwd) || launchCwd,
+          provider: "codex",
+          model: bootstrap.session.model ?? DEFAULT_MODEL,
+          session: bootstrap.session,
+          ...(bootstrap.bootstrapError
+            ? { bootstrapError: bootstrap.bootstrapError }
+            : {}),
+        };
+        return appBootstrapResultSchema.parse(payload);
       }
 
-      if (!editor.command) {
-        openPathInFileManager(targetPath);
+      case "app.health": {
+        const payload = {
+          status: "ok",
+          launchCwd,
+          sessionCount: providerManager.listSessions().length,
+          activeClientConnected: activeClient !== null,
+        };
+        return appHealthResultSchema.parse(payload);
+      }
+
+      case "todos.list":
+        return todoListSchema.parse(await todoStore.list());
+      case "todos.add":
+        return todoListSchema.parse(await todoStore.add(newTodoInputSchema.parse(params)));
+      case "todos.toggle":
+        return todoListSchema.parse(await todoStore.toggle(todoIdSchema.parse(params)));
+      case "todos.remove":
+        return todoListSchema.parse(await todoStore.remove(todoIdSchema.parse(params)));
+
+      case "dialogs.pickFolder":
+        return dialogsPickFolderResultSchema.parse(await pickFolder());
+      case "terminal.run":
+        return terminalCommandResultSchema.parse(
+          await runTerminalCommand(terminalCommandInputSchema.parse(params), launchCwd),
+        );
+
+      case "agent.spawn":
+        return agentSessionIdSchema.parse(processManager.spawn(agentConfigSchema.parse(params)));
+      case "agent.kill":
+        processManager.kill(agentSessionIdSchema.parse(params));
+        return null;
+      case "agent.write": {
+        const parsed = agentWriteInputSchema.parse(params);
+        processManager.write(parsed.sessionId, parsed.data);
         return null;
       }
 
-      const child = spawn(editor.command, [targetPath], {
-        detached: true,
-        stdio: "ignore",
-      });
-      child.on("error", () => {
-        // Best-effort editor launch.
-      });
-      child.unref();
-      return null;
-    }
+      case "providers.startSession": {
+        const session = await providerManager.startSession(
+          providerSessionStartInputSchema.parse(params),
+        );
+        bootstrapFallbackSession = null;
+        return providerSessionSchema.parse(session);
+      }
+      case "providers.sendTurn":
+        return providerTurnStartResultSchema.parse(
+          await providerManager.sendTurn(providerSendTurnInputSchema.parse(params)),
+        );
+      case "providers.interruptTurn":
+        await providerManager.interruptTurn(providerInterruptTurnInputSchema.parse(params));
+        return null;
+      case "providers.respondToRequest":
+        await providerManager.respondToRequest(providerRespondToRequestInputSchema.parse(params));
+        return null;
+      case "providers.stopSession":
+        providerManager.stopSession(providerStopSessionInputSchema.parse(params));
+        return null;
+      case "providers.listSessions":
+        return providerSessionListSchema.parse(providerManager.listSessions());
 
-    throw new Error(`Unknown API method: ${method}`);
+      case "shell.openInEditor": {
+        const parsed = shellOpenInEditorInputSchema.parse(params);
+        const targetPath = resolveExistingDirectoryFromBase(parsed.cwd, "Editor target", launchCwd);
+
+        const editor = EDITORS.find((entry) => entry.id === parsed.editor);
+        if (!editor) {
+          throw new Error(`Unknown editor: ${parsed.editor}`);
+        }
+
+        if (!editor.command) {
+          openPathInFileManager(targetPath);
+          return null;
+        }
+
+        const child = spawn(editor.command, [targetPath], {
+          detached: true,
+          stdio: "ignore",
+        });
+        child.on("error", () => {
+          // Best-effort editor launch.
+        });
+        child.unref();
+        return null;
+      }
+
+      default: {
+        const unreachableMethod: never = parsedMethod.data;
+        throw new Error(`Unknown API method: ${unreachableMethod}`);
+      }
+    }
   };
 
   wss.on("connection", (socket, request) => {
