@@ -2122,6 +2122,86 @@ describe("runtimeApiServer", () => {
     }
   });
 
+  it(
+    "returns a ready bootstrap payload when codex app-server is available",
+    async () => {
+      const fakeCodex = createFakeCodexAppServerBinary();
+      const originalPath = process.env.PATH;
+      process.env.PATH = `${fakeCodex.tempDir}${path.delimiter}${originalPath ?? ""}`;
+
+      try {
+        const server = await startRuntimeApiServer({
+          port: 0,
+          launchCwd: process.cwd(),
+        });
+        servers.push(server);
+
+        const client = await connectClient(server.wsUrl);
+        await client.nextMessage();
+
+        const bootstrapResponse = await sendRequest(
+          client.socket,
+          client.nextMessage,
+          "bootstrap-fake-success-1",
+          "app.bootstrap",
+        );
+        expect(bootstrapResponse.ok).toBe(true);
+        if (!bootstrapResponse.ok) {
+          throw new Error("Expected bootstrap response to succeed with fake codex.");
+        }
+
+        const payload = bootstrapResponse.result as {
+          launchCwd: string;
+          projectName: string;
+          provider: string;
+          model: string;
+          session: {
+            sessionId: string;
+            status: string;
+            threadId?: string;
+          };
+          bootstrapError?: string;
+        };
+        expect(payload.launchCwd).toBe(process.cwd());
+        expect(payload.projectName).toBe(path.basename(process.cwd()) || process.cwd());
+        expect(payload.provider).toBe("codex");
+        expect(payload.model.length).toBeGreaterThan(0);
+        expect(payload.session.status).toBe("ready");
+        expect(payload.session.threadId).toBe("thread-fake");
+        expect(payload.session.sessionId.length).toBeGreaterThan(0);
+        expect(payload.bootstrapError).toBeUndefined();
+
+        const sessionsResponse = await sendRequest(
+          client.socket,
+          client.nextMessage,
+          "bootstrap-fake-sessions-1",
+          "providers.listSessions",
+        );
+        expect(sessionsResponse.ok).toBe(true);
+        if (!sessionsResponse.ok) {
+          throw new Error("Expected providers.listSessions to succeed after bootstrap.");
+        }
+        const sessions = sessionsResponse.result as Array<{
+          sessionId: string;
+          status: string;
+          threadId?: string;
+        }>;
+        const bootstrappedSession = sessions.find(
+          (entry) => entry.sessionId === payload.session.sessionId,
+        );
+        expect(bootstrappedSession).toBeDefined();
+        expect(bootstrappedSession?.status).toBe("ready");
+        expect(bootstrappedSession?.threadId).toBe("thread-fake");
+
+        client.socket.close();
+      } finally {
+        process.env.PATH = originalPath;
+        rmSync(fakeCodex.tempDir, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
   it("returns structured errors for unknown methods", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
