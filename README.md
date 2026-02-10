@@ -73,6 +73,7 @@ Runtime command semantics:
 - Browser renderer talks through a typed `NativeApi` adapter over that WebSocket.
 - Runtime currently enforces a single active browser client (new client replaces old one).
 - When replaced by a newer connection, the previous active websocket is closed with code `4000`.
+- Replacement closes use reason string `replaced-by-new-client` for deterministic client handling.
 - Runtime validates request payloads with shared Zod contracts.
 - Codex execution sandbox policy (`read-only`, `workspace-write`, `danger-full-access`) is still selected per session startup options.
 - Static HTML responses are served with `Cache-Control: no-store`; built `/assets/*` files are served with long-lived immutable cache headers.
