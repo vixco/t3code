@@ -8,8 +8,8 @@ import { WebSocket, WebSocketServer, type RawData } from "ws";
 import {
   EDITORS,
   DEFAULT_MODEL,
-  type AppBootstrapResult,
-  type AppHealthResult,
+  appBootstrapResultSchema,
+  appHealthResultSchema,
   type ProviderSession,
   type WsClientMessage,
   type WsResponseMessage,
@@ -24,9 +24,14 @@ import {
   providerInterruptTurnInputSchema,
   providerRespondToRequestInputSchema,
   providerSendTurnInputSchema,
+  providerSessionListSchema,
   providerSessionStartInputSchema,
+  providerSessionSchema,
   providerStopSessionInputSchema,
+  providerTurnStartResultSchema,
+  terminalCommandResultSchema,
   terminalCommandInputSchema,
+  todoListSchema,
   wsClientMessageSchema,
   wsServerMessageSchema,
 } from "@acme/contracts";
@@ -42,6 +47,7 @@ const shellOpenInEditorInputSchema = z.object({
   cwd: z.string().min(1),
   editor: z.enum(EDITORS.map((entry) => entry.id) as [string, ...string[]]),
 });
+const pickFolderResultSchema = z.string().nullable();
 
 interface RuntimeApiServerOptions {
   port: number;
@@ -527,7 +533,7 @@ export async function startRuntimeApiServer(
   const resolveMethod = async (method: string, params: unknown) => {
     if (method === "app.bootstrap") {
       const bootstrap = await ensureLaunchSession();
-      const payload: AppBootstrapResult = {
+      const payload = {
         launchCwd,
         projectName: path.basename(launchCwd) || launchCwd,
         provider: "codex",
@@ -537,30 +543,36 @@ export async function startRuntimeApiServer(
           ? { bootstrapError: bootstrap.bootstrapError }
           : {}),
       };
-      return payload;
+      return appBootstrapResultSchema.parse(payload);
     }
 
     if (method === "app.health") {
-      const payload: AppHealthResult = {
+      const payload = {
         status: "ok",
         launchCwd,
         sessionCount: providerManager.listSessions().length,
         activeClientConnected: activeClient !== null,
       };
-      return payload;
+      return appHealthResultSchema.parse(payload);
     }
 
-    if (method === "todos.list") return todoStore.list();
-    if (method === "todos.add") return todoStore.add(newTodoInputSchema.parse(params));
-    if (method === "todos.toggle") return todoStore.toggle(todoIdSchema.parse(params));
-    if (method === "todos.remove") return todoStore.remove(todoIdSchema.parse(params));
+    if (method === "todos.list") return todoListSchema.parse(await todoStore.list());
+    if (method === "todos.add")
+      return todoListSchema.parse(await todoStore.add(newTodoInputSchema.parse(params)));
+    if (method === "todos.toggle")
+      return todoListSchema.parse(await todoStore.toggle(todoIdSchema.parse(params)));
+    if (method === "todos.remove")
+      return todoListSchema.parse(await todoStore.remove(todoIdSchema.parse(params)));
 
-    if (method === "dialogs.pickFolder") return pickFolder();
+    if (method === "dialogs.pickFolder") return pickFolderResultSchema.parse(await pickFolder());
     if (method === "terminal.run") {
-      return runTerminalCommand(terminalCommandInputSchema.parse(params), launchCwd);
+      return terminalCommandResultSchema.parse(
+        await runTerminalCommand(terminalCommandInputSchema.parse(params), launchCwd),
+      );
     }
 
-    if (method === "agent.spawn") return processManager.spawn(agentConfigSchema.parse(params));
+    if (method === "agent.spawn")
+      return agentSessionIdSchema.parse(processManager.spawn(agentConfigSchema.parse(params)));
     if (method === "agent.kill") {
       processManager.kill(agentSessionIdSchema.parse(params));
       return null;
@@ -576,10 +588,12 @@ export async function startRuntimeApiServer(
         providerSessionStartInputSchema.parse(params),
       );
       bootstrapFallbackSession = null;
-      return session;
+      return providerSessionSchema.parse(session);
     }
     if (method === "providers.sendTurn") {
-      return providerManager.sendTurn(providerSendTurnInputSchema.parse(params));
+      return providerTurnStartResultSchema.parse(
+        await providerManager.sendTurn(providerSendTurnInputSchema.parse(params)),
+      );
     }
     if (method === "providers.interruptTurn") {
       await providerManager.interruptTurn(providerInterruptTurnInputSchema.parse(params));
@@ -593,7 +607,8 @@ export async function startRuntimeApiServer(
       providerManager.stopSession(providerStopSessionInputSchema.parse(params));
       return null;
     }
-    if (method === "providers.listSessions") return providerManager.listSessions();
+    if (method === "providers.listSessions")
+      return providerSessionListSchema.parse(providerManager.listSessions());
 
     if (method === "shell.openInEditor") {
       const parsed = shellOpenInEditorInputSchema.parse(params);
