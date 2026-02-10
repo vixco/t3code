@@ -405,6 +405,16 @@ describe("readCliVersion", () => {
     expect(value).toBe("9.9.9");
   });
 
+  it("falls back when npm_package_version is whitespace-only", () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-version-env-fallback-"));
+    const packageJsonPath = path.join(tempDir, "package.json");
+    writeFileSync(packageJsonPath, JSON.stringify({ version: "1.2.3" }), "utf8");
+    const value = readCliVersion(packageJsonPath, {
+      npm_package_version: "   ",
+    });
+    expect(value).toBe("1.2.3");
+  });
+
   it("falls back to package json version when env is missing", () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-version-test-"));
     const packageJsonPath = path.join(tempDir, "package.json");
