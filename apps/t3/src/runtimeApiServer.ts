@@ -325,8 +325,16 @@ function resolveExistingDirectory(targetPath: string, label: string): string {
   let stats: fs.Stats;
   try {
     stats = fs.statSync(candidate);
-  } catch {
-    throw new Error(`${label} does not exist: ${candidate}`);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code && code !== "ENOENT") {
+      throw new Error(`Failed to access ${label.toLowerCase()}: ${candidate} (${code})`, {
+        cause: error,
+      });
+    }
+    throw new Error(`${label} does not exist: ${candidate}`, {
+      cause: error,
+    });
   }
 
   if (!stats.isDirectory()) {
@@ -347,8 +355,16 @@ function resolveExistingDirectoryFromBase(
   let stats: fs.Stats;
   try {
     stats = fs.statSync(candidate);
-  } catch {
-    throw new Error(`${label} does not exist: ${candidate}`);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code && code !== "ENOENT") {
+      throw new Error(`Failed to access ${label.toLowerCase()}: ${candidate} (${code})`, {
+        cause: error,
+      });
+    }
+    throw new Error(`${label} does not exist: ${candidate}`, {
+      cause: error,
+    });
   }
 
   if (!stats.isDirectory()) {

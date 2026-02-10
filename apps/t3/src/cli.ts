@@ -343,8 +343,16 @@ export function validateLaunchDirectory(launchCwd: string): string {
   let stats: fs.Stats;
   try {
     stats = fs.statSync(resolved);
-  } catch {
-    throw new Error(`Launch directory does not exist: ${resolved}`);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code && code !== "ENOENT") {
+      throw new Error(`Failed to access launch directory: ${resolved} (${code})`, {
+        cause: error,
+      });
+    }
+    throw new Error(`Launch directory does not exist: ${resolved}`, {
+      cause: error,
+    });
   }
 
   if (!stats.isDirectory()) {
