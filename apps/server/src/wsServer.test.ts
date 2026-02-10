@@ -1,25 +1,50 @@
 import { describe, expect, it, afterEach } from "vitest";
 import { createServer } from "./wsServer";
+import WebSocket from "ws";
 
 import { WS_CHANNELS, WS_METHODS, type WsPush, type WsResponse } from "@acme/contracts";
 
+interface PendingMessages {
+  queue: unknown[];
+  waiters: Array<(message: unknown) => void>;
+}
+
+const pendingBySocket = new WeakMap<WebSocket, PendingMessages>();
+
 function connectWs(port: number): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://localhost:${port}`);
-    ws.addEventListener("open", () => resolve(ws));
-    ws.addEventListener("error", () =>
-      reject(new Error("WebSocket connection failed")),
-    );
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+    const pending: PendingMessages = { queue: [], waiters: [] };
+    pendingBySocket.set(ws, pending);
+
+    ws.on("message", (raw) => {
+      const parsed = JSON.parse(String(raw));
+      const waiter = pending.waiters.shift();
+      if (waiter) {
+        waiter(parsed);
+        return;
+      }
+      pending.queue.push(parsed);
+    });
+
+    ws.once("open", () => resolve(ws));
+    ws.once("error", () => reject(new Error("WebSocket connection failed")));
   });
 }
 
 function waitForMessage(ws: WebSocket): Promise<unknown> {
+  const pending = pendingBySocket.get(ws);
+  if (!pending) {
+    return Promise.reject(new Error("WebSocket not initialized"));
+  }
+
+  const queued = pending.queue.shift();
+  if (queued !== undefined) {
+    return Promise.resolve(queued);
+  }
+
   return new Promise((resolve) => {
-    const handler = (event: MessageEvent) => {
-      ws.removeEventListener("message", handler);
-      resolve(JSON.parse(String(event.data)));
-    };
-    ws.addEventListener("message", handler);
+    pending.waiters.push(resolve);
   });
 }
 
@@ -33,16 +58,12 @@ async function sendRequest(
   ws.send(message);
 
   // Wait for response with matching id
-  return new Promise((resolve) => {
-    const handler = (event: MessageEvent) => {
-      const parsed = JSON.parse(String(event.data)) as Record<string, unknown>;
-      if (parsed.id === id) {
-        ws.removeEventListener("message", handler);
-        resolve(parsed as unknown as WsResponse);
-      }
-    };
-    ws.addEventListener("message", handler);
-  });
+  while (true) {
+    const parsed = (await waitForMessage(ws)) as Record<string, unknown>;
+    if (parsed.id === id) {
+      return parsed as WsResponse;
+    }
+  }
 }
 
 describe("WebSocket Server", () => {
