@@ -695,6 +695,21 @@ describe("resolveStaticAssetPath", () => {
     });
   });
 
+  it("supports absolute-form request targets by using URL pathname", () => {
+    const result = resolveStaticAssetPath("http://127.0.0.1/assets/main.js?x=1", distRoot);
+    expect(result).toEqual({
+      kind: "file",
+      filePath: path.join(distRoot, "assets", "main.js"),
+    });
+  });
+
+  it("rejects malformed absolute-form request targets", () => {
+    const result = resolveStaticAssetPath("http://%zz", distRoot);
+    expect(result).toEqual({
+      kind: "bad_request",
+    });
+  });
+
   it("rejects traversal attempts with decoded dot-dot segments", () => {
     const result = resolveStaticAssetPath("/../package.json", distRoot);
     expect(result).toEqual({

@@ -515,7 +515,24 @@ export function resolveStaticAssetPath(
   requestUrl: string | undefined,
   distRoot: string,
 ): { kind: "file"; filePath: string } | { kind: "forbidden" } | { kind: "bad_request" } {
-  const rawPath = requestUrl ? (requestUrl.split(/[?#]/, 1)[0] ?? "/") : "/";
+  const rawPath = (() => {
+    if (!requestUrl) {
+      return "/";
+    }
+
+    if (requestUrl.startsWith("http://") || requestUrl.startsWith("https://")) {
+      try {
+        return new URL(requestUrl).pathname;
+      } catch {
+        return null;
+      }
+    }
+
+    return requestUrl.split(/[?#]/, 1)[0] ?? "/";
+  })();
+  if (!rawPath) {
+    return { kind: "bad_request" };
+  }
   let decodedPath: string;
   try {
     decodedPath = decodeURIComponent(rawPath);
