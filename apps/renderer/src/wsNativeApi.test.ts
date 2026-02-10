@@ -249,6 +249,22 @@ describe("wsNativeApi", () => {
     );
   });
 
+  it("surfaces send failure details from cause chains when websocket send throws", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4525");
+    MockWebSocket.failSend = true;
+    MockWebSocket.failSendError = {
+      cause: {
+        message: "cause-send-failure",
+      },
+    };
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to send runtime request 'todos.list': cause-send-failure",
+    );
+  });
+
   it("falls back to unknown websocket failure when send throw has no message", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4519");
     MockWebSocket.failSend = true;
@@ -660,6 +676,23 @@ describe("wsNativeApi", () => {
     });
 
     await expect(request).rejects.toThrow("websocket errored (deep-socket-error)");
+  });
+
+  it("uses websocket error payload messages from cause chains for pending requests", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4526");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    socket?.emitErrorEvent({
+      cause: {
+        message: "cause-socket-error",
+      },
+    });
+
+    await expect(request).rejects.toThrow("websocket errored (cause-socket-error)");
   });
 
   it("extracts websocket error payload messages nested beyond five levels", async () => {
@@ -1982,6 +2015,22 @@ describe("wsNativeApi", () => {
     );
   });
 
+  it("uses websocket open error payload messages from cause chains when available", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4527");
+    MockWebSocket.failOpen = true;
+    MockWebSocket.failOpenEvent = {
+      cause: {
+        message: "cause-open-error",
+      },
+    };
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to connect to local t3 runtime: websocket error (cause-open-error).",
+    );
+  });
+
   it("falls back when websocket open error payload message exceeds extraction depth", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4524");
     MockWebSocket.failOpen = true;
@@ -2348,6 +2397,22 @@ describe("wsNativeApi", () => {
 
     await expect(api.todos.list()).rejects.toThrow(
       "Failed to connect to local t3 runtime: websocket error (deep-constructor-failure).",
+    );
+  });
+
+  it("uses constructor throw payload messages from cause chains for connect diagnostics", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4528");
+    MockWebSocket.failConstruct = true;
+    MockWebSocket.failConstructError = {
+      cause: {
+        message: "cause-constructor-failure",
+      },
+    };
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to connect to local t3 runtime: websocket error (cause-constructor-failure).",
     );
   });
 

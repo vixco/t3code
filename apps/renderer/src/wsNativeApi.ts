@@ -127,7 +127,15 @@ function messageFromUnknown(value: unknown, depth = 0): string | null {
     return message;
   }
 
-  return messageFromUnknown((value as { error?: unknown } | null)?.error, depth + 1);
+  const nestedErrorMessage = messageFromUnknown(
+    (value as { error?: unknown } | null)?.error,
+    depth + 1,
+  );
+  if (nestedErrorMessage) {
+    return nestedErrorMessage;
+  }
+
+  return messageFromUnknown((value as { cause?: unknown } | null)?.cause, depth + 1);
 }
 
 function normalizeNonEmptyString(value: unknown) {
