@@ -363,9 +363,17 @@ export async function startRuntimeApiServer(
   };
 
   const ensureLaunchSession = async (): Promise<BootstrapSessionResult> => {
+    const isLaunchProjectSession = (session: ProviderSession) => {
+      if (!session.cwd) {
+        return false;
+      }
+
+      return path.resolve(session.cwd) === launchCwd;
+    };
+
     const existingSession = providerManager
       .listSessions()
-      .find((session) => session.cwd === launchCwd && session.status !== "closed");
+      .find((session) => isLaunchProjectSession(session) && session.status !== "closed");
     if (existingSession) {
       bootstrapFallbackSession = null;
       return {
