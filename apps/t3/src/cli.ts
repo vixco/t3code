@@ -464,8 +464,7 @@ export function resolveStaticAssetPath(
   requestUrl: string | undefined,
   distRoot: string,
 ): { kind: "file"; filePath: string } | { kind: "forbidden" } | { kind: "bad_request" } {
-  const pathWithoutQuery = requestUrl ? requestUrl.split("?")[0] : "/";
-  const rawPath = pathWithoutQuery || "/";
+  const rawPath = requestUrl ? (requestUrl.split(/[?#]/, 1)[0] ?? "/") : "/";
   let decodedPath: string;
   try {
     decodedPath = decodeURIComponent(rawPath);
