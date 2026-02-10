@@ -107,10 +107,41 @@ describe("wsServerMessageSchema", () => {
     const parsed = wsServerMessageSchema.parse({
       type: "event",
       channel: WS_EVENT_CHANNELS.providerEvent,
-      payload: { id: "evt-1" },
+      payload: {
+        id: "evt-1",
+        kind: "notification",
+        provider: "codex",
+        sessionId: "sess-1",
+        createdAt: "2026-02-01T00:00:00.000Z",
+        method: "turn/started",
+      },
     });
 
     expect(parsed.type).toBe("event");
+  });
+
+  it("accepts typed agent output and exit events", () => {
+    const output = wsServerMessageSchema.parse({
+      type: "event",
+      channel: WS_EVENT_CHANNELS.agentOutput,
+      payload: {
+        sessionId: "agent-1",
+        stream: "stdout",
+        data: "hello",
+      },
+    });
+    const exit = wsServerMessageSchema.parse({
+      type: "event",
+      channel: WS_EVENT_CHANNELS.agentExit,
+      payload: {
+        sessionId: "agent-1",
+        code: 0,
+        signal: null,
+      },
+    });
+
+    expect(output.type).toBe("event");
+    expect(exit.type).toBe("event");
   });
 
   it("rejects unknown event channels", () => {
@@ -118,7 +149,50 @@ describe("wsServerMessageSchema", () => {
       wsServerMessageSchema.parse({
         type: "event",
         channel: "provider:unknown",
-        payload: {},
+        payload: {
+          id: "evt-1",
+          kind: "notification",
+          provider: "codex",
+          sessionId: "sess-1",
+          createdAt: "2026-02-01T00:00:00.000Z",
+          method: "turn/started",
+        },
+      }),
+    ).toThrow();
+  });
+
+  it("rejects malformed payloads for typed channels", () => {
+    expect(() =>
+      wsServerMessageSchema.parse({
+        type: "event",
+        channel: WS_EVENT_CHANNELS.providerEvent,
+        payload: {
+          sessionId: "sess-1",
+        },
+      }),
+    ).toThrow();
+
+    expect(() =>
+      wsServerMessageSchema.parse({
+        type: "event",
+        channel: WS_EVENT_CHANNELS.agentOutput,
+        payload: {
+          sessionId: "agent-1",
+          stream: "invalid-stream",
+          data: "oops",
+        },
+      }),
+    ).toThrow();
+
+    expect(() =>
+      wsServerMessageSchema.parse({
+        type: "event",
+        channel: WS_EVENT_CHANNELS.agentExit,
+        payload: {
+          sessionId: "agent-1",
+          code: "0",
+          signal: null,
+        },
       }),
     ).toThrow();
   });

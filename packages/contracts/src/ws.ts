@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { agentExitSchema, outputChunkSchema } from "./agent";
+import { providerEventSchema } from "./provider";
 
 export const WS_EVENT_CHANNELS = {
   providerEvent: "provider:event",
@@ -66,15 +68,23 @@ const wsResponseSchema = z
     }
   });
 
-const wsEventSchema = z.object({
-  type: z.literal("event"),
-  channel: z.enum([
-    WS_EVENT_CHANNELS.providerEvent,
-    WS_EVENT_CHANNELS.agentOutput,
-    WS_EVENT_CHANNELS.agentExit,
-  ]),
-  payload: z.unknown(),
-});
+const wsEventSchema = z.union([
+  z.object({
+    type: z.literal("event"),
+    channel: z.literal(WS_EVENT_CHANNELS.providerEvent),
+    payload: providerEventSchema,
+  }),
+  z.object({
+    type: z.literal("event"),
+    channel: z.literal(WS_EVENT_CHANNELS.agentOutput),
+    payload: outputChunkSchema,
+  }),
+  z.object({
+    type: z.literal("event"),
+    channel: z.literal(WS_EVENT_CHANNELS.agentExit),
+    payload: agentExitSchema,
+  }),
+]);
 
 const wsHelloSchema = z.object({
   type: z.literal("hello"),
