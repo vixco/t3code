@@ -106,6 +106,11 @@ describe("parseCliOptions", () => {
     expect(disabled.noOpen).toBe(true);
   });
 
+  it("supports equals-style -o off values", () => {
+    const options = parseCliOptions(["-o=off"], { T3_NO_OPEN: "true" }, "/workspace");
+    expect(options.noOpen).toBe(true);
+  });
+
   it("lets -o=true override truthy no-open environment defaults", () => {
     const options = parseCliOptions(["-o=true"], { T3_NO_OPEN: "yes" }, "/workspace");
     expect(options.noOpen).toBe(false);
@@ -185,6 +190,10 @@ describe("parseCliOptions", () => {
     expect(() => parseCliOptions(["-o=maybe"], {}, "/workspace")).toThrow(
       "Invalid value for -o",
     );
+  });
+
+  it("throws for empty equals-style -o values", () => {
+    expect(() => parseCliOptions(["-o="], {}, "/workspace")).toThrow("Invalid value for -o");
   });
 
   it("throws for empty equals-style --open values", () => {
