@@ -1878,6 +1878,59 @@ async function main() {
 
     await new Promise((resolve, reject) => {
       const timer = setTimeout(
+        () =>
+          reject(
+            new Error("Smoke test failed: sliced-dataview websocket app.health request timed out."),
+          ),
+        20_000,
+      );
+      const onMessage = (event) => {
+        let message;
+        try {
+          message = JSON.parse(String(event.data));
+        } catch {
+          return;
+        }
+
+        if (message.type !== "response" || message.id !== "smoke-sliced-dataview-health") {
+          return;
+        }
+        if (
+          message.ok !== true ||
+          message.result?.status !== "ok" ||
+          message.result?.launchCwd !== appRoot
+        ) {
+          clearTimeout(timer);
+          ws.removeEventListener("message", onMessage);
+          reject(
+            new Error(
+              "Smoke test failed: sliced-dataview websocket app.health response mismatch.",
+            ),
+          );
+          return;
+        }
+
+        clearTimeout(timer);
+        ws.removeEventListener("message", onMessage);
+        resolve();
+      };
+
+      ws.addEventListener("message", onMessage);
+      const encodedSlicedDataViewRequest = new TextEncoder().encode(
+        JSON.stringify({
+          type: "request",
+          id: "smoke-sliced-dataview-health",
+          method: "app.health",
+        }),
+      );
+      const padded = new Uint8Array(encodedSlicedDataViewRequest.length + 14);
+      padded.fill(32);
+      padded.set(encodedSlicedDataViewRequest, 7);
+      ws.send(new DataView(padded.buffer, 7, encodedSlicedDataViewRequest.length));
+    });
+
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(
         () => reject(new Error("Smoke test failed: buffer websocket app.health request timed out.")),
         20_000,
       );

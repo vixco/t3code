@@ -960,6 +960,44 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("accepts sliced dataview-encoded websocket request payloads", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const encoded = new TextEncoder().encode(
+      JSON.stringify({
+        type: "request",
+        id: "dataview-sliced-todos-1",
+        method: "todos.list",
+      }),
+    );
+    const padded = new Uint8Array(encoded.length + 12);
+    padded.fill(32);
+    padded.set(encoded, 6);
+    const slicedDataView = new DataView(padded.buffer, 6, encoded.length);
+    client.socket.send(slicedDataView);
+
+    const response = await withTimeout(
+      (async (): Promise<WsResponseMessage> => {
+        const message = await client.nextMessage();
+        if (message.type === "response" && message.id === "dataview-sliced-todos-1") {
+          return message;
+        }
+        return Promise.reject(new Error("Expected matching todos response."));
+      })(),
+    );
+    expect(response.ok).toBe(true);
+    expect(Array.isArray(response.result)).toBe(true);
+
+    client.socket.close();
+  });
+
   it("replaces an existing websocket client with a new one", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
