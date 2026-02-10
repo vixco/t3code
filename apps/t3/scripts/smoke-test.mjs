@@ -352,6 +352,12 @@ async function main() {
         `Smoke test failed: expected If-Match mismatch status 412, received ${ifMatchMismatchAsset.status}.`,
       );
     }
+    if ((ifMatchMismatchAsset.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {
+      throw new Error("Smoke test failed: expected cache-control=no-store on If-Match mismatch response.");
+    }
+    if ((ifMatchMismatchAsset.headers.get("x-content-type-options") ?? "").toLowerCase() !== "nosniff") {
+      throw new Error("Smoke test failed: expected nosniff on If-Match mismatch response.");
+    }
     const staleUnmodifiedSince = new Date(parsedLastModifiedMs - 1_000).toUTCString();
     const ifUnmodifiedSinceStaleAsset = await fetch(assetUrl, {
       headers: {
@@ -361,6 +367,11 @@ async function main() {
     if (ifUnmodifiedSinceStaleAsset.status !== 412) {
       throw new Error(
         `Smoke test failed: expected stale If-Unmodified-Since status 412, received ${ifUnmodifiedSinceStaleAsset.status}.`,
+      );
+    }
+    if ((ifUnmodifiedSinceStaleAsset.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {
+      throw new Error(
+        "Smoke test failed: expected cache-control=no-store on stale If-Unmodified-Since response.",
       );
     }
     const ifUnmodifiedSinceCurrentAsset = await fetch(assetUrl, {
@@ -453,6 +464,11 @@ async function main() {
     if (ifMatchMismatchHeadAsset.status !== 412) {
       throw new Error(
         `Smoke test failed: expected HEAD If-Match mismatch status 412, received ${ifMatchMismatchHeadAsset.status}.`,
+      );
+    }
+    if ((ifMatchMismatchHeadAsset.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {
+      throw new Error(
+        "Smoke test failed: expected cache-control=no-store on HEAD If-Match mismatch response.",
       );
     }
     const rangeEnd = Math.min(15, assetContentLength - 1);
