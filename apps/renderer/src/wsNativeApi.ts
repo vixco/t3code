@@ -42,7 +42,14 @@ class WsNativeApiClient {
     }
 
     this.connectPromise = new Promise<WebSocket>((resolve, reject) => {
-      const socket = new WebSocket(this.wsUrl);
+      let socket: WebSocket;
+      try {
+        socket = new WebSocket(this.wsUrl);
+      } catch {
+        this.connectPromise = null;
+        reject(new Error("Failed to connect to local t3 runtime."));
+        return;
+      }
       socket.binaryType = "arraybuffer";
       this.socket = socket;
 
