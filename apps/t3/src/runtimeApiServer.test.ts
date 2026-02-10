@@ -203,6 +203,26 @@ describe("runtimeApiServer", () => {
     ).rejects.toThrow("Invalid launchCwd: expected directory path");
   });
 
+  it("rejects non-positive bootstrap timeout configuration", async () => {
+    await expect(
+      startRuntimeApiServer({
+        port: 0,
+        launchCwd: process.cwd(),
+        bootstrapSessionTimeoutMs: 0,
+      }),
+    ).rejects.toThrow("Invalid bootstrapSessionTimeoutMs");
+  });
+
+  it("rejects non-integer bootstrap timeout configuration", async () => {
+    await expect(
+      startRuntimeApiServer({
+        port: 0,
+        launchCwd: process.cwd(),
+        bootstrapSessionTimeoutMs: 1.5,
+      }),
+    ).rejects.toThrow("Invalid bootstrapSessionTimeoutMs");
+  });
+
   it("rejects empty auth token configuration", async () => {
     await expect(
       startRuntimeApiServer({

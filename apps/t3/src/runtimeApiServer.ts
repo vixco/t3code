@@ -348,6 +348,12 @@ export async function startRuntimeApiServer(
   }
   const bootstrapSessionTimeoutMs =
     options.bootstrapSessionTimeoutMs ?? BOOTSTRAP_SESSION_TIMEOUT_MS;
+  if (
+    !Number.isInteger(bootstrapSessionTimeoutMs) ||
+    bootstrapSessionTimeoutMs <= 0
+  ) {
+    throw new Error("Invalid bootstrapSessionTimeoutMs: expected positive integer.");
+  }
   const providerManager = new ProviderManager();
   const processManager = new ProcessManager();
   const todoStore = new TodoStore(path.join(os.homedir(), ".t3", "todos.json"));
