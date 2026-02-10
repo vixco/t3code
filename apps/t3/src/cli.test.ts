@@ -118,6 +118,11 @@ describe("parseCliOptions", () => {
     expect(options.launchCwd).toBe(path.resolve("apps/renderer"));
   });
 
+  it("trims positional cwd arguments before resolving path", () => {
+    const options = parseCliOptions(["  apps/renderer  "], {}, "/workspace");
+    expect(options.launchCwd).toBe(path.resolve("apps/renderer"));
+  });
+
   it("rejects whitespace-only positional cwd arguments", () => {
     expect(() => parseCliOptions(["   "], {}, "/workspace")).toThrow("Invalid value for [path]");
   });
