@@ -225,6 +225,34 @@ describe("wsNativeApi", () => {
     );
   });
 
+  it("surfaces nested send failure details when websocket send throws", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4518");
+    MockWebSocket.failSend = true;
+    MockWebSocket.failSendError = {
+      error: {
+        message: "nested-send-failure",
+      },
+    };
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to send runtime request 'todos.list': nested-send-failure",
+    );
+  });
+
+  it("falls back to unknown websocket failure when send throw has no message", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4519");
+    MockWebSocket.failSend = true;
+    MockWebSocket.failSendError = { error: {} };
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to send runtime request 'todos.list': unknown websocket failure",
+    );
+  });
+
   it("recovers after a transient websocket send failure", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4480");
     MockWebSocket.failSend = true;
