@@ -347,6 +347,16 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("trims whitespace in explicit port values", () => {
+    const options = parseCliOptions(
+      ["--backend-port", " 7001 ", "--web-port= 7002 "],
+      {},
+      "/workspace",
+    );
+    expect(options.backendPort).toBe(7001);
+    expect(options.webPort).toBe(7002);
+  });
+
   it("throws for out-of-range explicit port values", () => {
     expect(() => parseCliOptions(["--backend-port", "65536"], {}, "/workspace")).toThrow(
       "Invalid value for --backend-port",

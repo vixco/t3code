@@ -15,11 +15,12 @@ const TRUTHY_BOOLEAN_VALUES = new Set(["1", "true", "yes", "on"]);
 const FALSY_BOOLEAN_VALUES = new Set(["0", "false", "no", "off"]);
 
 function parseExplicitPort(value: string, key: string): number {
-  if (!/^\d+$/.test(value)) {
+  const normalized = value.trim();
+  if (!/^\d+$/.test(normalized)) {
     throw new Error(`Invalid value for ${key}: '${value}'. Expected an integer between 1 and 65535.`);
   }
 
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number.parseInt(normalized, 10);
   if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65_535) {
     throw new Error(`Invalid value for ${key}: '${value}'. Expected an integer between 1 and 65535.`);
   }
