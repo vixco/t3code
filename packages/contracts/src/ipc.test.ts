@@ -63,6 +63,25 @@ describe("appBootstrapResultSchema", () => {
       }),
     ).toThrow();
   });
+
+  it("rejects unexpected bootstrap payload properties", () => {
+    expect(() =>
+      appBootstrapResultSchema.parse({
+        launchCwd: "/workspace",
+        projectName: "workspace",
+        provider: "codex",
+        model: "gpt-5-codex",
+        session: {
+          sessionId: "sess-1",
+          provider: "codex",
+          status: "ready",
+          createdAt: "2026-02-01T00:00:00.000Z",
+          updatedAt: "2026-02-01T00:00:00.000Z",
+        },
+        unexpected: true,
+      }),
+    ).toThrow();
+  });
 });
 
 describe("appHealthResultSchema", () => {
@@ -95,6 +114,18 @@ describe("appHealthResultSchema", () => {
         launchCwd: "/workspace",
         sessionCount: 1.5,
         activeClientConnected: true,
+      }),
+    ).toThrow();
+  });
+
+  it("rejects unexpected health payload properties", () => {
+    expect(() =>
+      appHealthResultSchema.parse({
+        status: "ok",
+        launchCwd: "/workspace",
+        sessionCount: 1,
+        activeClientConnected: true,
+        unexpected: true,
       }),
     ).toThrow();
   });

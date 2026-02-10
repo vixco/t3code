@@ -28,14 +28,14 @@ export const appBootstrapResultSchema = z.object({
   model: z.string().min(1),
   session: providerSessionSchema,
   bootstrapError: z.string().min(1).optional(),
-});
+}).strict();
 
 export const appHealthResultSchema = z.object({
   status: z.literal("ok"),
   launchCwd: z.string().min(1),
   sessionCount: z.number().int().min(0),
   activeClientConnected: z.boolean(),
-});
+}).strict();
 export const dialogsPickFolderResultSchema = z.string().nullable();
 
 export type AppBootstrapResult = z.infer<typeof appBootstrapResultSchema>;
