@@ -245,6 +245,14 @@ async function main() {
         )}.`,
       );
     }
+    const postContentLength = Number(postPage.headers.get("content-length") ?? "0");
+    if (!Number.isFinite(postContentLength) || postContentLength <= 0) {
+      throw new Error(
+        `Smoke test failed: expected positive content-length on POST response, got ${String(
+          postPage.headers.get("content-length"),
+        )}.`,
+      );
+    }
     if ((postPage.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {
       throw new Error("Smoke test failed: expected cache-control=no-store on POST response.");
     }
