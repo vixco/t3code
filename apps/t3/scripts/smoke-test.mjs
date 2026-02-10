@@ -299,6 +299,14 @@ async function main() {
         )}, got ${String(unsatisfiableRange.headers.get("content-range"))}.`,
       );
     }
+    if ((unsatisfiableRange.headers.get("accept-ranges") ?? "").toLowerCase() !== "bytes") {
+      throw new Error(
+        "Smoke test failed: expected accept-ranges=bytes on unsatisfiable range response.",
+      );
+    }
+    if ((unsatisfiableRange.headers.get("vary") ?? "").toLowerCase() !== "range") {
+      throw new Error("Smoke test failed: expected vary=range on unsatisfiable range response.");
+    }
     if ((unsatisfiableRange.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {
       throw new Error(
         "Smoke test failed: expected cache-control=no-store on unsatisfiable range response.",
@@ -403,6 +411,16 @@ async function main() {
         `Smoke test failed: expected HEAD unsatisfiable content-range bytes */${String(
           assetContentLength,
         )}, got ${String(headUnsatisfiableRange.headers.get("content-range"))}.`,
+      );
+    }
+    if ((headUnsatisfiableRange.headers.get("accept-ranges") ?? "").toLowerCase() !== "bytes") {
+      throw new Error(
+        "Smoke test failed: expected accept-ranges=bytes on HEAD unsatisfiable range response.",
+      );
+    }
+    if ((headUnsatisfiableRange.headers.get("vary") ?? "").toLowerCase() !== "range") {
+      throw new Error(
+        "Smoke test failed: expected vary=range on HEAD unsatisfiable range response.",
       );
     }
     if ((headUnsatisfiableRange.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {

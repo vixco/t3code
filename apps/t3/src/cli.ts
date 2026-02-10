@@ -760,6 +760,8 @@ function startStaticWebServer(distRoot: string, port: number) {
         if (resolvedRange === "invalid") {
           respondText(416, "Range Not Satisfiable", {
             "Content-Range": `bytes */${stats.size}`,
+            "Accept-Ranges": "bytes",
+            Vary: "Range",
           });
           return;
         }
