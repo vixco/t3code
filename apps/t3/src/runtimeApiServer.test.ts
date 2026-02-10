@@ -226,6 +226,27 @@ describe("runtimeApiServer", () => {
     ]);
   });
 
+  it("terminates connected websocket clients when runtime closes", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const closed = withTimeout(
+      new Promise<{ code: number }>((resolve) => {
+        client.socket.once("close", (code) => resolve({ code }));
+      }),
+    );
+
+    await server.close();
+    const closeEvent = await closed;
+    expect([1000, 1001, 1005, 1006]).toContain(closeEvent.code);
+  });
+
   it("rejects startup when launchCwd does not exist", async () => {
     const missingPath = path.join(process.cwd(), `missing-launch-cwd-${Date.now()}`);
     await expect(
