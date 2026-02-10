@@ -358,6 +358,42 @@ describe("wsNativeApi", () => {
     }
   });
 
+  it("continues processing new requests after a timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4424");
+      const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+      const api = getOrCreateWsNativeApi();
+
+      const firstRequest = api.todos.list();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      vi.advanceTimersByTime(30_001);
+      await expect(firstRequest).rejects.toThrow("Request timed out for method 'todos.list'.");
+
+      const socket = MockWebSocket.instances[0];
+      const secondRequest = api.todos.list();
+      await Promise.resolve();
+      await Promise.resolve();
+      const secondEnvelope = JSON.parse(socket?.sentMessages.at(-1) ?? "{}") as {
+        id: string;
+      };
+      socket?.emitMessage(
+        JSON.stringify({
+          type: "response",
+          id: secondEnvelope.id,
+          ok: true,
+          result: [],
+        }),
+      );
+
+      await expect(secondRequest).resolves.toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("returns a stable cached native API instance", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4404");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
