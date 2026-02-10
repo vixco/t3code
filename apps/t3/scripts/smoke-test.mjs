@@ -175,6 +175,26 @@ async function main() {
         )}.`,
       );
     }
+    const html = await page.text();
+    const assetMatch = html.match(/(?:src|href)="(\/assets\/[^"]+)"/);
+    if (!assetMatch?.[1]) {
+      throw new Error("Smoke test failed: could not locate built asset path in HTML.");
+    }
+    const assetUrl = new URL(assetMatch[1], parsedAppUrl);
+    const assetResponse = await fetch(assetUrl);
+    if (assetResponse.status !== 200) {
+      throw new Error(
+        `Smoke test failed: expected built asset status 200, received ${assetResponse.status}.`,
+      );
+    }
+    const assetCacheControl = (assetResponse.headers.get("cache-control") ?? "").toLowerCase();
+    if (!assetCacheControl.includes("immutable")) {
+      throw new Error(
+        `Smoke test failed: expected immutable cache-control on built asset, got ${String(
+          assetResponse.headers.get("cache-control"),
+        )}.`,
+      );
+    }
     const missingAssetUrl = new URL("/assets/missing-bundle.js", parsedAppUrl);
     const missingAsset = await fetch(missingAssetUrl);
     if (missingAsset.status !== 404) {

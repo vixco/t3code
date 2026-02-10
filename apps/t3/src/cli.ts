@@ -432,6 +432,14 @@ function contentTypeFor(filePath: string): string {
   return "application/octet-stream";
 }
 
+function cacheControlFor(filePath: string): string {
+  if (filePath.endsWith(".html")) {
+    return "no-store";
+  }
+
+  return "public, max-age=31536000, immutable";
+}
+
 function isPathInside(parent: string, child: string): boolean {
   const relative = path.relative(parent, child);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
@@ -619,9 +627,7 @@ function startStaticWebServer(distRoot: string, port: number) {
         response.setHeader("Content-Type", contentTypeFor(targetPath));
         response.setHeader("Content-Length", String(stats.size));
         response.setHeader("X-Content-Type-Options", "nosniff");
-        if (targetPath.endsWith(".html")) {
-          response.setHeader("Cache-Control", "no-store");
-        }
+        response.setHeader("Cache-Control", cacheControlFor(targetPath));
         response.end();
       });
       return;
@@ -637,9 +643,7 @@ function startStaticWebServer(distRoot: string, port: number) {
       response.setHeader("Content-Type", contentTypeFor(targetPath));
       response.setHeader("X-Content-Type-Options", "nosniff");
       response.setHeader("Content-Length", String(content.byteLength));
-      if (targetPath.endsWith(".html")) {
-        response.setHeader("Cache-Control", "no-store");
-      }
+      response.setHeader("Cache-Control", cacheControlFor(targetPath));
       response.end(content);
     });
   });
