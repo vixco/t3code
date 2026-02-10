@@ -273,6 +273,12 @@ async function main() {
     if ((conditionalAsset.headers.get("cache-control") ?? "").toLowerCase() !== assetCacheControl) {
       throw new Error("Smoke test failed: expected cache-control preserved on conditional asset response.");
     }
+    const conditionalAssetContentLength = conditionalAsset.headers.get("content-length");
+    if (conditionalAssetContentLength !== null && conditionalAssetContentLength !== "0") {
+      throw new Error(
+        `Smoke test failed: expected no content-length (or 0) on conditional asset response, got ${conditionalAssetContentLength}.`,
+      );
+    }
     const weakConditionalAsset = await fetch(assetUrl, {
       headers: {
         "If-None-Match": `W/${assetEtag}`,
@@ -304,6 +310,15 @@ async function main() {
     if ((conditionalHeadAsset.headers.get("cache-control") ?? "").toLowerCase() !== assetCacheControl) {
       throw new Error(
         "Smoke test failed: expected cache-control preserved on conditional HEAD asset response.",
+      );
+    }
+    const conditionalHeadAssetContentLength = conditionalHeadAsset.headers.get("content-length");
+    if (
+      conditionalHeadAssetContentLength !== null &&
+      conditionalHeadAssetContentLength !== "0"
+    ) {
+      throw new Error(
+        `Smoke test failed: expected no content-length (or 0) on conditional HEAD asset response, got ${conditionalHeadAssetContentLength}.`,
       );
     }
     const rangeEnd = Math.min(15, assetContentLength - 1);
