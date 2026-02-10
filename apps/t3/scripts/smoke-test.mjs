@@ -293,6 +293,23 @@ async function main() {
         "Smoke test failed: expected x-frame-options=DENY on HEAD missing asset response.",
       );
     }
+    if ((headMissingAsset.headers.get("referrer-policy") ?? "").toLowerCase() !== "no-referrer") {
+      throw new Error(
+        "Smoke test failed: expected referrer-policy=no-referrer on HEAD missing asset response.",
+      );
+    }
+    if (
+      (headMissingAsset.headers.get("cross-origin-resource-policy") ?? "").toLowerCase() !==
+      "same-origin"
+    ) {
+      throw new Error("Smoke test failed: expected CORP on HEAD missing asset response.");
+    }
+    if (
+      (headMissingAsset.headers.get("cross-origin-opener-policy") ?? "").toLowerCase() !==
+      "same-origin"
+    ) {
+      throw new Error("Smoke test failed: expected COOP on HEAD missing asset response.");
+    }
     const postPage = await fetch(parsedAppUrl, {
       method: "POST",
       body: "noop",
