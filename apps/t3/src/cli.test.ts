@@ -462,6 +462,12 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("treats -o after --backend-port as missing value", () => {
+    expect(() => parseCliOptions(["--backend-port", "-o"], {}, "/workspace")).toThrow(
+      "Missing value for --backend-port",
+    );
+  });
+
   it("treats equals-style flag tokens after --backend-port as missing values", () => {
     expect(() =>
       parseCliOptions(["--backend-port", "--web-port=7000"], {}, "/workspace"),
@@ -500,6 +506,12 @@ describe("parseCliOptions", () => {
 
   it("treats --open after --web-port as missing value", () => {
     expect(() => parseCliOptions(["--web-port", "--open"], {}, "/workspace")).toThrow(
+      "Missing value for --web-port",
+    );
+  });
+
+  it("treats -o after --web-port as missing value", () => {
+    expect(() => parseCliOptions(["--web-port", "-o"], {}, "/workspace")).toThrow(
       "Missing value for --web-port",
     );
   });
@@ -623,6 +635,12 @@ describe("parseCliOptions", () => {
 
   it("treats --open after --cwd as missing value", () => {
     expect(() => parseCliOptions(["--cwd", "--open"], {}, "/workspace")).toThrow(
+      "Missing value for --cwd",
+    );
+  });
+
+  it("treats -o after --cwd as missing value", () => {
+    expect(() => parseCliOptions(["--cwd", "-o"], {}, "/workspace")).toThrow(
       "Missing value for --cwd",
     );
   });
