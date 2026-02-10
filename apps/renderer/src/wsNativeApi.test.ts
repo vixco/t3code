@@ -471,6 +471,19 @@ describe("wsNativeApi", () => {
     await expect(request).rejects.toThrow("websocket disconnected (code 4200: custom-close)");
   });
 
+  it("includes generic close code details when reason is missing on disconnect", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4457");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    socket?.closeWith({ code: 4201 });
+
+    await expect(request).rejects.toThrow("websocket disconnected (code 4201)");
+  });
+
   it("falls back to generic disconnect message when close code is missing", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4455");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -1108,6 +1121,20 @@ describe("wsNativeApi", () => {
 
     await expect(api.todos.list()).rejects.toThrow(
       "Failed to connect to local t3 runtime (close code 4200: custom-close).",
+    );
+  });
+
+  it("reports generic close code when websocket closes before opening without reason", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4458");
+    MockWebSocket.failCloseBeforeOpen = true;
+    MockWebSocket.failCloseBeforeOpenEvent = {
+      code: 4201,
+    };
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to connect to local t3 runtime (close code 4201).",
     );
   });
 
