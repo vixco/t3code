@@ -48,8 +48,11 @@ function runtimeConnectErrorFromClose(event: unknown) {
       "Failed to connect to local t3 runtime: replaced by a newer websocket client.",
     );
   }
-  if (code === null) {
+  if (code === null && (!reason || reason.length === 0)) {
     return new Error("Failed to connect to local t3 runtime.");
+  }
+  if (code === null) {
+    return new Error(`Failed to connect to local t3 runtime (close reason: ${reason}).`);
   }
   if (!reason || reason.length === 0) {
     return new Error(`Failed to connect to local t3 runtime (close code ${code}).`);
@@ -68,8 +71,11 @@ function requestDisconnectError(id: string, event: unknown) {
   ) {
     return new Error(`Request ${id} failed: websocket disconnected (replaced-by-new-client).`);
   }
-  if (code === null) {
+  if (code === null && (!reason || reason.length === 0)) {
     return new Error(`Request ${id} failed: websocket disconnected.`);
+  }
+  if (code === null) {
+    return new Error(`Request ${id} failed: websocket disconnected (reason: ${reason}).`);
   }
   if (!reason || reason.length === 0) {
     return new Error(`Request ${id} failed: websocket disconnected (code ${code}).`);
