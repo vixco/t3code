@@ -17,10 +17,9 @@ If a tradeoff is required, choose correctness and robustness over short-term con
 ## Package Roles
 
 - `apps/t3`: Node CLI/runtime. Owns WebSocket server lifecycle, browser launch, and RPC routing.
-- `apps/desktop`: Compatibility re-export surface for runtime internals consumed by `apps/t3`.
 - `apps/renderer`: React/Vite UI. Owns session UX, conversation/event rendering, and client-side state.
 - `packages/contracts`: Shared Zod schemas and TypeScript contracts for provider events, WebSocket payloads, and model/session types.
-- `packages/runtime-core`: Shared Node runtime services (`ProcessManager`, `TodoStore`, `ProviderManager`, `CodexAppServerManager`) reused by `apps/t3` and `apps/desktop`.
+- `packages/runtime-core`: Shared Node runtime services (`ProcessManager`, `TodoStore`, `ProviderManager`, `CodexAppServerManager`) used by `apps/t3`.
 
 ## Codex App Server (Important)
 

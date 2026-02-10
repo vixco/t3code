@@ -16,17 +16,6 @@
         "vitest": "^3.0.0",
       },
     },
-    "apps/desktop": {
-      "name": "@acme/runtime",
-      "version": "0.0.0",
-      "dependencies": {
-        "@acme/runtime-core": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/node": "^22.10.2",
-        "typescript": "^5.7.3",
-      },
-    },
     "apps/renderer": {
       "name": "@acme/renderer",
       "version": "0.0.0",
@@ -99,8 +88,6 @@
     "@acme/contracts": ["@acme/contracts@workspace:packages/contracts"],
 
     "@acme/renderer": ["@acme/renderer@workspace:apps/renderer"],
-
-    "@acme/runtime": ["@acme/runtime@workspace:apps/desktop"],
 
     "@acme/runtime-core": ["@acme/runtime-core@workspace:packages/runtime-core"],
 
