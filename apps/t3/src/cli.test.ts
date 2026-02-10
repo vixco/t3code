@@ -237,9 +237,21 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("rejects negative backend port values provided as separate args", () => {
+    expect(() => parseCliOptions(["--backend-port", "-1"], {}, "/workspace")).toThrow(
+      "Invalid value for --backend-port",
+    );
+  });
+
   it("throws when web port value is missing", () => {
     expect(() => parseCliOptions(["--web-port"], {}, "/workspace")).toThrow(
       "Missing value for --web-port",
+    );
+  });
+
+  it("rejects negative web port values provided as separate args", () => {
+    expect(() => parseCliOptions(["--web-port", "-1"], {}, "/workspace")).toThrow(
+      "Invalid value for --web-port",
     );
   });
 

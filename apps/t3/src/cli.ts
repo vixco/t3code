@@ -198,7 +198,7 @@ export function parseCliOptions(
 
     if (arg === "--backend-port") {
       backendPort = parseExplicitPort(
-        readArgValue(argv, index, "--backend-port"),
+        readArgValue(argv, index, "--backend-port", { allowDashPrefixed: true }),
         "--backend-port",
       );
       backendPortLocked = true;
@@ -213,7 +213,10 @@ export function parseCliOptions(
     }
 
     if (arg === "--web-port") {
-      webPort = parseExplicitPort(readArgValue(argv, index, "--web-port"), "--web-port");
+      webPort = parseExplicitPort(
+        readArgValue(argv, index, "--web-port", { allowDashPrefixed: true }),
+        "--web-port",
+      );
       webPortLocked = true;
       index += 1;
       continue;
