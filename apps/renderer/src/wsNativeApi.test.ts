@@ -355,6 +355,40 @@ describe("wsNativeApi", () => {
     await expect(request).rejects.toThrow("boom");
   });
 
+  it("ignores malformed error responses and still resolves matching response", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4431");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as {
+      id: string;
+    };
+
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: false,
+        error: {
+          code: "request_failed",
+        },
+      }),
+    );
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: [],
+      }),
+    );
+
+    await expect(request).resolves.toEqual([]);
+  });
+
   it("rejects pending requests when websocket disconnects", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4403");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
