@@ -241,6 +241,10 @@ async function main() {
     if ((assetResponse.headers.get("vary") ?? "").toLowerCase() !== "range") {
       throw new Error("Smoke test failed: expected vary=range on built asset response.");
     }
+    const assetEtag = assetResponse.headers.get("etag");
+    if (!assetEtag || assetEtag.length === 0) {
+      throw new Error("Smoke test failed: expected ETag on built asset response.");
+    }
     const assetContentLength = Number(assetResponse.headers.get("content-length") ?? "0");
     if (!Number.isFinite(assetContentLength) || assetContentLength <= 0) {
       throw new Error(
@@ -248,6 +252,26 @@ async function main() {
           assetResponse.headers.get("content-length"),
         )}.`,
       );
+    }
+    const conditionalAsset = await fetch(assetUrl, {
+      headers: {
+        "If-None-Match": assetEtag,
+      },
+    });
+    if (conditionalAsset.status !== 304) {
+      throw new Error(
+        `Smoke test failed: expected conditional asset status 304, received ${conditionalAsset.status}.`,
+      );
+    }
+    if (conditionalAsset.headers.get("etag") !== assetEtag) {
+      throw new Error(
+        `Smoke test failed: expected conditional asset ETag ${assetEtag}, got ${String(
+          conditionalAsset.headers.get("etag"),
+        )}.`,
+      );
+    }
+    if ((conditionalAsset.headers.get("cache-control") ?? "").toLowerCase() !== assetCacheControl) {
+      throw new Error("Smoke test failed: expected cache-control preserved on conditional asset response.");
     }
     const rangeEnd = Math.min(15, assetContentLength - 1);
     const rangedAsset = await fetch(assetUrl, {
@@ -281,6 +305,17 @@ async function main() {
     }
     if ((rangedAsset.headers.get("vary") ?? "").toLowerCase() !== "range") {
       throw new Error("Smoke test failed: expected vary=range on ranged asset response.");
+    }
+    const conditionalRangedAsset = await fetch(assetUrl, {
+      headers: {
+        Range: `bytes=0-${rangeEnd}`,
+        "If-None-Match": assetEtag,
+      },
+    });
+    if (conditionalRangedAsset.status !== 206) {
+      throw new Error(
+        `Smoke test failed: expected conditional ranged asset status 206, received ${conditionalRangedAsset.status}.`,
+      );
     }
     const unsatisfiableRange = await fetch(assetUrl, {
       headers: {

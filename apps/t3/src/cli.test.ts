@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatStartupError,
+  ifNoneMatchSatisfied,
   parseByteRangeHeader,
   parseCliOptions,
   readCliVersion,
@@ -933,6 +934,25 @@ describe("parseByteRangeHeader", () => {
     expect(parseByteRangeHeader("bytes=-0", 100)).toBe("invalid");
     expect(parseByteRangeHeader("bytes=0-0", 0)).toBe("invalid");
     expect(parseByteRangeHeader("bytes=-1", 0)).toBe("invalid");
+  });
+});
+
+describe("ifNoneMatchSatisfied", () => {
+  it("returns false when header is missing or empty", () => {
+    expect(ifNoneMatchSatisfied(undefined, "\"abc\"")).toBe(false);
+    expect(ifNoneMatchSatisfied("   ", "\"abc\"")).toBe(false);
+  });
+
+  it("matches wildcard headers", () => {
+    expect(ifNoneMatchSatisfied("*", "\"abc\"")).toBe(true);
+  });
+
+  it("matches exact etags from comma-separated lists", () => {
+    expect(ifNoneMatchSatisfied("\"foo\", \"bar\", \"abc\"", "\"abc\"")).toBe(true);
+  });
+
+  it("does not match non-identical etags", () => {
+    expect(ifNoneMatchSatisfied("\"foo\", \"bar\"", "\"abc\"")).toBe(false);
   });
 });
 

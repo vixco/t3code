@@ -512,6 +512,26 @@ function cacheControlFor(filePath: string): string {
   return "public, max-age=31536000, immutable";
 }
 
+function staticEtagFor(stats: fs.Stats): string {
+  return `"${stats.size.toString(16)}-${Math.trunc(stats.mtimeMs).toString(16)}"`;
+}
+
+export function ifNoneMatchSatisfied(ifNoneMatchHeader: string | undefined, etag: string): boolean {
+  if (!ifNoneMatchHeader) {
+    return false;
+  }
+
+  const candidates = ifNoneMatchHeader
+    .split(",")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+  if (candidates.length === 0) {
+    return false;
+  }
+
+  return candidates.includes("*") || candidates.includes(etag);
+}
+
 export function parseByteRangeHeader(
   rangeHeaderValue: string | undefined,
   fileSize: number,
@@ -766,8 +786,11 @@ function startStaticWebServer(distRoot: string, port: number) {
           return;
         }
 
+        const etag = staticEtagFor(stats);
+
         response.statusCode = resolvedRange ? 206 : 200;
         response.setHeader("Content-Type", contentTypeFor(targetPath));
+        response.setHeader("ETag", etag);
         response.setHeader(
           "Content-Length",
           String(resolvedRange ? resolvedRange.end - resolvedRange.start + 1 : stats.size),
@@ -780,6 +803,13 @@ function startStaticWebServer(distRoot: string, port: number) {
         applyStaticSecurityHeaders(response, {
           cacheControl: cacheControlFor(targetPath),
         });
+
+        if (!resolvedRange && ifNoneMatchSatisfied(request.headers["if-none-match"], etag)) {
+          response.statusCode = 304;
+          response.removeHeader("Content-Length");
+          response.end();
+          return;
+        }
 
         if (requestMethod === "HEAD") {
           response.end();
