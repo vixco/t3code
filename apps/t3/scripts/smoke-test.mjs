@@ -136,7 +136,7 @@ async function main() {
     process.execPath,
     [
       distCli,
-      "--open=false",
+      "--open=0",
       "--backend-port",
       String(backendPort),
       "--web-port",
