@@ -959,6 +959,13 @@ describe("parseByteRangeHeader", () => {
     });
   });
 
+  it("tolerates tab whitespace around separators", () => {
+    expect(parseByteRangeHeader("bytes\t=\t0\t-\t9", 100)).toEqual({
+      start: 0,
+      end: 9,
+    });
+  });
+
   it("parses case-insensitive byte-unit prefixes", () => {
     expect(parseByteRangeHeader("ByTeS=0-9", 100)).toEqual({
       start: 0,
