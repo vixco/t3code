@@ -1102,6 +1102,20 @@ describe("runtimeApiServer", () => {
     expect(unexpectedQueryClose.code).toBe(4001);
     expect(unexpectedQueryMessageCount).toBe(0);
 
+    const unexpectedTokenClient = new WebSocket(`${server.wsUrl}?token=legacy-token`);
+    let unexpectedTokenMessageCount = 0;
+    unexpectedTokenClient.on("message", () => {
+      unexpectedTokenMessageCount += 1;
+    });
+    const unexpectedTokenClose = await withTimeout(
+      new Promise<{ code: number }>((resolve, reject) => {
+        unexpectedTokenClient.once("close", (code) => resolve({ code }));
+        unexpectedTokenClient.once("error", (error) => reject(error));
+      }),
+    );
+    expect(unexpectedTokenClose.code).toBe(4001);
+    expect(unexpectedTokenMessageCount).toBe(0);
+
     const authorizedClient = await connectClient(server.wsUrl);
     const hello = await authorizedClient.nextMessage();
     expect(hello.type).toBe("hello");
