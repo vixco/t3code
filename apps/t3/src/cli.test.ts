@@ -81,12 +81,29 @@ describe("parseCliOptions", () => {
     expect(options.noOpen).toBe(false);
   });
 
+  it("supports explicit equals-style --open boolean overrides", () => {
+    const options = parseCliOptions(
+      ["--open=false"],
+      {
+        T3_NO_OPEN: "false",
+      },
+      "/workspace",
+    );
+    expect(options.noOpen).toBe(true);
+  });
+
   it("respects last flag when combining --open and --no-open", () => {
     const openThenNoOpen = parseCliOptions(["--open", "--no-open"], {}, "/workspace");
     expect(openThenNoOpen.noOpen).toBe(true);
 
     const noOpenThenOpen = parseCliOptions(["--no-open", "--open"], {}, "/workspace");
     expect(noOpenThenOpen.noOpen).toBe(false);
+  });
+
+  it("throws for invalid equals-style --open values", () => {
+    expect(() => parseCliOptions(["--open=maybe"], {}, "/workspace")).toThrow(
+      "Invalid value for --open",
+    );
   });
 
   it("supports falsey equals-style --no-open values", () => {
