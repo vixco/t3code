@@ -162,6 +162,17 @@ describe("parseCliOptions", () => {
     expect(options.noOpen).toBe(false);
   });
 
+  it("treats off as disabled T3_NO_OPEN value", () => {
+    const options = parseCliOptions(
+      [],
+      {
+        T3_NO_OPEN: "off",
+      },
+      "/workspace",
+    );
+    expect(options.noOpen).toBe(false);
+  });
+
   it("allows command line arguments to override defaults", () => {
     const options = parseCliOptions(
       [
