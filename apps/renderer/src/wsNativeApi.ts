@@ -299,11 +299,10 @@ class WsNativeApiClient {
       if (pending) {
         clearTimeout(pending.timeout);
         this.pending.delete(id);
+        const sendErrorMessage = messageFromUnknown(error);
         pending.reject(
           new Error(
-            `Failed to send runtime request '${method}': ${
-              error instanceof Error ? error.message : "unknown websocket failure"
-            }`,
+            `Failed to send runtime request '${method}': ${sendErrorMessage ?? "unknown websocket failure"}`,
           ),
         );
       }

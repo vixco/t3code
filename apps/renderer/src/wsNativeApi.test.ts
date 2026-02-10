@@ -7,6 +7,7 @@ class MockWebSocket {
   static OPEN = 1;
   static instances: MockWebSocket[] = [];
   static failSend = false;
+  static failSendError: unknown = new Error("mock send failure");
   static failOpen = false;
   static failOpenEvent: unknown = {
     message: "mock open failure",
@@ -52,7 +53,7 @@ class MockWebSocket {
 
   send(data: string) {
     if (MockWebSocket.failSend) {
-      throw new Error("mock send failure");
+      throw MockWebSocket.failSendError;
     }
 
     this.sentMessages.push(String(data));
@@ -128,6 +129,7 @@ describe("wsNativeApi", () => {
     vi.resetModules();
     MockWebSocket.instances = [];
     MockWebSocket.failSend = false;
+    MockWebSocket.failSendError = new Error("mock send failure");
     MockWebSocket.failOpen = false;
     MockWebSocket.failOpenEvent = { message: "mock open failure" };
     MockWebSocket.failConstruct = false;
@@ -208,6 +210,18 @@ describe("wsNativeApi", () => {
 
     await expect(api.todos.list()).rejects.toThrow(
       "Failed to send runtime request 'todos.list': mock send failure",
+    );
+  });
+
+  it("surfaces string send failure details when websocket send throws", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4502");
+    MockWebSocket.failSend = true;
+    MockWebSocket.failSendError = "string-send-failure";
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to send runtime request 'todos.list': string-send-failure",
     );
   });
 
