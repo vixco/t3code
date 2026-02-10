@@ -80,7 +80,7 @@ Runtime command semantics:
 - Renderer normalizes close metadata before diagnostics (e.g. trims close reasons and ignores malformed close codes) for cleaner error messages.
 - Renderer decodes websocket message payloads from strings, `ArrayBuffer`, `ArrayBufferView` (e.g. `Uint8Array`/`DataView`), and `Blob`.
 - Renderer validates provider/agent event payload shapes before dispatch, ignoring malformed event payloads to keep client state stable.
-- Renderer validates critical RPC success payload shapes (`app.health`, `app.bootstrap`, `providers.listSessions`, terminal/todo/provider control flows) and fails fast on malformed responses.
+- Renderer validates critical RPC success payload shapes (`app.health`, `app.bootstrap`, `providers.listSessions`, `dialogs.pickFolder`, plus terminal/todo/provider/agent control flows) and fails fast on malformed responses.
 - In-flight renderer requests now surface unauthorized/replacement disconnect causes explicitly.
 - Renderer also fails in-flight requests immediately on websocket `error` events (without waiting for close) for faster feedback.
 - After reconnect, renderer ignores stale events from prior sockets (including provider and agent streams) to avoid cross-connection state corruption.
