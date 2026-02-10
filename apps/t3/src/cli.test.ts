@@ -1058,6 +1058,10 @@ describe("ifRangeSatisfied", () => {
     expect(ifRangeSatisfied("W/\"abc\"", "\"abc\"", Date.now())).toBe(false);
   });
 
+  it("rejects wildcard etag values", () => {
+    expect(ifRangeSatisfied("*", "\"abc\"", Date.now())).toBe(false);
+  });
+
   it("supports HTTP-date if-range values", () => {
     const modifiedAt = Date.parse("2026-01-01T12:00:00.100Z");
     expect(ifRangeSatisfied("Thu, 01 Jan 2026 12:00:00 GMT", "\"etag\"", modifiedAt)).toBe(true);
