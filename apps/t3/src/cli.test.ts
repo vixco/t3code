@@ -895,6 +895,11 @@ describe("parseByteRangeHeader", () => {
     expect(parseByteRangeHeader(undefined, 100)).toBeNull();
   });
 
+  it("rejects non-integer and negative file sizes", () => {
+    expect(parseByteRangeHeader("bytes=0-1", -1)).toBe("invalid");
+    expect(parseByteRangeHeader("bytes=0-1", 1.5)).toBe("invalid");
+  });
+
   it("parses explicit start/end ranges", () => {
     expect(parseByteRangeHeader("bytes=0-9", 100)).toEqual({
       start: 0,
