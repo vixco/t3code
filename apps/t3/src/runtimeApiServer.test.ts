@@ -5,7 +5,13 @@ import { createServer as createNetServer } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 
-import { WS_EVENT_CHANNELS, type WsResponseMessage, type WsServerMessage } from "@acme/contracts";
+import {
+  WS_CLOSE_CODES,
+  WS_CLOSE_REASONS,
+  WS_EVENT_CHANNELS,
+  type WsResponseMessage,
+  type WsServerMessage,
+} from "@acme/contracts";
 import { startRuntimeApiServer } from "./runtimeApiServer";
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs = 5_000): Promise<T> {
@@ -903,8 +909,8 @@ describe("runtimeApiServer", () => {
     await secondClient.nextMessage();
 
     const closed = await withTimeout(firstClose);
-    expect(closed.code).toBe(4000);
-    expect(closed.reason).toBe("replaced-by-new-client");
+    expect(closed.code).toBe(WS_CLOSE_CODES.replacedByNewClient);
+    expect(closed.reason).toBe(WS_CLOSE_REASONS.replacedByNewClient);
 
     const response = await sendRequest(
       secondClient.socket,
@@ -938,8 +944,8 @@ describe("runtimeApiServer", () => {
     await secondClient.nextMessage();
 
     const closed = await withTimeout(firstClose);
-    expect(closed.code).toBe(4000);
-    expect(closed.reason).toBe("replaced-by-new-client");
+    expect(closed.code).toBe(WS_CLOSE_CODES.replacedByNewClient);
+    expect(closed.reason).toBe(WS_CLOSE_REASONS.replacedByNewClient);
 
     const response = await sendRequest(
       secondClient.socket,
@@ -976,8 +982,8 @@ describe("runtimeApiServer", () => {
         unauthorizedClient.once("error", (error) => reject(error));
       }),
     );
-    expect(unauthorizedClose.code).toBe(4001);
-    expect(unauthorizedClose.reason).toBe("unauthorized");
+    expect(unauthorizedClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(unauthorizedClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
     expect(unauthorizedMessageCount).toBe(0);
 
     const wrongTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=wrong-token`;
@@ -994,8 +1000,8 @@ describe("runtimeApiServer", () => {
         wrongTokenClient.once("error", (error) => reject(error));
       }),
     );
-    expect(wrongTokenClose.code).toBe(4001);
-    expect(wrongTokenClose.reason).toBe("unauthorized");
+    expect(wrongTokenClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(wrongTokenClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
     expect(wrongTokenMessageCount).toBe(0);
 
     const emptyTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=`;
@@ -1012,8 +1018,8 @@ describe("runtimeApiServer", () => {
         emptyTokenClient.once("error", (error) => reject(error));
       }),
     );
-    expect(emptyTokenClose.code).toBe(4001);
-    expect(emptyTokenClose.reason).toBe("unauthorized");
+    expect(emptyTokenClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(emptyTokenClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
     expect(emptyTokenMessageCount).toBe(0);
 
     const whitespaceTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=%20%20`;
@@ -1030,8 +1036,8 @@ describe("runtimeApiServer", () => {
         whitespaceTokenClient.once("error", (error) => reject(error));
       }),
     );
-    expect(whitespaceTokenClose.code).toBe(4001);
-    expect(whitespaceTokenClose.reason).toBe("unauthorized");
+    expect(whitespaceTokenClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(whitespaceTokenClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
     expect(whitespaceTokenMessageCount).toBe(0);
 
     const duplicateTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=secret-token&token=wrong-token`;
@@ -1048,8 +1054,8 @@ describe("runtimeApiServer", () => {
         duplicateTokenClient.once("error", (error) => reject(error));
       }),
     );
-    expect(duplicateTokenClose.code).toBe(4001);
-    expect(duplicateTokenClose.reason).toBe("unauthorized");
+    expect(duplicateTokenClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(duplicateTokenClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
     expect(duplicateTokenMessageCount).toBe(0);
 
     const extraParamTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=secret-token&debug=1`;
@@ -1066,8 +1072,8 @@ describe("runtimeApiServer", () => {
         extraParamTokenClient.once("error", (error) => reject(error));
       }),
     );
-    expect(extraParamTokenClose.code).toBe(4001);
-    expect(extraParamTokenClose.reason).toBe("unauthorized");
+    expect(extraParamTokenClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(extraParamTokenClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
     expect(extraParamTokenMessageCount).toBe(0);
 
     const wrongPathTokenUrl = `${authorizedUrl.origin}/unexpected?token=secret-token`;
@@ -1084,8 +1090,8 @@ describe("runtimeApiServer", () => {
         wrongPathTokenClient.once("error", (error) => reject(error));
       }),
     );
-    expect(wrongPathTokenClose.code).toBe(4001);
-    expect(wrongPathTokenClose.reason).toBe("unauthorized");
+    expect(wrongPathTokenClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(wrongPathTokenClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
     expect(wrongPathTokenMessageCount).toBe(0);
 
     const authorizedClient = await connectClient(server.wsUrl);
@@ -1114,8 +1120,8 @@ describe("runtimeApiServer", () => {
         wrongPathClient.once("error", (error) => reject(error));
       }),
     );
-    expect(wrongPathClose.code).toBe(4001);
-    expect(wrongPathClose.reason).toBe("unauthorized");
+    expect(wrongPathClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(wrongPathClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
     expect(wrongPathMessageCount).toBe(0);
 
     const unexpectedQueryClient = new WebSocket(`${server.wsUrl}?debug=1`);
@@ -1131,8 +1137,8 @@ describe("runtimeApiServer", () => {
         unexpectedQueryClient.once("error", (error) => reject(error));
       }),
     );
-    expect(unexpectedQueryClose.code).toBe(4001);
-    expect(unexpectedQueryClose.reason).toBe("unauthorized");
+    expect(unexpectedQueryClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(unexpectedQueryClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
     expect(unexpectedQueryMessageCount).toBe(0);
 
     const unexpectedTokenClient = new WebSocket(`${server.wsUrl}?token=legacy-token`);
@@ -1148,8 +1154,8 @@ describe("runtimeApiServer", () => {
         unexpectedTokenClient.once("error", (error) => reject(error));
       }),
     );
-    expect(unexpectedTokenClose.code).toBe(4001);
-    expect(unexpectedTokenClose.reason).toBe("unauthorized");
+    expect(unexpectedTokenClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(unexpectedTokenClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
     expect(unexpectedTokenMessageCount).toBe(0);
 
     const authorizedClient = await connectClient(server.wsUrl);
@@ -1181,8 +1187,8 @@ describe("runtimeApiServer", () => {
         unauthorizedUnexpectedQueryClient.once("error", (error) => reject(error));
       }),
     );
-    expect(unauthorizedUnexpectedQueryClose.code).toBe(4001);
-    expect(unauthorizedUnexpectedQueryClose.reason).toBe("unauthorized");
+    expect(unauthorizedUnexpectedQueryClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(unauthorizedUnexpectedQueryClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
 
     const response = await sendRequest(
       activeClient.socket,
@@ -1223,8 +1229,8 @@ describe("runtimeApiServer", () => {
         unauthorizedClient.once("error", (error) => reject(error));
       }),
     );
-    expect(unauthorizedClose.code).toBe(4001);
-    expect(unauthorizedClose.reason).toBe("unauthorized");
+    expect(unauthorizedClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(unauthorizedClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
 
     const response = await sendRequest(
       authorizedClient.socket,
@@ -1266,8 +1272,8 @@ describe("runtimeApiServer", () => {
         duplicateTokenClient.once("error", (error) => reject(error));
       }),
     );
-    expect(duplicateTokenClose.code).toBe(4001);
-    expect(duplicateTokenClose.reason).toBe("unauthorized");
+    expect(duplicateTokenClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(duplicateTokenClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
 
     const response = await sendRequest(
       authorizedClient.socket,
@@ -1309,8 +1315,8 @@ describe("runtimeApiServer", () => {
         extraQueryClient.once("error", (error) => reject(error));
       }),
     );
-    expect(extraQueryClose.code).toBe(4001);
-    expect(extraQueryClose.reason).toBe("unauthorized");
+    expect(extraQueryClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(extraQueryClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
 
     const response = await sendRequest(
       authorizedClient.socket,
