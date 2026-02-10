@@ -55,6 +55,7 @@ Runtime command semantics:
 - `/apps/renderer`: React + Vite UI for session control, conversation, and protocol event stream.
 - `/packages/contracts`: shared Zod schemas + TypeScript types for WS protocol, provider events, and API contracts.
 - `/packages/runtime-core`: shared Node runtime services (`ProcessManager`, `TodoStore`, `ProviderManager`, `CodexAppServerManager`) consumed by `apps/t3`.
+- Legacy desktop runtime wrapper package has been removed; `runtime-core` is now the sole source of runtime service implementations.
 
 ## Codex prerequisites
 

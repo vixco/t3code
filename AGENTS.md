@@ -20,6 +20,8 @@ If a tradeoff is required, choose correctness and robustness over short-term con
 - `apps/renderer`: React/Vite UI. Owns session UX, conversation/event rendering, and client-side state.
 - `packages/contracts`: Shared Zod schemas and TypeScript contracts for provider events, WebSocket payloads, and model/session types.
 - `packages/runtime-core`: Shared Node runtime services (`ProcessManager`, `TodoStore`, `ProviderManager`, `CodexAppServerManager`) used by `apps/t3`.
+- Legacy desktop runtime wrapper package has been removed; `runtime-core` is the canonical runtime service source.
+- Legacy desktop runtime wrapper package has been removed; `runtime-core` is the canonical runtime service source.
 
 ## Codex App Server (Important)
 
