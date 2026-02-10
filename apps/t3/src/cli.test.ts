@@ -272,6 +272,12 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("treats end-of-options marker after --backend-port as missing value", () => {
+    expect(() => parseCliOptions(["--backend-port", "--"], {}, "/workspace")).toThrow(
+      "Missing value for --backend-port",
+    );
+  });
+
   it("throws when web port value is missing", () => {
     expect(() => parseCliOptions(["--web-port"], {}, "/workspace")).toThrow(
       "Missing value for --web-port",
@@ -286,6 +292,12 @@ describe("parseCliOptions", () => {
 
   it("treats known flags after --web-port as missing values", () => {
     expect(() => parseCliOptions(["--web-port", "--cwd"], {}, "/workspace")).toThrow(
+      "Missing value for --web-port",
+    );
+  });
+
+  it("treats end-of-options marker after --web-port as missing value", () => {
+    expect(() => parseCliOptions(["--web-port", "--"], {}, "/workspace")).toThrow(
       "Missing value for --web-port",
     );
   });
@@ -379,6 +391,12 @@ describe("parseCliOptions", () => {
 
   it("treats known flags after --cwd as missing values", () => {
     expect(() => parseCliOptions(["--cwd", "--help"], {}, "/workspace")).toThrow(
+      "Missing value for --cwd",
+    );
+  });
+
+  it("treats end-of-options marker after --cwd as missing value", () => {
+    expect(() => parseCliOptions(["--cwd", "--"], {}, "/workspace")).toThrow(
       "Missing value for --cwd",
     );
   });
