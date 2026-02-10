@@ -1311,6 +1311,39 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("resolves relative terminal cwd paths against runtime working directory", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "terminal-cwd-relative-1",
+      "terminal.run",
+      {
+        command: "pwd",
+        cwd: ".",
+      },
+    );
+    expect(response.ok).toBe(true);
+    if (!response.ok) {
+      throw new Error("Expected relative terminal cwd response to succeed.");
+    }
+
+    const payload = response.result as {
+      stdout: string;
+    };
+    expect(payload.stdout.trim()).toBe(process.cwd());
+
+    client.socket.close();
+  });
+
   it("returns structured errors when terminal cwd does not exist", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
