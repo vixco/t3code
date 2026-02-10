@@ -280,11 +280,28 @@ export function readCliVersion(
   return DEFAULT_CLI_VERSION;
 }
 
+export function validateLaunchDirectory(launchCwd: string): string {
+  const resolved = path.resolve(launchCwd);
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(resolved);
+  } catch {
+    throw new Error(`Launch directory does not exist: ${resolved}`);
+  }
+
+  if (!stats.isDirectory()) {
+    throw new Error(`Launch path is not a directory: ${resolved}`);
+  }
+
+  return resolved;
+}
+
 async function runCli(options: CliOptions): Promise<void> {
+  const launchCwd = validateLaunchDirectory(options.launchCwd);
   const authToken = randomUUID();
   const runtimeServer = await startRuntimeApiServer({
     port: options.backendPort,
-    launchCwd: options.launchCwd,
+    launchCwd,
     authToken,
   });
 

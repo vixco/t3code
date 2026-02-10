@@ -9,6 +9,7 @@ import {
   readCliVersion,
   resolveStaticAssetReadTarget,
   resolveStaticAssetPath,
+  validateLaunchDirectory,
 } from "./cli";
 
 describe("parseCliOptions", () => {
@@ -322,6 +323,25 @@ describe("formatStartupError", () => {
   it("falls back to generic startup error text", () => {
     const message = formatStartupError({}, options);
     expect(message).toBe("Failed to start t3 runtime.");
+  });
+});
+
+describe("validateLaunchDirectory", () => {
+  it("returns resolved path for existing directories", () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-launch-dir-"));
+    expect(validateLaunchDirectory(tempDir)).toBe(path.resolve(tempDir));
+  });
+
+  it("throws for missing launch directories", () => {
+    const missing = path.join(os.tmpdir(), `t3-missing-dir-${Date.now()}`);
+    expect(() => validateLaunchDirectory(missing)).toThrow("Launch directory does not exist");
+  });
+
+  it("throws when launch path points to a file", () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-launch-file-"));
+    const filePath = path.join(tempDir, "not-a-dir.txt");
+    writeFileSync(filePath, "content", "utf8");
+    expect(() => validateLaunchDirectory(filePath)).toThrow("Launch path is not a directory");
   });
 });
 
