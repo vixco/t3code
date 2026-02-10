@@ -219,7 +219,7 @@ function printHelp(): void {
       "  -h, --help              Show this help message",
       "",
       "Environment variables:",
-      "  T3_NO_OPEN=1            Disable browser auto-open",
+      "  T3_NO_OPEN=1|true|yes|on Disable browser auto-open",
       "  T3_BACKEND_PORT=<port>  Default backend port",
       "  T3_WEB_PORT=<port>      Default web UI port",
       "",
