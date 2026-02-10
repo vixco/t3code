@@ -68,6 +68,7 @@ Runtime command semantics:
 - Launch URLs include an ephemeral WebSocket token so only the opened browser session can attach.
 - Connections missing the token (or using a wrong token) are rejected by the runtime.
 - Connections with duplicate token query parameters are also rejected (even when duplicate values match) to avoid ambiguous auth parsing.
+- Runtime auth token lookup is strict on the lowercase `token` query key; alternate key casing is rejected.
 - Connections with unexpected query parameters are rejected (auth mode requires only `token`; no-auth mode allows no query params).
 - WebSocket control connections are accepted only on the root runtime path (`/`) to keep the API surface narrow.
 - Unauthorized websocket attempts close with code `4001` and reason `unauthorized`.
