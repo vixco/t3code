@@ -23,4 +23,16 @@ describe("runtime architecture boundaries", () => {
       expect(source).not.toContain("../../desktop/src/");
     });
   }
+
+  it("does not rely on a legacy desktop workspace package", () => {
+    const legacyDesktopPackagePath = path.resolve(
+      import.meta.dirname,
+      "..",
+      "..",
+      "desktop",
+      "package.json",
+    );
+
+    expect(fs.existsSync(legacyDesktopPackagePath)).toBe(false);
+  });
 });
