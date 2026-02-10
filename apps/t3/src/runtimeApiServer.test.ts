@@ -1058,6 +1058,24 @@ describe("runtimeApiServer", () => {
     expect(duplicateTokenClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
     expect(duplicateTokenMessageCount).toBe(0);
 
+    const duplicateSameTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=secret-token&token=secret-token`;
+    const duplicateSameTokenClient = new WebSocket(duplicateSameTokenUrl);
+    let duplicateSameTokenMessageCount = 0;
+    duplicateSameTokenClient.on("message", () => {
+      duplicateSameTokenMessageCount += 1;
+    });
+    const duplicateSameTokenClose = await withTimeout(
+      new Promise<{ code: number; reason: string }>((resolve, reject) => {
+        duplicateSameTokenClient.once("close", (code, reason) =>
+          resolve({ code, reason: reason.toString() }),
+        );
+        duplicateSameTokenClient.once("error", (error) => reject(error));
+      }),
+    );
+    expect(duplicateSameTokenClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(duplicateSameTokenClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
+    expect(duplicateSameTokenMessageCount).toBe(0);
+
     const extraParamTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=secret-token&debug=1`;
     const extraParamTokenClient = new WebSocket(extraParamTokenUrl);
     let extraParamTokenMessageCount = 0;

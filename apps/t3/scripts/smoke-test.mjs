@@ -1567,6 +1567,13 @@ async function main() {
     );
     await waitForUnauthorizedCloseWithoutMessages(duplicateTokenWs, "duplicate-token");
 
+    const duplicateSameTokenWs = new WebSocket(
+      `${parsedWsUrl.origin}${parsedWsUrl.pathname}?token=${encodeURIComponent(
+        parsedWsUrl.searchParams.get("token") ?? "",
+      )}&token=${encodeURIComponent(parsedWsUrl.searchParams.get("token") ?? "")}`,
+    );
+    await waitForUnauthorizedCloseWithoutMessages(duplicateSameTokenWs, "duplicate-same-token");
+
     const extraParamTokenWs = new WebSocket(
       `${parsedWsUrl.origin}${parsedWsUrl.pathname}?token=${encodeURIComponent(
         parsedWsUrl.searchParams.get("token") ?? "",
@@ -2159,6 +2166,16 @@ async function main() {
     await waitForUnauthorizedCloseWithoutMessages(
       duplicateTokenWhileConnectedWs,
       "duplicate-token-while-connected",
+    );
+
+    const duplicateSameTokenWhileConnectedWs = new WebSocket(
+      `${parsedWsUrl.origin}${parsedWsUrl.pathname}?token=${encodeURIComponent(
+        parsedWsUrl.searchParams.get("token") ?? "",
+      )}&token=${encodeURIComponent(parsedWsUrl.searchParams.get("token") ?? "")}`,
+    );
+    await waitForUnauthorizedCloseWithoutMessages(
+      duplicateSameTokenWhileConnectedWs,
+      "duplicate-same-token-while-connected",
     );
 
     const extraParamWhileConnectedWs = new WebSocket(
