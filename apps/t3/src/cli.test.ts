@@ -330,6 +330,12 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("throws when end-of-options marker appears after positional cwd is already set", () => {
+    expect(() => parseCliOptions(["apps/renderer", "--", "apps/t3"], {}, "/workspace")).toThrow(
+      "Unexpected positional argument: apps/t3",
+    );
+  });
+
   it("keeps ports unlocked when using defaults", () => {
     const options = parseCliOptions([], {}, "/workspace");
     expect(options.backendPortLocked).toBe(false);
