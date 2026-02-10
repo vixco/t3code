@@ -10,6 +10,7 @@ import {
   DEFAULT_MODEL,
   appBootstrapResultSchema,
   appHealthResultSchema,
+  dialogsPickFolderResultSchema,
   type ProviderSession,
   type WsClientMessage,
   type WsResponseMessage,
@@ -47,7 +48,6 @@ const shellOpenInEditorInputSchema = z.object({
   cwd: z.string().min(1),
   editor: z.enum(EDITORS.map((entry) => entry.id) as [string, ...string[]]),
 });
-const pickFolderResultSchema = z.string().nullable();
 
 interface RuntimeApiServerOptions {
   port: number;
@@ -564,7 +564,8 @@ export async function startRuntimeApiServer(
     if (method === "todos.remove")
       return todoListSchema.parse(await todoStore.remove(todoIdSchema.parse(params)));
 
-    if (method === "dialogs.pickFolder") return pickFolderResultSchema.parse(await pickFolder());
+    if (method === "dialogs.pickFolder")
+      return dialogsPickFolderResultSchema.parse(await pickFolder());
     if (method === "terminal.run") {
       return terminalCommandResultSchema.parse(
         await runTerminalCommand(terminalCommandInputSchema.parse(params), launchCwd),

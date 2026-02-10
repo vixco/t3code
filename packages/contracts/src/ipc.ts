@@ -36,6 +36,7 @@ export const appHealthResultSchema = z.object({
   sessionCount: z.number().int().min(0),
   activeClientConnected: z.boolean(),
 });
+export const dialogsPickFolderResultSchema = z.string().nullable();
 
 export type AppBootstrapResult = z.infer<typeof appBootstrapResultSchema>;
 export type AppHealthResult = z.infer<typeof appHealthResultSchema>;

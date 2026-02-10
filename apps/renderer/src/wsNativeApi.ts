@@ -14,6 +14,7 @@ import {
   agentSessionIdSchema,
   appBootstrapResultSchema,
   appHealthResultSchema,
+  dialogsPickFolderResultSchema,
   providerSessionListSchema,
   providerSessionSchema,
   providerTurnStartResultSchema,
@@ -459,13 +460,8 @@ class WsNativeApiClient {
         remove: async (id) => this.requestParsed("todos.remove", todoListSchema, id),
       },
       dialogs: {
-        pickFolder: async () => {
-          const value = await this.request("dialogs.pickFolder");
-          if (value === null || typeof value === "string") {
-            return value;
-          }
-          throw new Error("Runtime method 'dialogs.pickFolder' returned invalid response payload.");
-        },
+        pickFolder: async () =>
+          this.requestParsed("dialogs.pickFolder", dialogsPickFolderResultSchema),
       },
       terminal: {
         run: async (input) => this.requestParsed("terminal.run", terminalCommandResultSchema, input),

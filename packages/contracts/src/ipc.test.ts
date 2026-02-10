@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { appBootstrapResultSchema, appHealthResultSchema } from "./ipc";
+import {
+  appBootstrapResultSchema,
+  appHealthResultSchema,
+  dialogsPickFolderResultSchema,
+} from "./ipc";
 
 describe("appBootstrapResultSchema", () => {
   it("accepts valid bootstrap payloads", () => {
@@ -93,5 +97,16 @@ describe("appHealthResultSchema", () => {
         activeClientConnected: true,
       }),
     ).toThrow();
+  });
+});
+
+describe("dialogsPickFolderResultSchema", () => {
+  it("accepts null and string folder selections", () => {
+    expect(dialogsPickFolderResultSchema.parse(null)).toBeNull();
+    expect(dialogsPickFolderResultSchema.parse("/workspace")).toBe("/workspace");
+  });
+
+  it("rejects non-string non-null selections", () => {
+    expect(() => dialogsPickFolderResultSchema.parse(123)).toThrow();
   });
 });
