@@ -931,6 +931,34 @@ describe("wsNativeApi", () => {
     await expect(api.todos.list()).rejects.toThrow("Failed to connect to local t3 runtime.");
   });
 
+  it("recovers after websocket open failure on a later request", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4429");
+    MockWebSocket.failOpen = true;
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow("Failed to connect to local t3 runtime.");
+
+    MockWebSocket.failOpen = false;
+    const secondRequest = api.todos.list();
+    await waitForCondition(() => MockWebSocket.instances.length >= 2);
+    const socket = MockWebSocket.instances[1];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as {
+      id: string;
+    };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: [],
+      }),
+    );
+
+    await expect(secondRequest).resolves.toEqual([]);
+  });
+
   it("rejects requests when websocket construction throws", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4426");
     MockWebSocket.failConstruct = true;
