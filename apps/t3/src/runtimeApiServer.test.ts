@@ -250,6 +250,16 @@ describe("runtimeApiServer", () => {
     ).rejects.toThrow("Invalid bootstrapSessionTimeoutMs");
   });
 
+  it("rejects overly large bootstrap timeout configuration", async () => {
+    await expect(
+      startRuntimeApiServer({
+        port: 0,
+        launchCwd: process.cwd(),
+        bootstrapSessionTimeoutMs: 120_001,
+      }),
+    ).rejects.toThrow("Invalid bootstrapSessionTimeoutMs");
+  });
+
   it("rejects empty auth token configuration", async () => {
     await expect(
       startRuntimeApiServer({

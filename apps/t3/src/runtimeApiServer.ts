@@ -94,6 +94,7 @@ interface JsonRpcErrorResult {
 }
 
 const BOOTSTRAP_SESSION_TIMEOUT_MS = 3_000;
+const MAX_BOOTSTRAP_SESSION_TIMEOUT_MS = 120_000;
 const MAX_WS_CLIENT_PAYLOAD_BYTES = 5 * 1024 * 1024;
 
 interface BootstrapSessionResult {
@@ -372,9 +373,12 @@ export async function startRuntimeApiServer(
     options.bootstrapSessionTimeoutMs ?? BOOTSTRAP_SESSION_TIMEOUT_MS;
   if (
     !Number.isInteger(bootstrapSessionTimeoutMs) ||
-    bootstrapSessionTimeoutMs <= 0
+    bootstrapSessionTimeoutMs <= 0 ||
+    bootstrapSessionTimeoutMs > MAX_BOOTSTRAP_SESSION_TIMEOUT_MS
   ) {
-    throw new Error("Invalid bootstrapSessionTimeoutMs: expected positive integer.");
+    throw new Error(
+      `Invalid bootstrapSessionTimeoutMs: expected integer between 1 and ${MAX_BOOTSTRAP_SESSION_TIMEOUT_MS}.`,
+    );
   }
   const providerManager = new ProviderManager();
   const processManager = new ProcessManager();
