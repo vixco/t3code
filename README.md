@@ -41,6 +41,11 @@ Optional environment variables:
 - `T3_BACKEND_PORT` — override local WebSocket runtime port (default `4317`).
 - `T3_WEB_PORT` — override local web UI port (default `4318`).
 
+Runtime command semantics:
+
+- `terminal.run` executes in the launch directory when `cwd` is omitted.
+- `terminal.run` and `shell.openInEditor` reject missing/non-directory cwd targets with structured request errors.
+
 ## Workspace layout
 
 - `/apps/t3`: CLI launcher + local WebSocket runtime server.
