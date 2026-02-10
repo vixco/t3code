@@ -282,6 +282,7 @@ async function runTerminalCommand(parsed: z.infer<typeof terminalCommandInputSch
         }
       }, 1_000).unref();
     }, parsed.timeoutMs ?? 30_000);
+    timeout.unref();
 
     child.stdout?.on("data", (chunk: Buffer) => {
       stdout += chunk.toString();
