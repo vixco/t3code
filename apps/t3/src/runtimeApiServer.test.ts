@@ -987,12 +987,15 @@ describe("runtimeApiServer", () => {
       wrongTokenMessageCount += 1;
     });
     const wrongTokenClose = await withTimeout(
-      new Promise<{ code: number }>((resolve, reject) => {
-        wrongTokenClient.once("close", (code) => resolve({ code }));
+      new Promise<{ code: number; reason: string }>((resolve, reject) => {
+        wrongTokenClient.once("close", (code, reason) =>
+          resolve({ code, reason: reason.toString() }),
+        );
         wrongTokenClient.once("error", (error) => reject(error));
       }),
     );
     expect(wrongTokenClose.code).toBe(4001);
+    expect(wrongTokenClose.reason).toBe("unauthorized");
     expect(wrongTokenMessageCount).toBe(0);
 
     const emptyTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=`;
@@ -1002,12 +1005,15 @@ describe("runtimeApiServer", () => {
       emptyTokenMessageCount += 1;
     });
     const emptyTokenClose = await withTimeout(
-      new Promise<{ code: number }>((resolve, reject) => {
-        emptyTokenClient.once("close", (code) => resolve({ code }));
+      new Promise<{ code: number; reason: string }>((resolve, reject) => {
+        emptyTokenClient.once("close", (code, reason) =>
+          resolve({ code, reason: reason.toString() }),
+        );
         emptyTokenClient.once("error", (error) => reject(error));
       }),
     );
     expect(emptyTokenClose.code).toBe(4001);
+    expect(emptyTokenClose.reason).toBe("unauthorized");
     expect(emptyTokenMessageCount).toBe(0);
 
     const whitespaceTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=%20%20`;
@@ -1017,12 +1023,15 @@ describe("runtimeApiServer", () => {
       whitespaceTokenMessageCount += 1;
     });
     const whitespaceTokenClose = await withTimeout(
-      new Promise<{ code: number }>((resolve, reject) => {
-        whitespaceTokenClient.once("close", (code) => resolve({ code }));
+      new Promise<{ code: number; reason: string }>((resolve, reject) => {
+        whitespaceTokenClient.once("close", (code, reason) =>
+          resolve({ code, reason: reason.toString() }),
+        );
         whitespaceTokenClient.once("error", (error) => reject(error));
       }),
     );
     expect(whitespaceTokenClose.code).toBe(4001);
+    expect(whitespaceTokenClose.reason).toBe("unauthorized");
     expect(whitespaceTokenMessageCount).toBe(0);
 
     const duplicateTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=secret-token&token=wrong-token`;
@@ -1032,12 +1041,15 @@ describe("runtimeApiServer", () => {
       duplicateTokenMessageCount += 1;
     });
     const duplicateTokenClose = await withTimeout(
-      new Promise<{ code: number }>((resolve, reject) => {
-        duplicateTokenClient.once("close", (code) => resolve({ code }));
+      new Promise<{ code: number; reason: string }>((resolve, reject) => {
+        duplicateTokenClient.once("close", (code, reason) =>
+          resolve({ code, reason: reason.toString() }),
+        );
         duplicateTokenClient.once("error", (error) => reject(error));
       }),
     );
     expect(duplicateTokenClose.code).toBe(4001);
+    expect(duplicateTokenClose.reason).toBe("unauthorized");
     expect(duplicateTokenMessageCount).toBe(0);
 
     const extraParamTokenUrl = `${authorizedUrl.origin}${authorizedUrl.pathname}?token=secret-token&debug=1`;
@@ -1047,12 +1059,15 @@ describe("runtimeApiServer", () => {
       extraParamTokenMessageCount += 1;
     });
     const extraParamTokenClose = await withTimeout(
-      new Promise<{ code: number }>((resolve, reject) => {
-        extraParamTokenClient.once("close", (code) => resolve({ code }));
+      new Promise<{ code: number; reason: string }>((resolve, reject) => {
+        extraParamTokenClient.once("close", (code, reason) =>
+          resolve({ code, reason: reason.toString() }),
+        );
         extraParamTokenClient.once("error", (error) => reject(error));
       }),
     );
     expect(extraParamTokenClose.code).toBe(4001);
+    expect(extraParamTokenClose.reason).toBe("unauthorized");
     expect(extraParamTokenMessageCount).toBe(0);
 
     const wrongPathTokenUrl = `${authorizedUrl.origin}/unexpected?token=secret-token`;
@@ -1062,12 +1077,15 @@ describe("runtimeApiServer", () => {
       wrongPathTokenMessageCount += 1;
     });
     const wrongPathTokenClose = await withTimeout(
-      new Promise<{ code: number }>((resolve, reject) => {
-        wrongPathTokenClient.once("close", (code) => resolve({ code }));
+      new Promise<{ code: number; reason: string }>((resolve, reject) => {
+        wrongPathTokenClient.once("close", (code, reason) =>
+          resolve({ code, reason: reason.toString() }),
+        );
         wrongPathTokenClient.once("error", (error) => reject(error));
       }),
     );
     expect(wrongPathTokenClose.code).toBe(4001);
+    expect(wrongPathTokenClose.reason).toBe("unauthorized");
     expect(wrongPathTokenMessageCount).toBe(0);
 
     const authorizedClient = await connectClient(server.wsUrl);
