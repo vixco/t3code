@@ -273,7 +273,7 @@ async function runTerminalCommand(parsed: z.infer<typeof terminalCommandInputSch
       timedOut = true;
       child.kill("SIGTERM");
       setTimeout(() => {
-        if (!child.killed) {
+        if (child.exitCode === null && child.signalCode === null) {
           child.kill("SIGKILL");
         }
       }, 1_000).unref();

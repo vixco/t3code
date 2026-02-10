@@ -867,6 +867,46 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("force-kills commands that ignore SIGTERM after timeout", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const startedAt = Date.now();
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "terminal-timeout-sigkill-1",
+      "terminal.run",
+      {
+        command: "trap '' TERM; while true; do sleep 1; done",
+        cwd: process.cwd(),
+        timeoutMs: 100,
+      },
+    );
+    const elapsedMs = Date.now() - startedAt;
+    expect(response.ok).toBe(true);
+    if (!response.ok) {
+      throw new Error("Expected SIGTERM-resistant command response to succeed.");
+    }
+    const payload = response.result as {
+      timedOut: boolean;
+    };
+    expect(payload.timedOut).toBe(true);
+    expect(elapsedMs).toBeLessThan(5_000);
+
+    client.socket.close();
+  });
+
   it("runs terminal commands in the requested cwd", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
