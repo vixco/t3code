@@ -695,6 +695,17 @@ async function main() {
         `Smoke test failed: expected stale If-Range(date) asset status 200, received ${ifRangeStaleDateAsset.status}.`,
       );
     }
+    const ifRangeInvalidDateAsset = await fetch(assetUrl, {
+      headers: {
+        Range: `bytes=0-${rangeEnd}`,
+        "If-Range": "not-a-date",
+      },
+    });
+    if (ifRangeInvalidDateAsset.status !== 200) {
+      throw new Error(
+        `Smoke test failed: expected invalid If-Range(date) asset status 200, received ${ifRangeInvalidDateAsset.status}.`,
+      );
+    }
     const rangedModifiedSinceAsset = await fetch(assetUrl, {
       headers: {
         Range: `bytes=0-${rangeEnd}`,
