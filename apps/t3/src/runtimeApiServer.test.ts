@@ -1244,6 +1244,18 @@ describe("runtimeApiServer", () => {
     expect(unauthorizedUnexpectedQueryClose.code).toBe(WS_CLOSE_CODES.unauthorized);
     expect(unauthorizedUnexpectedQueryClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
 
+    const unauthorizedWrongTokenKeyClient = new WebSocket(`${server.wsUrl}?Token=legacy-token`);
+    const unauthorizedWrongTokenKeyClose = await withTimeout(
+      new Promise<{ code: number; reason: string }>((resolve, reject) => {
+        unauthorizedWrongTokenKeyClient.once("close", (code, reason) =>
+          resolve({ code, reason: reason.toString() }),
+        );
+        unauthorizedWrongTokenKeyClient.once("error", (error) => reject(error));
+      }),
+    );
+    expect(unauthorizedWrongTokenKeyClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(unauthorizedWrongTokenKeyClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
+
     const response = await sendRequest(
       activeClient.socket,
       activeClient.nextMessage,
