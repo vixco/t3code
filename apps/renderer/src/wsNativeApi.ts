@@ -30,8 +30,8 @@ function closeDetailsFromEvent(event: unknown) {
   const code = (event as { code?: unknown } | null)?.code;
   const reason = (event as { reason?: unknown } | null)?.reason;
   return {
-    code: typeof code === "number" ? code : null,
-    reason: typeof reason === "string" ? reason : null,
+    code: normalizeCloseCode(code),
+    reason: normalizeNonEmptyString(reason),
   };
 }
 
@@ -100,7 +100,7 @@ function runtimeConnectErrorFromSocketError(event: unknown) {
 }
 
 function runtimeConnectErrorFromConstructionError(error: unknown) {
-  const message = normalizeSocketErrorMessage(
+  const message = normalizeNonEmptyString(
     error instanceof Error ? error.message : (error as { message?: unknown } | null)?.message,
   );
   if (message) {
@@ -111,14 +111,14 @@ function runtimeConnectErrorFromConstructionError(error: unknown) {
 
 function socketErrorMessage(event: unknown) {
   const directMessage = (event as { message?: unknown } | null)?.message;
-  const normalizedDirectMessage = normalizeSocketErrorMessage(directMessage);
+  const normalizedDirectMessage = normalizeNonEmptyString(directMessage);
   if (normalizedDirectMessage) {
     return normalizedDirectMessage;
   }
 
   const nestedError = (event as { error?: unknown } | null)?.error;
   const nestedMessage = (nestedError as { message?: unknown } | null)?.message;
-  const normalizedNestedMessage = normalizeSocketErrorMessage(nestedMessage);
+  const normalizedNestedMessage = normalizeNonEmptyString(nestedMessage);
   if (normalizedNestedMessage) {
     return normalizedNestedMessage;
   }
@@ -126,7 +126,7 @@ function socketErrorMessage(event: unknown) {
   return null;
 }
 
-function normalizeSocketErrorMessage(value: unknown) {
+function normalizeNonEmptyString(value: unknown) {
   if (typeof value !== "string") {
     return null;
   }
@@ -137,6 +137,14 @@ function normalizeSocketErrorMessage(value: unknown) {
   }
 
   return normalized;
+}
+
+function normalizeCloseCode(value: unknown) {
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    return null;
+  }
+
+  return value;
 }
 
 class WsNativeApiClient {
