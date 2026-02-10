@@ -578,6 +578,21 @@ describe("wsNativeApi", () => {
     await expect(request).rejects.toThrow("websocket errored (string-socket-error)");
   });
 
+  it("uses nested string websocket error payload for pending requests", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4510");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    socket?.emitErrorEvent({
+      error: "nested-string-socket-error",
+    });
+
+    await expect(request).rejects.toThrow("websocket errored (nested-string-socket-error)");
+  });
+
   it("rejects all concurrent pending requests on websocket error and then reconnects", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4475");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -1827,6 +1842,20 @@ describe("wsNativeApi", () => {
     );
   });
 
+  it("uses nested string websocket open error payload when available", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4511");
+    MockWebSocket.failOpen = true;
+    MockWebSocket.failOpenEvent = {
+      error: "nested-string-open-error",
+    };
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to connect to local t3 runtime: websocket error (nested-string-open-error).",
+    );
+  });
+
   it("uses trimmed nested websocket open error message when direct message is whitespace", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4492");
     MockWebSocket.failOpen = true;
@@ -2139,6 +2168,18 @@ describe("wsNativeApi", () => {
 
     await expect(api.todos.list()).rejects.toThrow(
       "Failed to connect to local t3 runtime: websocket error (string-constructor-failure).",
+    );
+  });
+
+  it("uses nested string constructor throw payload for connect diagnostics", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4512");
+    MockWebSocket.failConstruct = true;
+    MockWebSocket.failConstructError = { error: "nested-string-constructor-failure" };
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to connect to local t3 runtime: websocket error (nested-string-constructor-failure).",
     );
   });
 
