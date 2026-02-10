@@ -292,6 +292,17 @@ describe("parseCliOptions", () => {
     expect(options.launchCwd).toBe(path.resolve("/workspace", "apps/renderer"));
   });
 
+  it("accepts dash-prefixed cwd values with separate --cwd argument", () => {
+    const options = parseCliOptions(["--cwd", "-project"], {}, "/workspace");
+    expect(options.launchCwd).toBe(path.resolve("/workspace", "-project"));
+  });
+
+  it("treats known flags after --cwd as missing values", () => {
+    expect(() => parseCliOptions(["--cwd", "--help"], {}, "/workspace")).toThrow(
+      "Missing value for --cwd",
+    );
+  });
+
   it("throws for unknown arguments", () => {
     expect(() => parseCliOptions(["--wat"], {}, "/workspace")).toThrow(
       "Unknown argument: --wat",

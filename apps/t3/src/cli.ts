@@ -75,9 +75,36 @@ interface StartupErrorShape {
   message?: unknown;
 }
 
-function readArgValue(args: string[], index: number, key: string): string {
+const KNOWN_CLI_FLAGS = new Set([
+  "--help",
+  "-h",
+  "--version",
+  "-v",
+  "--no-open",
+  "--backend-port",
+  "--web-port",
+  "--cwd",
+  "--",
+]);
+
+function readArgValue(
+  args: string[],
+  index: number,
+  key: string,
+  options?: {
+    allowDashPrefixed?: boolean;
+  },
+): string {
   const value = args[index + 1];
-  if (!value || value.startsWith("-")) {
+  if (!value) {
+    throw new Error(`Missing value for ${key}.`);
+  }
+
+  const dashPrefixed = value.startsWith("-");
+  if (!options?.allowDashPrefixed && dashPrefixed) {
+    throw new Error(`Missing value for ${key}.`);
+  }
+  if (options?.allowDashPrefixed && dashPrefixed && KNOWN_CLI_FLAGS.has(value)) {
     throw new Error(`Missing value for ${key}.`);
   }
 
@@ -198,7 +225,11 @@ export function parseCliOptions(
     }
 
     if (arg === "--cwd") {
-      launchCwd = parseExplicitPath(readArgValue(argv, index, "--cwd"), "--cwd", parserCwd);
+      launchCwd = parseExplicitPath(
+        readArgValue(argv, index, "--cwd", { allowDashPrefixed: true }),
+        "--cwd",
+        parserCwd,
+      );
       index += 1;
       continue;
     }
