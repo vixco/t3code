@@ -21,6 +21,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@acme/contracts": "workspace:*",
+        "@acme/runtime-core": "workspace:*",
         "node-pty": "^1.0.0",
       },
       "devDependencies": {
@@ -61,6 +62,7 @@
       },
       "dependencies": {
         "@acme/contracts": "workspace:*",
+        "@acme/runtime-core": "workspace:*",
         "ws": "^8.18.0",
         "zod": "^3.24.1",
       },
@@ -83,6 +85,18 @@
         "typescript": "^5.7.3",
       },
     },
+    "packages/runtime-core": {
+      "name": "@acme/runtime-core",
+      "version": "0.0.0",
+      "dependencies": {
+        "@acme/contracts": "workspace:*",
+        "node-pty": "^1.0.0",
+      },
+      "devDependencies": {
+        "@types/node": "^22.10.2",
+        "typescript": "^5.7.3",
+      },
+    },
   },
   "packages": {
     "@acme/contracts": ["@acme/contracts@workspace:packages/contracts"],
@@ -90,6 +104,8 @@
     "@acme/renderer": ["@acme/renderer@workspace:apps/renderer"],
 
     "@acme/runtime": ["@acme/runtime@workspace:apps/desktop"],
+
+    "@acme/runtime-core": ["@acme/runtime-core@workspace:packages/runtime-core"],
 
     "@acme/t3-runtime": ["@acme/t3-runtime@workspace:apps/t3"],
 

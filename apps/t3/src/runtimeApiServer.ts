@@ -41,9 +41,8 @@ import {
   wsNativeApiMethodSchema,
   wsServerMessageSchema,
 } from "@acme/contracts";
-import { ProcessManager } from "../../desktop/src/processManager";
+import { ProcessManager, TodoStore } from "@acme/runtime-core";
 import { ProviderManager } from "../../desktop/src/providerManager";
-import { TodoStore } from "../../desktop/src/todoStore";
 
 interface RuntimeApiServerOptions {
   port: number;
@@ -571,7 +570,8 @@ export async function startRuntimeApiServer(
       throw new Error(`Unknown API method: ${method}`);
     }
 
-    switch (parsedMethod.data) {
+    const apiMethod = parsedMethod.data;
+    switch (apiMethod) {
       case "app.bootstrap": {
         const bootstrap = await ensureLaunchSession();
         const payload = {
@@ -673,7 +673,7 @@ export async function startRuntimeApiServer(
       }
 
       default: {
-        const unreachableMethod: never = parsedMethod.data;
+        const unreachableMethod: never = apiMethod;
         throw new Error(`Unknown API method: ${unreachableMethod}`);
       }
     }

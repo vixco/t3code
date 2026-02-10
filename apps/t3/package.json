@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@acme/contracts": "workspace:*",
+    "@acme/runtime-core": "workspace:*",
     "ws": "^8.18.0",
     "zod": "^3.24.1"
   },

@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@acme/contracts": "workspace:*",
+    "@acme/runtime-core": "workspace:*",
     "node-pty": "^1.0.0"
   },
   "devDependencies": {
