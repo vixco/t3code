@@ -897,6 +897,13 @@ describe("parseByteRangeHeader", () => {
     });
   });
 
+  it("parses case-insensitive byte-unit prefixes", () => {
+    expect(parseByteRangeHeader("ByTeS=0-9", 100)).toEqual({
+      start: 0,
+      end: 9,
+    });
+  });
+
   it("parses open-ended ranges", () => {
     expect(parseByteRangeHeader("bytes=10-", 100)).toEqual({
       start: 10,
