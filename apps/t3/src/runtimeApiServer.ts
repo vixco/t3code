@@ -255,21 +255,7 @@ async function runTerminalCommand(
   defaultCwd: string,
 ) {
   const providedCwd = parsed.cwd ?? defaultCwd;
-  const resolvedCwd = (() => {
-    const candidate = path.resolve(providedCwd);
-    let stats: fs.Stats;
-    try {
-      stats = fs.statSync(candidate);
-    } catch {
-      throw new Error(`Working directory does not exist: ${candidate}`);
-    }
-
-    if (!stats.isDirectory()) {
-      throw new Error(`Working directory is not a directory: ${candidate}`);
-    }
-
-    return candidate;
-  })();
+  const resolvedCwd = resolveExistingDirectory(providedCwd, "Working directory");
 
   const shellPath =
     process.platform === "win32"
@@ -327,6 +313,22 @@ async function runTerminalCommand(
       });
     });
   });
+}
+
+function resolveExistingDirectory(targetPath: string, label: string): string {
+  const candidate = path.resolve(targetPath);
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(candidate);
+  } catch {
+    throw new Error(`${label} does not exist: ${candidate}`);
+  }
+
+  if (!stats.isDirectory()) {
+    throw new Error(`${label} is not a directory: ${candidate}`);
+  }
+
+  return candidate;
 }
 
 export async function startRuntimeApiServer(
@@ -580,16 +582,7 @@ export async function startRuntimeApiServer(
 
     if (method === "shell.openInEditor") {
       const parsed = shellOpenInEditorInputSchema.parse(params);
-      const targetPath = path.resolve(parsed.cwd);
-      let targetStats: fs.Stats;
-      try {
-        targetStats = fs.statSync(targetPath);
-      } catch {
-        throw new Error(`Editor target does not exist: ${targetPath}`);
-      }
-      if (!targetStats.isDirectory()) {
-        throw new Error(`Editor target is not a directory: ${targetPath}`);
-      }
+      const targetPath = resolveExistingDirectory(parsed.cwd, "Editor target");
 
       const editor = EDITORS.find((entry) => entry.id === parsed.editor);
       if (!editor) {
