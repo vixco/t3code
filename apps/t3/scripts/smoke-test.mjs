@@ -393,6 +393,12 @@ async function main() {
     if ((ifMatchMismatchAsset.headers.get("x-content-type-options") ?? "").toLowerCase() !== "nosniff") {
       throw new Error("Smoke test failed: expected nosniff on If-Match mismatch response.");
     }
+    if ((ifMatchMismatchAsset.headers.get("accept-ranges") ?? "").toLowerCase() !== "bytes") {
+      throw new Error("Smoke test failed: expected accept-ranges=bytes on If-Match mismatch response.");
+    }
+    if ((ifMatchMismatchAsset.headers.get("vary") ?? "").toLowerCase() !== "range") {
+      throw new Error("Smoke test failed: expected vary=range on If-Match mismatch response.");
+    }
     const ifMatchLowercaseWeakAsset = await fetch(assetUrl, {
       headers: {
         "If-Match": `w/${assetEtag}`,
@@ -449,6 +455,11 @@ async function main() {
     if ((ifUnmodifiedSinceStaleAsset.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {
       throw new Error(
         "Smoke test failed: expected cache-control=no-store on stale If-Unmodified-Since response.",
+      );
+    }
+    if ((ifUnmodifiedSinceStaleAsset.headers.get("accept-ranges") ?? "").toLowerCase() !== "bytes") {
+      throw new Error(
+        "Smoke test failed: expected accept-ranges=bytes on stale If-Unmodified-Since response.",
       );
     }
     if (ifUnmodifiedSinceStaleAsset.headers.get("etag") !== assetEtag) {
@@ -592,6 +603,14 @@ async function main() {
       throw new Error(
         "Smoke test failed: expected cache-control=no-store on HEAD If-Match mismatch response.",
       );
+    }
+    if ((ifMatchMismatchHeadAsset.headers.get("accept-ranges") ?? "").toLowerCase() !== "bytes") {
+      throw new Error(
+        "Smoke test failed: expected accept-ranges=bytes on HEAD If-Match mismatch response.",
+      );
+    }
+    if ((ifMatchMismatchHeadAsset.headers.get("vary") ?? "").toLowerCase() !== "range") {
+      throw new Error("Smoke test failed: expected vary=range on HEAD If-Match mismatch response.");
     }
     if (ifMatchMismatchHeadAsset.headers.get("etag") !== assetEtag) {
       throw new Error("Smoke test failed: expected ETag on HEAD If-Match mismatch response.");
