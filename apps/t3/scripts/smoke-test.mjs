@@ -803,6 +803,17 @@ async function main() {
         "Smoke test failed: expected no content-range on wildcard conditional ranged response.",
       );
     }
+    const mismatchConditionalRangedAsset = await fetch(assetUrl, {
+      headers: {
+        Range: `bytes=0-${rangeEnd}`,
+        "If-None-Match": "\"definitely-different-etag\"",
+      },
+    });
+    if (mismatchConditionalRangedAsset.status !== 206) {
+      throw new Error(
+        `Smoke test failed: expected mismatched conditional ranged asset status 206, received ${mismatchConditionalRangedAsset.status}.`,
+      );
+    }
     const ifRangeEtagAsset = await fetch(assetUrl, {
       headers: {
         Range: `bytes=0-${rangeEnd}`,
