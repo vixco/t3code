@@ -108,6 +108,11 @@ describe("parseCliOptions", () => {
     expect(options.noOpen).toBe(true);
   });
 
+  it("trims equals-style --open values before parsing", () => {
+    const options = parseCliOptions(["--open=  true  "], { T3_NO_OPEN: "true" }, "/workspace");
+    expect(options.noOpen).toBe(false);
+  });
+
   it("respects last flag when combining --open and --no-open", () => {
     const openThenNoOpen = parseCliOptions(["--open", "--no-open"], {}, "/workspace");
     expect(openThenNoOpen.noOpen).toBe(true);
