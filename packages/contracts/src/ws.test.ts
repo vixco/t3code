@@ -39,6 +39,17 @@ describe("wsClientMessageSchema", () => {
       }),
     ).toThrow();
   });
+
+  it("rejects unexpected request properties", () => {
+    expect(() =>
+      wsClientMessageSchema.parse({
+        type: "request",
+        id: "req-1",
+        method: "providers.listSessions",
+        unexpected: true,
+      }),
+    ).toThrow();
+  });
 });
 
 describe("wsServerMessageSchema", () => {
@@ -99,6 +110,18 @@ describe("wsServerMessageSchema", () => {
           code: "request_failed",
           message: "expected-failure",
         },
+      }),
+    ).toThrow();
+  });
+
+  it("rejects unexpected response properties", () => {
+    expect(() =>
+      wsServerMessageSchema.parse({
+        type: "response",
+        id: "req-1",
+        ok: true,
+        result: { status: "ok" },
+        unexpected: true,
       }),
     ).toThrow();
   });
@@ -213,6 +236,17 @@ describe("wsServerMessageSchema", () => {
         type: "hello",
         version: 2,
         launchCwd: "/workspace",
+      }),
+    ).toThrow();
+  });
+
+  it("rejects unexpected hello properties", () => {
+    expect(() =>
+      wsServerMessageSchema.parse({
+        type: "hello",
+        version: 1,
+        launchCwd: "/workspace",
+        unexpected: true,
       }),
     ).toThrow();
   });

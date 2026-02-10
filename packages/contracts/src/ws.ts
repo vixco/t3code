@@ -23,12 +23,12 @@ const wsRequestSchema = z.object({
   id: z.string().min(1),
   method: z.string().min(1),
   params: z.unknown().optional(),
-});
+}).strict();
 
 const wsResponseErrorSchema = z.object({
   code: z.string().min(1),
   message: z.string().min(1),
-});
+}).strict();
 
 const wsResponseSchema = z
   .object({
@@ -38,6 +38,7 @@ const wsResponseSchema = z
     result: z.unknown().optional(),
     error: wsResponseErrorSchema.optional(),
   })
+  .strict()
   .superRefine((value, ctx) => {
     if (value.ok && value.error) {
       ctx.addIssue({
@@ -73,24 +74,24 @@ const wsEventSchema = z.union([
     type: z.literal("event"),
     channel: z.literal(WS_EVENT_CHANNELS.providerEvent),
     payload: providerEventSchema,
-  }),
+  }).strict(),
   z.object({
     type: z.literal("event"),
     channel: z.literal(WS_EVENT_CHANNELS.agentOutput),
     payload: outputChunkSchema,
-  }),
+  }).strict(),
   z.object({
     type: z.literal("event"),
     channel: z.literal(WS_EVENT_CHANNELS.agentExit),
     payload: agentExitSchema,
-  }),
+  }).strict(),
 ]);
 
 const wsHelloSchema = z.object({
   type: z.literal("hello"),
   version: z.literal(1),
   launchCwd: z.string().min(1),
-});
+}).strict();
 
 export const wsClientMessageSchema = wsRequestSchema;
 export const wsServerMessageSchema = z.union([wsResponseSchema, wsEventSchema, wsHelloSchema]);
