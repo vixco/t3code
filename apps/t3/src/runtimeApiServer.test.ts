@@ -815,6 +815,63 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("returns structured errors for invalid providers.interruptTurn payloads", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "provider-interrupt-invalid-1",
+      "providers.interruptTurn",
+      {
+        sessionId: "",
+        turnId: "turn-1",
+      },
+    );
+    expect(response.ok).toBe(false);
+    if (response.ok) {
+      throw new Error("Expected invalid provider interrupt payload to fail.");
+    }
+    expect(response.error?.code).toBe("request_failed");
+
+    client.socket.close();
+  });
+
+  it("returns structured errors for invalid providers.stopSession payloads", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "provider-stop-invalid-1",
+      "providers.stopSession",
+      {
+        sessionId: "",
+      },
+    );
+    expect(response.ok).toBe(false);
+    if (response.ok) {
+      throw new Error("Expected invalid provider stop payload to fail.");
+    }
+    expect(response.error?.code).toBe("request_failed");
+
+    client.socket.close();
+  });
+
   it("runs terminal commands through terminal.run endpoint", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
