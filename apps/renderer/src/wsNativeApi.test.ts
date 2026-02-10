@@ -219,12 +219,14 @@ describe("wsNativeApi", () => {
 
     MockWebSocket.failSend = false;
     const secondRequest = api.todos.list();
-    const socket = MockWebSocket.instances[0];
-    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
-    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as {
+    await waitForCondition(() => MockWebSocket.instances.some((socket) => socket.sentMessages.length > 0));
+    const socketWithMessage = [...MockWebSocket.instances]
+      .toReversed()
+      .find((socket) => socket.sentMessages.length > 0);
+    const requestEnvelope = JSON.parse(socketWithMessage?.sentMessages[0] ?? "{}") as {
       id: string;
     };
-    socket?.emitMessage(
+    socketWithMessage?.emitMessage(
       JSON.stringify({
         type: "response",
         id: requestEnvelope.id,

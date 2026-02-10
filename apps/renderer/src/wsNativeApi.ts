@@ -252,6 +252,14 @@ class WsNativeApiClient {
           ),
         );
       }
+      if (this.socket === socket) {
+        this.socket = null;
+      }
+      try {
+        socket.close();
+      } catch {
+        // best-effort close after send failure
+      }
     }
 
     return requestPromise;
