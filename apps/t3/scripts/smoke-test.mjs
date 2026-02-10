@@ -314,6 +314,16 @@ async function main() {
         "Smoke test failed: expected cache-control=no-store on HEAD missing asset response.",
       );
     }
+    const headMissingAssetContentLength = Number(
+      headMissingAsset.headers.get("content-length") ?? "0",
+    );
+    if (!Number.isFinite(headMissingAssetContentLength) || headMissingAssetContentLength <= 0) {
+      throw new Error(
+        `Smoke test failed: expected positive content-length on HEAD missing asset response, got ${String(
+          headMissingAsset.headers.get("content-length"),
+        )}.`,
+      );
+    }
     if ((headMissingAsset.headers.get("x-content-type-options") ?? "").toLowerCase() !== "nosniff") {
       throw new Error("Smoke test failed: expected nosniff on HEAD missing asset response.");
     }
