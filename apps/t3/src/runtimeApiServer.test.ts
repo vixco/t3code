@@ -1306,6 +1306,49 @@ describe("runtimeApiServer", () => {
     expect([1000, 1005]).toContain(closed.code);
   });
 
+  it("does not evict authorized client when duplicate-identical-token client connects", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+      authToken: "secret-token",
+    });
+    servers.push(server);
+
+    const authorizedClient = await connectClient(server.wsUrl);
+    await authorizedClient.nextMessage();
+
+    const authorizedClose = new Promise<{ code: number }>((resolve) => {
+      authorizedClient.socket.once("close", (code) => resolve({ code }));
+    });
+
+    const authorizedUrl = new URL(server.wsUrl);
+    const duplicateIdenticalTokenClient = new WebSocket(
+      `${authorizedUrl.origin}${authorizedUrl.pathname}?token=secret-token&token=secret-token`,
+    );
+    const duplicateIdenticalTokenClose = await withTimeout(
+      new Promise<{ code: number; reason: string }>((resolve, reject) => {
+        duplicateIdenticalTokenClient.once("close", (code, reason) =>
+          resolve({ code, reason: reason.toString() }),
+        );
+        duplicateIdenticalTokenClient.once("error", (error) => reject(error));
+      }),
+    );
+    expect(duplicateIdenticalTokenClose.code).toBe(WS_CLOSE_CODES.unauthorized);
+    expect(duplicateIdenticalTokenClose.reason).toBe(WS_CLOSE_REASONS.unauthorized);
+
+    const response = await sendRequest(
+      authorizedClient.socket,
+      authorizedClient.nextMessage,
+      "todos-auth-duplicate-identical-token-1",
+      "todos.list",
+    );
+    expect(response.ok).toBe(true);
+
+    authorizedClient.socket.close();
+    const closed = await withTimeout(authorizedClose);
+    expect([1000, 1005]).toContain(closed.code);
+  });
+
   it("does not evict authorized client when extra-query client connects", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
