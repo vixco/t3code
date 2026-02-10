@@ -268,6 +268,26 @@ describe("runtimeApiServer", () => {
     ).rejects.toThrow("Invalid bootstrapSessionTimeoutMs");
   });
 
+  it("rejects NaN bootstrap timeout configuration", async () => {
+    await expect(
+      startRuntimeApiServer({
+        port: 0,
+        launchCwd: process.cwd(),
+        bootstrapSessionTimeoutMs: Number.NaN,
+      }),
+    ).rejects.toThrow("Invalid bootstrapSessionTimeoutMs");
+  });
+
+  it("rejects infinite bootstrap timeout configuration", async () => {
+    await expect(
+      startRuntimeApiServer({
+        port: 0,
+        launchCwd: process.cwd(),
+        bootstrapSessionTimeoutMs: Number.POSITIVE_INFINITY,
+      }),
+    ).rejects.toThrow("Invalid bootstrapSessionTimeoutMs");
+  });
+
   it("rejects overly large bootstrap timeout configuration", async () => {
     await expect(
       startRuntimeApiServer({
