@@ -8,7 +8,7 @@ class MockWebSocket {
   static instances: MockWebSocket[] = [];
   static failSend = false;
   static failOpen = false;
-  static failOpenEvent: { message?: string; error?: { message?: string } } = {
+  static failOpenEvent: unknown = {
     message: "mock open failure",
   };
   static failConstruct = false;
@@ -531,6 +531,19 @@ describe("wsNativeApi", () => {
     });
 
     await expect(request).rejects.toThrow("websocket errored (nested-socket-error)");
+  });
+
+  it("uses string websocket error payload when present for pending requests", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4499");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    socket?.emitErrorEvent("string-socket-error");
+
+    await expect(request).rejects.toThrow("websocket errored (string-socket-error)");
   });
 
   it("rejects all concurrent pending requests on websocket error and then reconnects", async () => {
@@ -1757,6 +1770,18 @@ describe("wsNativeApi", () => {
     );
   });
 
+  it("uses string websocket open error payload when available", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4500");
+    MockWebSocket.failOpen = true;
+    MockWebSocket.failOpenEvent = "string-open-error";
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to connect to local t3 runtime: websocket error (string-open-error).",
+    );
+  });
+
   it("uses trimmed nested websocket open error message when direct message is whitespace", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4492");
     MockWebSocket.failOpen = true;
@@ -2030,6 +2055,18 @@ describe("wsNativeApi", () => {
 
     await expect(api.todos.list()).rejects.toThrow(
       "Failed to connect to local t3 runtime: websocket error (mock constructor failure).",
+    );
+  });
+
+  it("uses string constructor throw payload for connect diagnostics", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4501");
+    MockWebSocket.failConstruct = true;
+    MockWebSocket.failConstructError = "string-constructor-failure";
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to connect to local t3 runtime: websocket error (string-constructor-failure).",
     );
   });
 

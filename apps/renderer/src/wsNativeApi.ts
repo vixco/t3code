@@ -100,9 +100,9 @@ function runtimeConnectErrorFromSocketError(event: unknown) {
 }
 
 function runtimeConnectErrorFromConstructionError(error: unknown) {
-  const message = normalizeNonEmptyString(
-    error instanceof Error ? error.message : (error as { message?: unknown } | null)?.message,
-  );
+  const message =
+    messageFromUnknown(error) ??
+    messageFromUnknown((error as { error?: unknown } | null)?.error);
   if (message) {
     return new Error(`Failed to connect to local t3 runtime: websocket error (${message}).`);
   }
@@ -110,20 +110,27 @@ function runtimeConnectErrorFromConstructionError(error: unknown) {
 }
 
 function socketErrorMessage(event: unknown) {
-  const directMessage = (event as { message?: unknown } | null)?.message;
-  const normalizedDirectMessage = normalizeNonEmptyString(directMessage);
+  const normalizedDirectMessage = messageFromUnknown(event);
   if (normalizedDirectMessage) {
     return normalizedDirectMessage;
   }
 
   const nestedError = (event as { error?: unknown } | null)?.error;
-  const nestedMessage = (nestedError as { message?: unknown } | null)?.message;
-  const normalizedNestedMessage = normalizeNonEmptyString(nestedMessage);
+  const normalizedNestedMessage = messageFromUnknown(nestedError);
   if (normalizedNestedMessage) {
     return normalizedNestedMessage;
   }
 
   return null;
+}
+
+function messageFromUnknown(value: unknown) {
+  const direct = normalizeNonEmptyString(value);
+  if (direct) {
+    return direct;
+  }
+
+  return normalizeNonEmptyString((value as { message?: unknown } | null)?.message);
 }
 
 function normalizeNonEmptyString(value: unknown) {
