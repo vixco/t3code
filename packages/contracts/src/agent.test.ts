@@ -45,6 +45,16 @@ describe("outputChunkSchema", () => {
       }),
     ).toThrow();
   });
+
+  it("rejects empty output session ids", () => {
+    expect(() =>
+      outputChunkSchema.parse({
+        sessionId: "",
+        stream: "stdout",
+        data: "hello",
+      }),
+    ).toThrow();
+  });
 });
 
 describe("agentWriteInputSchema", () => {
@@ -93,6 +103,16 @@ describe("agentExitSchema", () => {
         code: 0,
         signal: null,
         unexpected: true,
+      }),
+    ).toThrow();
+  });
+
+  it("rejects empty exit session ids", () => {
+    expect(() =>
+      agentExitSchema.parse({
+        sessionId: "",
+        code: 0,
+        signal: null,
       }),
     ).toThrow();
   });

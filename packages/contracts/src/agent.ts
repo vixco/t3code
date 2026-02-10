@@ -18,13 +18,13 @@ export const agentWriteInputSchema = z
   .strict();
 
 export const outputChunkSchema = z.object({
-  sessionId: z.string(),
+  sessionId: agentSessionIdSchema,
   stream: z.enum(["stdout", "stderr"]),
   data: z.string(),
 }).strict();
 
 export const agentExitSchema = z.object({
-  sessionId: z.string(),
+  sessionId: agentSessionIdSchema,
   code: z.number().nullable(),
   signal: z.string().nullable(),
 }).strict();
