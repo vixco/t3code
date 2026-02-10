@@ -39,7 +39,7 @@ If default ports are busy, `t3` will automatically retry with the next available
 
 Optional environment variables:
 
-- `T3_NO_OPEN=1` — start runtime without auto-opening a browser window (also accepts `true`, `yes`, or `on`).
+- `T3_NO_OPEN=1` — start runtime without auto-opening a browser window (parses `true/false`, `1/0`, `yes/no`, `on/off`).
 - `T3_BACKEND_PORT` — override local WebSocket runtime port (default `4317`).
 - `T3_WEB_PORT` — override local web UI port (default `4318`).
 
