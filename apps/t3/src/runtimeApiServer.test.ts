@@ -2035,8 +2035,9 @@ describe("runtimeApiServer", () => {
     }
     expect(response.error?.code).toBe("request_failed");
     expect(typeof response.error?.message).toBe("string");
+    expect(response.error?.message?.toLowerCase()).toContain("editor target");
     expect((response.error?.message ?? "").length).toBeLessThanOrEqual(WS_ERROR_MESSAGE_MAX_CHARS);
-    expect(response.error?.message?.endsWith("…")).toBe(true);
+    expect(response.error?.message).toContain("…");
 
     client.socket.close();
   });

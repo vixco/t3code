@@ -64,6 +64,7 @@ interface JsonRpcErrorResult {
 const BOOTSTRAP_SESSION_TIMEOUT_MS = 3_000;
 const MAX_BOOTSTRAP_SESSION_TIMEOUT_MS = 120_000;
 const MAX_WS_CLIENT_PAYLOAD_BYTES = 5 * 1024 * 1024;
+const MAX_ERROR_PATH_CHARS = 2_048;
 
 interface BootstrapSessionResult {
   session: ProviderSession;
@@ -139,6 +140,16 @@ function normalizeErrorField(value: string, fallback: string, maxChars: number):
   }
 
   return `${safeValue.slice(0, maxChars - 1)}…`;
+}
+
+function summarizePathForError(candidatePath: string): string {
+  if (candidatePath.length <= MAX_ERROR_PATH_CHARS) {
+    return candidatePath;
+  }
+
+  const prefixLength = Math.floor((MAX_ERROR_PATH_CHARS - 1) / 2);
+  const suffixLength = MAX_ERROR_PATH_CHARS - 1 - prefixLength;
+  return `${candidatePath.slice(0, prefixLength)}…${candidatePath.slice(-suffixLength)}`;
 }
 
 function sendMessage(socket: WebSocket, message: unknown): void {
@@ -333,18 +344,19 @@ function resolveExistingDirectory(targetPath: string, label: string): string {
     stats = fs.statSync(candidate);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    const safeCandidate = summarizePathForError(candidate);
     if (code && code !== "ENOENT") {
-      throw new Error(`Failed to access ${label.toLowerCase()}: ${candidate} (${code})`, {
+      throw new Error(`Failed to access ${label.toLowerCase()}: ${safeCandidate} (${code})`, {
         cause: error,
       });
     }
-    throw new Error(`${label} does not exist: ${candidate}`, {
+    throw new Error(`${label} does not exist: ${safeCandidate}`, {
       cause: error,
     });
   }
 
   if (!stats.isDirectory()) {
-    throw new Error(`${label} is not a directory: ${candidate}`);
+    throw new Error(`${label} is not a directory: ${summarizePathForError(candidate)}`);
   }
 
   return candidate;
