@@ -194,6 +194,15 @@ describe("runtimeApiServer", () => {
     ).rejects.toThrow("Invalid runtime port");
   });
 
+  it("rejects startup when runtime port is not a number", async () => {
+    await expect(
+      startRuntimeApiServer({
+        port: "4317" as unknown as number,
+        launchCwd: process.cwd(),
+      }),
+    ).rejects.toThrow("Invalid runtime port");
+  });
+
   it("rejects startup when runtime port is infinite", async () => {
     await expect(
       startRuntimeApiServer({
@@ -313,6 +322,16 @@ describe("runtimeApiServer", () => {
         port: 0,
         launchCwd: process.cwd(),
         bootstrapSessionTimeoutMs: Number.NaN,
+      }),
+    ).rejects.toThrow("Invalid bootstrapSessionTimeoutMs");
+  });
+
+  it("rejects non-number bootstrap timeout configuration", async () => {
+    await expect(
+      startRuntimeApiServer({
+        port: 0,
+        launchCwd: process.cwd(),
+        bootstrapSessionTimeoutMs: "1000" as unknown as number,
       }),
     ).rejects.toThrow("Invalid bootstrapSessionTimeoutMs");
   });
