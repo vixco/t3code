@@ -32,6 +32,17 @@ describe("todoSchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("rejects todos with unexpected properties", () => {
+    const result = todoSchema.safeParse({
+      id: "abc-123",
+      title: "Buy milk",
+      completed: false,
+      createdAt: "2025-01-01T00:00:00.000Z",
+      unexpected: true,
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("newTodoInputSchema", () => {
@@ -47,6 +58,14 @@ describe("newTodoInputSchema", () => {
 
   it("rejects empty title after trimming", () => {
     const result = newTodoInputSchema.safeParse({ title: "   " });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects unexpected input properties", () => {
+    const result = newTodoInputSchema.safeParse({
+      title: "Buy milk",
+      unexpected: true,
+    });
     expect(result.success).toBe(false);
   });
 });

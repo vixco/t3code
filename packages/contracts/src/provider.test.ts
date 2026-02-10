@@ -29,6 +29,15 @@ describe("providerSessionStartInputSchema", () => {
       }),
     ).toThrow();
   });
+
+  it("rejects unexpected startSession input properties", () => {
+    expect(() =>
+      providerSessionStartInputSchema.parse({
+        provider: "codex",
+        unexpected: true,
+      }),
+    ).toThrow();
+  });
 });
 
 describe("providerSendTurnInputSchema", () => {
@@ -42,6 +51,16 @@ describe("providerSendTurnInputSchema", () => {
     expect(parsed.input).toBe("summarize this repo");
     expect(parsed.model).toBe("gpt-5.2-codex");
     expect(parsed.effort).toBe("high");
+  });
+
+  it("rejects unexpected sendTurn properties", () => {
+    expect(() =>
+      providerSendTurnInputSchema.parse({
+        sessionId: "sess_1",
+        input: "hello",
+        unexpected: true,
+      }),
+    ).toThrow();
   });
 });
 
@@ -76,6 +95,22 @@ describe("providerEventSchema", () => {
     expect(parsed.requestId).toBe("req_123");
     expect(parsed.requestKind).toBe("command");
   });
+
+  it("rejects unexpected event properties", () => {
+    expect(() =>
+      providerEventSchema.parse({
+        id: "evt_2",
+        kind: "request",
+        provider: "codex",
+        sessionId: "sess_1",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/commandExecution/requestApproval",
+        requestId: "req_123",
+        requestKind: "command",
+        unexpected: true,
+      }),
+    ).toThrow();
+  });
 });
 
 describe("providerRespondToRequestInputSchema", () => {
@@ -94,6 +129,17 @@ describe("providerRespondToRequestInputSchema", () => {
         sessionId: "sess_1",
         requestId: "req_1",
         decision: "always",
+      }),
+    ).toThrow();
+  });
+
+  it("rejects unexpected respondToRequest properties", () => {
+    expect(() =>
+      providerRespondToRequestInputSchema.parse({
+        sessionId: "sess_1",
+        requestId: "req_1",
+        decision: "accept",
+        unexpected: true,
       }),
     ).toThrow();
   });

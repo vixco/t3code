@@ -5,13 +5,13 @@ export const todoSchema = z.object({
   title: z.string().min(1).max(280),
   completed: z.boolean(),
   createdAt: z.string().datetime(),
-});
+}).strict();
 
 export const todoListSchema = z.array(todoSchema);
 
 export const newTodoInputSchema = z.object({
   title: z.string().trim().min(1).max(280),
-});
+}).strict();
 
 export const todoIdSchema = z.string().min(1);
 

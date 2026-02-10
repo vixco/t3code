@@ -43,7 +43,7 @@ export const providerSessionSchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   lastError: z.string().min(1).optional(),
-});
+}).strict();
 
 export const providerSessionListSchema = z.array(providerSessionSchema);
 
@@ -54,7 +54,7 @@ export const providerSessionStartInputSchema = z.object({
   resumeThreadId: z.string().trim().min(1).optional(),
   approvalPolicy: providerApprovalPolicySchema.default("never"),
   sandboxMode: providerSandboxModeSchema.default("workspace-write"),
-});
+}).strict();
 
 export const PROVIDER_SEND_TURN_MAX_INPUT_CHARS = 120_000;
 
@@ -63,27 +63,27 @@ export const providerSendTurnInputSchema = z.object({
   input: z.string().trim().min(1).max(PROVIDER_SEND_TURN_MAX_INPUT_CHARS),
   model: z.string().trim().min(1).optional(),
   effort: z.string().trim().min(1).optional(),
-});
+}).strict();
 
 export const providerTurnStartResultSchema = z.object({
   threadId: z.string().min(1),
   turnId: z.string().min(1),
-});
+}).strict();
 
 export const providerInterruptTurnInputSchema = z.object({
   sessionId: z.string().min(1),
   turnId: z.string().min(1).optional(),
-});
+}).strict();
 
 export const providerStopSessionInputSchema = z.object({
   sessionId: z.string().min(1),
-});
+}).strict();
 
 export const providerRespondToRequestInputSchema = z.object({
   sessionId: z.string().min(1),
   requestId: z.string().min(1),
   decision: providerApprovalDecisionSchema,
-});
+}).strict();
 
 export const providerEventKindSchema = z.enum(["session", "notification", "request", "error"]);
 
@@ -102,7 +102,7 @@ export const providerEventSchema = z.object({
   requestKind: providerRequestKindSchema.optional(),
   textDelta: z.string().optional(),
   payload: z.unknown().optional(),
-});
+}).strict();
 
 export type ProviderKind = z.infer<typeof providerKindSchema>;
 export type ProviderApprovalPolicy = z.infer<typeof providerApprovalPolicySchema>;

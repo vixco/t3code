@@ -21,4 +21,12 @@ describe("terminalCommandInputSchema", () => {
     const result = terminalCommandInputSchema.safeParse({ command: "   " });
     expect(result.success).toBe(false);
   });
+
+  it("rejects unexpected command properties", () => {
+    const result = terminalCommandInputSchema.safeParse({
+      command: "echo hello",
+      unexpected: true,
+    });
+    expect(result.success).toBe(false);
+  });
 });
