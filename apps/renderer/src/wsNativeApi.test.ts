@@ -64,6 +64,10 @@ class MockWebSocket {
     this.emit("close", event);
   }
 
+  emitError(message = "mock socket error") {
+    this.emit("error", { message });
+  }
+
   emitMessage(data: unknown) {
     this.emit("message", { data });
   }
@@ -423,6 +427,19 @@ describe("wsNativeApi", () => {
     await expect(request).rejects.toThrow("websocket disconnected (code 1000)");
   });
 
+  it("rejects pending requests when websocket errors after opening", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4469");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    socket?.emitError("forced-socket-error");
+
+    await expect(request).rejects.toThrow("websocket errored (forced-socket-error)");
+  });
+
   it("includes close reason details when pending request disconnects", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4450");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -627,6 +644,36 @@ describe("wsNativeApi", () => {
 
     firstSocket.close();
     await waitForCondition(() => MockWebSocket.instances.length >= 1);
+
+    const secondRequest = api.todos.list();
+    await waitForCondition(() => MockWebSocket.instances.length >= 2);
+    const secondSocket = MockWebSocket.instances[1];
+    await waitForCondition(() => (secondSocket?.sentMessages.length ?? 0) > 0);
+    const secondEnvelope = JSON.parse(secondSocket?.sentMessages[0] ?? "{}") as {
+      id: string;
+    };
+    secondSocket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: secondEnvelope.id,
+        ok: true,
+        result: [],
+      }),
+    );
+
+    await expect(secondRequest).resolves.toEqual([]);
+  });
+
+  it("reconnects on subsequent requests after websocket error", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4470");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const firstRequest = api.todos.list();
+    const firstSocket = await waitForSocket();
+    await waitForCondition(() => firstSocket.sentMessages.length > 0);
+    firstSocket.emitError("forced-socket-error");
+    await expect(firstRequest).rejects.toThrow("websocket errored (forced-socket-error)");
 
     const secondRequest = api.todos.list();
     await waitForCondition(() => MockWebSocket.instances.length >= 2);

@@ -83,6 +83,14 @@ function requestDisconnectError(id: string, event: unknown) {
   return new Error(`Request ${id} failed: websocket disconnected (code ${code}: ${reason}).`);
 }
 
+function requestSocketError(id: string, event: unknown) {
+  const message = (event as { message?: unknown } | null)?.message;
+  if (typeof message === "string" && message.length > 0) {
+    return new Error(`Request ${id} failed: websocket errored (${message}).`);
+  }
+  return new Error(`Request ${id} failed: websocket errored.`);
+}
+
 class WsNativeApiClient {
   private socket: WebSocket | null = null;
   private connectPromise: Promise<WebSocket> | null = null;
@@ -137,8 +145,18 @@ class WsNativeApiClient {
         resolveConnection();
       });
 
-      socket.addEventListener("error", () => {
-        rejectConnection();
+      socket.addEventListener("error", (event) => {
+        if (!hasOpened) {
+          rejectConnection();
+          return;
+        }
+
+        this.socket = null;
+        for (const [id, pending] of this.pending.entries()) {
+          clearTimeout(pending.timeout);
+          pending.reject(requestSocketError(id, event));
+        }
+        this.pending.clear();
       });
 
       socket.addEventListener("message", (event) => {
