@@ -2733,6 +2733,7 @@ describe("runtimeApiServer", () => {
       },
     );
     expect(writeResponse.ok).toBe(true);
+    expect(writeResponse.result).toBeNull();
 
     const outputEvent = await waitForAgentEvent(
       client.nextMessage,
@@ -2752,6 +2753,7 @@ describe("runtimeApiServer", () => {
       sessionId,
     );
     expect(killResponse.ok).toBe(true);
+    expect(killResponse.result).toBeNull();
 
     const exitEvent = await waitForAgentEvent(
       client.nextMessage,
