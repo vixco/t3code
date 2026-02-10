@@ -245,6 +245,10 @@ async function main() {
     if (!assetEtag || assetEtag.length === 0) {
       throw new Error("Smoke test failed: expected ETag on built asset response.");
     }
+    const assetContentType = assetResponse.headers.get("content-type");
+    if (!assetContentType || assetContentType.length === 0) {
+      throw new Error("Smoke test failed: expected content-type on built asset response.");
+    }
     const assetLastModified = assetResponse.headers.get("last-modified");
     if (!assetLastModified || assetLastModified.length === 0) {
       throw new Error("Smoke test failed: expected Last-Modified on built asset response.");
@@ -277,6 +281,13 @@ async function main() {
       throw new Error(
         `Smoke test failed: expected conditional asset ETag ${assetEtag}, got ${String(
           conditionalAsset.headers.get("etag"),
+        )}.`,
+      );
+    }
+    if (conditionalAsset.headers.get("content-type") !== assetContentType) {
+      throw new Error(
+        `Smoke test failed: expected conditional asset content-type ${assetContentType}, got ${String(
+          conditionalAsset.headers.get("content-type"),
         )}.`,
       );
     }
@@ -602,6 +613,13 @@ async function main() {
       throw new Error(
         `Smoke test failed: expected conditional HEAD asset ETag ${assetEtag}, got ${String(
           conditionalHeadAsset.headers.get("etag"),
+        )}.`,
+      );
+    }
+    if (conditionalHeadAsset.headers.get("content-type") !== assetContentType) {
+      throw new Error(
+        `Smoke test failed: expected conditional HEAD asset content-type ${assetContentType}, got ${String(
+          conditionalHeadAsset.headers.get("content-type"),
         )}.`,
       );
     }
