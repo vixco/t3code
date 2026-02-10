@@ -423,6 +423,17 @@ async function main() {
         `Smoke test failed: expected If-Range(date) asset status 206, received ${ifRangeDateAsset.status}.`,
       );
     }
+    const rangedModifiedSinceAsset = await fetch(assetUrl, {
+      headers: {
+        Range: `bytes=0-${rangeEnd}`,
+        "If-Modified-Since": assetLastModified,
+      },
+    });
+    if (rangedModifiedSinceAsset.status !== 206) {
+      throw new Error(
+        `Smoke test failed: expected ranged If-Modified-Since asset status 206, received ${rangedModifiedSinceAsset.status}.`,
+      );
+    }
     const ifRangeMismatchAsset = await fetch(assetUrl, {
       headers: {
         Range: `bytes=0-${rangeEnd}`,
