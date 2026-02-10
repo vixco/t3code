@@ -622,6 +622,19 @@ describe("wsNativeApi", () => {
     await expect(request).rejects.toThrow("websocket disconnected (unauthorized)");
   });
 
+  it("prioritizes unauthorized code over non-auth reason on disconnect", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4486");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    socket?.closeWith({ code: WS_CLOSE_CODES.unauthorized, reason: "not-unauthorized-reason" });
+
+    await expect(request).rejects.toThrow("websocket disconnected (unauthorized)");
+  });
+
   it("maps replacement reason-only disconnects to explicit replacement errors", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4462");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -631,6 +644,22 @@ describe("wsNativeApi", () => {
     const socket = MockWebSocket.instances[0];
     await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
     socket?.closeWith({ reason: WS_CLOSE_REASONS.replacedByNewClient });
+
+    await expect(request).rejects.toThrow("websocket disconnected (replaced-by-new-client)");
+  });
+
+  it("prioritizes replacement code over non-replacement reason on disconnect", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4487");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    socket?.closeWith({
+      code: WS_CLOSE_CODES.replacedByNewClient,
+      reason: "not-replacement-reason",
+    });
 
     await expect(request).rejects.toThrow("websocket disconnected (replaced-by-new-client)");
   });
