@@ -811,6 +811,16 @@ async function main() {
         `Smoke test failed: expected spaced range asset status 206, received ${spacedRangedAsset.status}.`,
       );
     }
+    const tabSpacedRangedAsset = await fetch(assetUrl, {
+      headers: {
+        Range: `bytes\t=\t0\t-\t${rangeEnd}`,
+      },
+    });
+    if (tabSpacedRangedAsset.status !== 206) {
+      throw new Error(
+        `Smoke test failed: expected tab-spaced range asset status 206, received ${tabSpacedRangedAsset.status}.`,
+      );
+    }
     const conditionalRangedAsset = await fetch(assetUrl, {
       headers: {
         Range: `bytes=0-${rangeEnd}`,
