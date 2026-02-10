@@ -166,6 +166,19 @@ describe("runtimeApiServer", () => {
     await expect(server.close()).resolves.toBeUndefined();
   });
 
+  it("allows concurrent runtime server close calls", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+
+    await expect(Promise.all([server.close(), server.close(), server.close()])).resolves.toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
   it("rejects empty auth token configuration", async () => {
     await expect(
       startRuntimeApiServer({

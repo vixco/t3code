@@ -656,19 +656,28 @@ export async function startRuntimeApiServer(
   const wsUrl = authToken
     ? `${wsBaseUrl}?token=${encodeURIComponent(authToken)}`
     : wsBaseUrl;
+  let closePromise: Promise<void> | null = null;
 
   return {
     wsUrl,
-    async close() {
-      processManager.killAll();
-      providerManager.stopAll();
-      providerManager.dispose();
-      for (const client of wss.clients) {
-        client.terminate();
+    close() {
+      if (closePromise) {
+        return closePromise;
       }
-      await new Promise<void>((resolve) => {
-        wss.close(() => resolve());
-      });
+
+      closePromise = (async () => {
+        processManager.killAll();
+        providerManager.stopAll();
+        providerManager.dispose();
+        for (const client of wss.clients) {
+          client.terminate();
+        }
+        await new Promise<void>((resolve) => {
+          wss.close(() => resolve());
+        });
+      })();
+
+      return closePromise;
     },
   };
 }
