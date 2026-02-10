@@ -91,6 +91,14 @@ function requestSocketError(id: string, event: unknown) {
   return new Error(`Request ${id} failed: websocket errored.`);
 }
 
+function runtimeConnectErrorFromSocketError(event: unknown) {
+  const message = (event as { message?: unknown } | null)?.message;
+  if (typeof message === "string" && message.length > 0) {
+    return new Error(`Failed to connect to local t3 runtime: websocket error (${message}).`);
+  }
+  return new Error("Failed to connect to local t3 runtime.");
+}
+
 class WsNativeApiClient {
   private socket: WebSocket | null = null;
   private connectPromise: Promise<WebSocket> | null = null;
@@ -148,13 +156,13 @@ class WsNativeApiClient {
       socket.addEventListener("error", (event) => {
         if (this.socket !== socket) {
           if (!hasOpened) {
-            rejectConnection();
+            rejectConnection(runtimeConnectErrorFromSocketError(event));
           }
           return;
         }
 
         if (!hasOpened) {
-          rejectConnection();
+          rejectConnection(runtimeConnectErrorFromSocketError(event));
           return;
         }
 

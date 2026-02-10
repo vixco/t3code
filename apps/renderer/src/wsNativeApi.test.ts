@@ -8,6 +8,7 @@ class MockWebSocket {
   static instances: MockWebSocket[] = [];
   static failSend = false;
   static failOpen = false;
+  static failOpenEvent: { message?: string } = { message: "mock open failure" };
   static failConstruct = false;
   static failCloseBeforeOpen = false;
   static failCloseBeforeOpenEvent: { code?: number; reason?: string } = {
@@ -32,7 +33,7 @@ class MockWebSocket {
         return;
       }
       if (MockWebSocket.failOpen) {
-        this.emit("error", { message: "mock open failure" });
+        this.emit("error", MockWebSocket.failOpenEvent);
         return;
       }
       this.readyState = MockWebSocket.OPEN;
@@ -121,6 +122,7 @@ describe("wsNativeApi", () => {
     MockWebSocket.instances = [];
     MockWebSocket.failSend = false;
     MockWebSocket.failOpen = false;
+    MockWebSocket.failOpenEvent = { message: "mock open failure" };
     MockWebSocket.failConstruct = false;
     MockWebSocket.failCloseBeforeOpen = false;
     MockWebSocket.failCloseBeforeOpenEvent = {
@@ -1372,6 +1374,18 @@ describe("wsNativeApi", () => {
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
     const api = getOrCreateWsNativeApi();
 
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to connect to local t3 runtime: websocket error (mock open failure).",
+    );
+  });
+
+  it("falls back to generic connect error when websocket open error has no message", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4472");
+    MockWebSocket.failOpen = true;
+    MockWebSocket.failOpenEvent = {};
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
     await expect(api.todos.list()).rejects.toThrow("Failed to connect to local t3 runtime.");
   });
 
@@ -1518,7 +1532,9 @@ describe("wsNativeApi", () => {
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
     const api = getOrCreateWsNativeApi();
 
-    await expect(api.todos.list()).rejects.toThrow("Failed to connect to local t3 runtime.");
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to connect to local t3 runtime: websocket error (mock open failure).",
+    );
 
     MockWebSocket.failOpen = false;
     const secondRequest = api.todos.list();
