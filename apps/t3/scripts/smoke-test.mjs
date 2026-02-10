@@ -1856,6 +1856,45 @@ async function main() {
       );
     });
 
+    const invalidShellEditorResponse = await sendWsRequest(ws, {
+      id: "smoke-shell-invalid-editor",
+      method: "shell.openInEditor",
+      params: {
+        cwd: appRoot,
+        editor: "unknown-editor",
+      },
+    });
+    if (
+      invalidShellEditorResponse.ok !== false ||
+      invalidShellEditorResponse.error?.code !== "request_failed" ||
+      typeof invalidShellEditorResponse.error?.message !== "string" ||
+      (!invalidShellEditorResponse.error.message.includes("Unknown editor") &&
+        !invalidShellEditorResponse.error.message.includes("Invalid enum value"))
+    ) {
+      throw new Error(
+        `Smoke test failed: expected structured invalid-editor error response, got ${JSON.stringify(
+          invalidShellEditorResponse,
+        )}.`,
+      );
+    }
+
+    const invalidTerminalCwdResponse = await sendWsRequest(ws, {
+      id: "smoke-terminal-invalid-cwd",
+      method: "terminal.run",
+      params: {
+        command: "echo should-not-run",
+        cwd: path.join(appRoot, "__missing_smoke_dir__"),
+      },
+    });
+    if (
+      invalidTerminalCwdResponse.ok !== false ||
+      invalidTerminalCwdResponse.error?.code !== "request_failed" ||
+      typeof invalidTerminalCwdResponse.error?.message !== "string" ||
+      !invalidTerminalCwdResponse.error.message.includes("Working directory does not exist")
+    ) {
+      throw new Error("Smoke test failed: expected structured invalid-cwd terminal.run error.");
+    }
+
     const replacedClientClosed = waitForCloseCode(ws, 4000, "replaced-client");
     const replacementWs = new WebSocket(wsUrl);
     await new Promise((resolve, reject) => {
