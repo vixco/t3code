@@ -1,7 +1,8 @@
+import { z } from "zod";
 import type { AgentConfig, AgentExit, OutputChunk } from "./agent";
+import { providerKindSchema, providerSessionSchema } from "./provider";
 import type {
   ProviderEvent,
-  ProviderKind,
   ProviderInterruptTurnInput,
   ProviderRespondToRequestInput,
   ProviderSendTurnInput,
@@ -20,21 +21,24 @@ export const EDITORS = [
 
 export type EditorId = (typeof EDITORS)[number]["id"];
 
-export interface AppBootstrapResult {
-  launchCwd: string;
-  projectName: string;
-  provider: ProviderKind;
-  model: string;
-  session: ProviderSession;
-  bootstrapError?: string;
-}
+export const appBootstrapResultSchema = z.object({
+  launchCwd: z.string().min(1),
+  projectName: z.string().min(1),
+  provider: providerKindSchema,
+  model: z.string().min(1),
+  session: providerSessionSchema,
+  bootstrapError: z.string().min(1).optional(),
+});
 
-export interface AppHealthResult {
-  status: "ok";
-  launchCwd: string;
-  sessionCount: number;
-  activeClientConnected: boolean;
-}
+export const appHealthResultSchema = z.object({
+  status: z.literal("ok"),
+  launchCwd: z.string().min(1),
+  sessionCount: z.number().int().min(0),
+  activeClientConnected: z.boolean(),
+});
+
+export type AppBootstrapResult = z.infer<typeof appBootstrapResultSchema>;
+export type AppHealthResult = z.infer<typeof appHealthResultSchema>;
 
 export interface NativeApi {
   app: {

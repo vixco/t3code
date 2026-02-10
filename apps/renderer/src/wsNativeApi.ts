@@ -1,21 +1,26 @@
 import type {
   AppBootstrapResult,
   AppHealthResult,
+  AgentExit,
   NativeApi,
+  OutputChunk,
   ProviderEvent,
   WsClientMessage,
   WsEventMessage,
   WsResponseMessage,
-  OutputChunk,
-  AgentExit,
 } from "@acme/contracts";
 import {
   WS_CLOSE_CODES,
   WS_CLOSE_REASONS,
   WS_EVENT_CHANNELS,
+  agentSessionIdSchema,
   agentExitSchema,
   outputChunkSchema,
+  providerSessionSchema,
+  providerTurnStartResultSchema,
   providerEventSchema,
+  terminalCommandResultSchema,
+  todoListSchema,
   wsServerMessageSchema,
 } from "@acme/contracts";
 
@@ -26,6 +31,10 @@ type PendingRequest = {
 };
 
 type SubscriptionSet<TValue> = Set<(value: TValue) => void>;
+type SafeParseResult<TValue> = { success: true; data: TValue } | { success: false };
+type SchemaLike<TValue> = {
+  safeParse: (value: unknown) => SafeParseResult<TValue>;
+};
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_NESTED_ERROR_EXTRACTION_DEPTH = 8;
 const textDecoder = new TextDecoder();
@@ -160,6 +169,10 @@ function normalizeCloseCode(value: unknown) {
   }
 
   return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 class WsNativeApiClient {
@@ -328,6 +341,119 @@ class WsNativeApiClient {
     return requestPromise;
   }
 
+  private async requestParsed<TValue>(
+    method: string,
+    schema: SchemaLike<TValue>,
+    params?: unknown,
+  ): Promise<TValue> {
+    const value = await this.request(method, params);
+    const parsed = schema.safeParse(value);
+    if (!parsed.success) {
+      throw new Error(`Runtime method '${method}' returned invalid response payload.`);
+    }
+    return parsed.data;
+  }
+
+  private async requestNullResult(method: string, params?: unknown): Promise<void> {
+    const value = await this.request(method, params);
+    if (value !== null) {
+      throw new Error(`Runtime method '${method}' returned invalid response payload.`);
+    }
+  }
+
+  private parseAppHealthResult(method: string, value: unknown): AppHealthResult {
+    if (!isRecord(value)) {
+      throw new Error(`Runtime method '${method}' returned invalid response payload.`);
+    }
+    const launchCwd = value.launchCwd;
+    const sessionCount = value.sessionCount;
+    const activeClientConnected = value.activeClientConnected;
+    if (
+      value.status !== "ok" ||
+      typeof launchCwd !== "string" ||
+      launchCwd.length === 0 ||
+      typeof sessionCount !== "number" ||
+      !Number.isInteger(sessionCount) ||
+      sessionCount < 0 ||
+      typeof activeClientConnected !== "boolean"
+    ) {
+      throw new Error(`Runtime method '${method}' returned invalid response payload.`);
+    }
+    const normalizedSessionCount = sessionCount as number;
+
+    return {
+      status: "ok",
+      launchCwd,
+      sessionCount: normalizedSessionCount,
+      activeClientConnected,
+    };
+  }
+
+  private parseAppBootstrapResult(method: string, value: unknown): AppBootstrapResult {
+    if (!isRecord(value)) {
+      throw new Error(`Runtime method '${method}' returned invalid response payload.`);
+    }
+
+    const launchCwd = value.launchCwd;
+    const projectName = value.projectName;
+    const provider = value.provider;
+    const model = value.model;
+    const bootstrapError = value.bootstrapError;
+    const parsedSession = providerSessionSchema.safeParse(value.session);
+    if (
+      !parsedSession.success ||
+      typeof launchCwd !== "string" ||
+      launchCwd.length === 0 ||
+      typeof projectName !== "string" ||
+      projectName.length === 0 ||
+      typeof model !== "string" ||
+      model.length === 0 ||
+      (bootstrapError !== undefined &&
+        (typeof bootstrapError !== "string" || bootstrapError.length === 0))
+    ) {
+      throw new Error(`Runtime method '${method}' returned invalid response payload.`);
+    }
+    if (provider !== "codex" && provider !== "claudeCode") {
+      throw new Error(`Runtime method '${method}' returned invalid response payload.`);
+    }
+    const normalizedProvider = provider as AppBootstrapResult["provider"];
+
+    const baseResult = {
+      launchCwd,
+      projectName,
+      provider: normalizedProvider,
+      model,
+      session: parsedSession.data,
+    };
+    if (bootstrapError !== undefined) {
+      return {
+        ...baseResult,
+        bootstrapError,
+      };
+    }
+
+    return baseResult;
+  }
+
+  private parseProviderSessionList(
+    method: string,
+    value: unknown,
+  ): Awaited<ReturnType<NativeApi["providers"]["listSessions"]>> {
+    if (!Array.isArray(value)) {
+      throw new Error(`Runtime method '${method}' returned invalid response payload.`);
+    }
+
+    const parsedSessions: Awaited<ReturnType<NativeApi["providers"]["listSessions"]>> = [];
+    for (const session of value) {
+      const parsedSession = providerSessionSchema.safeParse(session);
+      if (!parsedSession.success) {
+        throw new Error(`Runtime method '${method}' returned invalid response payload.`);
+      }
+      parsedSessions.push(parsedSession.data);
+    }
+    return parsedSessions;
+  }
+
   private handleResponse(message: WsResponseMessage) {
     const pending = this.pending.get(message.id);
     if (!pending) {
@@ -434,48 +560,31 @@ class WsNativeApiClient {
   asNativeApi(): NativeApi {
     return {
       app: {
-        bootstrap: async () =>
-          this.request("app.bootstrap").then((value) => value as AppBootstrapResult),
-        health: async () =>
-          this.request("app.health").then((value) => value as AppHealthResult),
+        bootstrap: async () => this.parseAppBootstrapResult("app.bootstrap", await this.request("app.bootstrap")),
+        health: async () => this.parseAppHealthResult("app.health", await this.request("app.health")),
       },
       todos: {
-        list: async () =>
-          this.request("todos.list").then(
-            (value) => value as Awaited<ReturnType<NativeApi["todos"]["list"]>>,
-          ),
-        add: async (input) =>
-          this.request("todos.add", input).then(
-            (value) => value as Awaited<ReturnType<NativeApi["todos"]["add"]>>,
-          ),
-        toggle: async (id) =>
-          this.request("todos.toggle", id).then(
-            (value) => value as Awaited<ReturnType<NativeApi["todos"]["toggle"]>>,
-          ),
-        remove: async (id) =>
-          this.request("todos.remove", id).then(
-            (value) => value as Awaited<ReturnType<NativeApi["todos"]["remove"]>>,
-          ),
+        list: async () => this.requestParsed("todos.list", todoListSchema),
+        add: async (input) => this.requestParsed("todos.add", todoListSchema, input),
+        toggle: async (id) => this.requestParsed("todos.toggle", todoListSchema, id),
+        remove: async (id) => this.requestParsed("todos.remove", todoListSchema, id),
       },
       dialogs: {
-        pickFolder: async () =>
-          this.request("dialogs.pickFolder").then((value) => value as string | null),
+        pickFolder: async () => {
+          const value = await this.request("dialogs.pickFolder");
+          if (value === null || typeof value === "string") {
+            return value;
+          }
+          throw new Error("Runtime method 'dialogs.pickFolder' returned invalid response payload.");
+        },
       },
       terminal: {
-        run: async (input) =>
-          this.request("terminal.run", input).then(
-            (value) => value as Awaited<ReturnType<NativeApi["terminal"]["run"]>>,
-          ),
+        run: async (input) => this.requestParsed("terminal.run", terminalCommandResultSchema, input),
       },
       agent: {
-        spawn: async (config) =>
-          this.request("agent.spawn", config).then((value) => value as string),
-        kill: async (sessionId) => {
-          await this.request("agent.kill", sessionId);
-        },
-        write: async (sessionId, data) => {
-          await this.request("agent.write", { sessionId, data });
-        },
+        spawn: async (config) => this.requestParsed("agent.spawn", agentSessionIdSchema, config),
+        kill: async (sessionId) => this.requestNullResult("agent.kill", sessionId),
+        write: async (sessionId, data) => this.requestNullResult("agent.write", { sessionId, data }),
         onOutput: (callback) => {
           this.agentOutputListeners.add(callback);
           return () => {
@@ -491,26 +600,14 @@ class WsNativeApiClient {
       },
       providers: {
         startSession: async (input) =>
-          this.request("providers.startSession", input).then(
-            (value) => value as Awaited<ReturnType<NativeApi["providers"]["startSession"]>>,
-          ),
+          this.requestParsed("providers.startSession", providerSessionSchema, input),
         sendTurn: async (input) =>
-          this.request("providers.sendTurn", input).then(
-            (value) => value as Awaited<ReturnType<NativeApi["providers"]["sendTurn"]>>,
-          ),
-        interruptTurn: async (input) => {
-          await this.request("providers.interruptTurn", input);
-        },
-        respondToRequest: async (input) => {
-          await this.request("providers.respondToRequest", input);
-        },
-        stopSession: async (input) => {
-          await this.request("providers.stopSession", input);
-        },
+          this.requestParsed("providers.sendTurn", providerTurnStartResultSchema, input),
+        interruptTurn: async (input) => this.requestNullResult("providers.interruptTurn", input),
+        respondToRequest: async (input) => this.requestNullResult("providers.respondToRequest", input),
+        stopSession: async (input) => this.requestNullResult("providers.stopSession", input),
         listSessions: async () =>
-          this.request("providers.listSessions").then(
-            (value) => value as Awaited<ReturnType<NativeApi["providers"]["listSessions"]>>,
-          ),
+          this.parseProviderSessionList("providers.listSessions", await this.request("providers.listSessions")),
         onEvent: (callback) => {
           this.providerEventListeners.add(callback);
           return () => {
@@ -519,9 +616,7 @@ class WsNativeApiClient {
         },
       },
       shell: {
-        openInEditor: async (cwd, editor) => {
-          await this.request("shell.openInEditor", { cwd, editor });
-        },
+        openInEditor: async (cwd, editor) => this.requestNullResult("shell.openInEditor", { cwd, editor }),
       },
     };
   }

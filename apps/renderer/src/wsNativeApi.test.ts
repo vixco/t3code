@@ -431,6 +431,34 @@ describe("wsNativeApi", () => {
     });
   });
 
+  it("rejects app.health responses with invalid payload shape", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4521");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.app.health();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: {
+          status: "ok",
+          launchCwd: "/workspace",
+          sessionCount: -1,
+          activeClientConnected: true,
+        },
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'app.health' returned invalid response payload.",
+    );
+  });
+
   it("sends app.bootstrap requests and returns payload", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4412");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -1605,6 +1633,29 @@ describe("wsNativeApi", () => {
     await expect(request).resolves.toBe("/workspace");
   });
 
+  it("rejects dialogs.pickFolder responses with invalid payload shape", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4522");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.dialogs.pickFolder();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: 123,
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'dialogs.pickFolder' returned invalid response payload.",
+    );
+  });
+
   it("sends providers.listSessions requests and resolves payload", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4415");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -1644,6 +1695,33 @@ describe("wsNativeApi", () => {
         provider: "codex",
       },
     ]);
+  });
+
+  it("rejects providers.listSessions responses with invalid payload shape", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4523");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.providers.listSessions();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: [
+          {
+            sessionId: "",
+          },
+        ],
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'providers.listSessions' returned invalid response payload.",
+    );
   });
 
   it("sends provider turn-control requests with expected payloads", async () => {
@@ -1975,6 +2053,31 @@ describe("wsNativeApi", () => {
       }),
     );
     await expect(killRequest).resolves.toBeUndefined();
+  });
+
+  it("rejects void method responses that do not return null", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4524");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.agent.kill("agent-session-1");
+    const socket = await waitForSocket();
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as { id: string };
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: true,
+        result: {
+          unexpected: true,
+        },
+      }),
+    );
+
+    await expect(request).rejects.toThrow(
+      "Runtime method 'agent.kill' returned invalid response payload.",
+    );
   });
 
   it("rejects requests when websocket connection fails", async () => {

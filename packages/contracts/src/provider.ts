@@ -45,6 +45,8 @@ export const providerSessionSchema = z.object({
   lastError: z.string().min(1).optional(),
 });
 
+export const providerSessionListSchema = z.array(providerSessionSchema);
+
 export const providerSessionStartInputSchema = z.object({
   provider: providerKindSchema.default("codex"),
   cwd: z.string().min(1).optional(),
