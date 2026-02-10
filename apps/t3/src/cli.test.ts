@@ -900,6 +900,13 @@ describe("parseByteRangeHeader", () => {
     });
   });
 
+  it("trims surrounding whitespace before parsing", () => {
+    expect(parseByteRangeHeader("  bytes=0-9  ", 100)).toEqual({
+      start: 0,
+      end: 9,
+    });
+  });
+
   it("parses case-insensitive byte-unit prefixes", () => {
     expect(parseByteRangeHeader("ByTeS=0-9", 100)).toEqual({
       start: 0,
@@ -930,6 +937,7 @@ describe("parseByteRangeHeader", () => {
 
   it("rejects malformed and unsatisfiable ranges", () => {
     expect(parseByteRangeHeader("items=0-1", 100)).toBe("invalid");
+    expect(parseByteRangeHeader("bytes=0-1,2-3", 100)).toBe("invalid");
     expect(parseByteRangeHeader("bytes=-", 100)).toBe("invalid");
     expect(parseByteRangeHeader("bytes=10-9", 100)).toBe("invalid");
     expect(parseByteRangeHeader("bytes=100-101", 100)).toBe("invalid");
