@@ -1468,6 +1468,51 @@ async function main() {
         reject(new Error("Smoke test failed: websocket client error."));
       });
     });
+
+    const duplicateTokenWhileConnectedWs = new WebSocket(
+      `${parsedWsUrl.origin}${parsedWsUrl.pathname}?token=${encodeURIComponent(
+        parsedWsUrl.searchParams.get("token") ?? "",
+      )}&token=wrong-token`,
+    );
+    await waitForUnauthorizedCloseWithoutMessages(duplicateTokenWhileConnectedWs);
+
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("Smoke test failed: post-unauthorized websocket health request timed out.")),
+        20_000,
+      );
+      const onMessage = (event) => {
+        let message;
+        try {
+          message = JSON.parse(String(event.data));
+        } catch {
+          return;
+        }
+
+        if (message.type !== "response" || message.id !== "smoke-after-unauth") {
+          return;
+        }
+        if (message.ok !== true || message.result?.status !== "ok") {
+          clearTimeout(timer);
+          ws.removeEventListener("message", onMessage);
+          reject(new Error("Smoke test failed: expected successful post-unauthorized health response."));
+          return;
+        }
+
+        clearTimeout(timer);
+        ws.removeEventListener("message", onMessage);
+        resolve();
+      };
+
+      ws.addEventListener("message", onMessage);
+      ws.send(
+        JSON.stringify({
+          type: "request",
+          id: "smoke-after-unauth",
+          method: "app.health",
+        }),
+      );
+    });
     ws.close();
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : "Smoke test failed."}\n`);
