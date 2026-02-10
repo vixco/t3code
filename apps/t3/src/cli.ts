@@ -749,6 +749,64 @@ function startStaticWebServer(distRoot: string, port: number) {
       response.end(body);
     };
 
+    const respondWithStaticFile = (targetPath: string, requestMethod: "GET" | "HEAD") => {
+      fs.stat(targetPath, (error, stats) => {
+        if (error || !stats.isFile()) {
+          respondText(404, "Not found");
+          return;
+        }
+
+        const resolvedRange = parseByteRangeHeader(request.headers.range, stats.size);
+        if (resolvedRange === "invalid") {
+          respondText(416, "Range Not Satisfiable", {
+            "Content-Range": `bytes */${stats.size}`,
+          });
+          return;
+        }
+
+        response.statusCode = resolvedRange ? 206 : 200;
+        response.setHeader("Content-Type", contentTypeFor(targetPath));
+        response.setHeader(
+          "Content-Length",
+          String(resolvedRange ? resolvedRange.end - resolvedRange.start + 1 : stats.size),
+        );
+        response.setHeader("Accept-Ranges", "bytes");
+        response.setHeader("Vary", "Range");
+        if (resolvedRange) {
+          response.setHeader("Content-Range", `bytes ${resolvedRange.start}-${resolvedRange.end}/${stats.size}`);
+        }
+        applyStaticSecurityHeaders(response, {
+          cacheControl: cacheControlFor(targetPath),
+        });
+
+        if (requestMethod === "HEAD") {
+          response.end();
+          return;
+        }
+
+        const stream = fs.createReadStream(
+          targetPath,
+          resolvedRange
+            ? {
+                start: resolvedRange.start,
+                end: resolvedRange.end,
+              }
+            : undefined,
+        );
+        response.on("close", () => {
+          stream.destroy();
+        });
+        stream.on("error", () => {
+          if (!response.headersSent) {
+            respondText(404, "Not found");
+            return;
+          }
+          response.destroy();
+        });
+        stream.pipe(response);
+      });
+    };
+
     if (requestMethod !== "GET" && requestMethod !== "HEAD") {
       respondText(405, "Method Not Allowed", {
         Allow: "GET, HEAD",
@@ -775,88 +833,7 @@ function startStaticWebServer(distRoot: string, port: number) {
       return;
     }
 
-    const targetPath = resolvedPath.filePath;
-    if (requestMethod === "HEAD") {
-      fs.stat(targetPath, (error, stats) => {
-        if (error || !stats.isFile()) {
-          respondText(404, "Not found");
-          return;
-        }
-        const resolvedRange = parseByteRangeHeader(request.headers.range, stats.size);
-        if (resolvedRange === "invalid") {
-          respondText(416, "Range Not Satisfiable", {
-            "Content-Range": `bytes */${stats.size}`,
-          });
-          return;
-        }
-        response.statusCode = resolvedRange ? 206 : 200;
-        response.setHeader("Content-Type", contentTypeFor(targetPath));
-        response.setHeader(
-          "Content-Length",
-          String(resolvedRange ? resolvedRange.end - resolvedRange.start + 1 : stats.size),
-        );
-        response.setHeader("Accept-Ranges", "bytes");
-        response.setHeader("Vary", "Range");
-        if (resolvedRange) {
-          response.setHeader("Content-Range", `bytes ${resolvedRange.start}-${resolvedRange.end}/${stats.size}`);
-        }
-        applyStaticSecurityHeaders(response, {
-          cacheControl: cacheControlFor(targetPath),
-        });
-        response.end();
-      });
-      return;
-    }
-
-    fs.stat(targetPath, (error, stats) => {
-      if (error || !stats.isFile()) {
-        respondText(404, "Not found");
-        return;
-      }
-
-      const resolvedRange = parseByteRangeHeader(request.headers.range, stats.size);
-      if (resolvedRange === "invalid") {
-        respondText(416, "Range Not Satisfiable", {
-          "Content-Range": `bytes */${stats.size}`,
-        });
-        return;
-      }
-      response.statusCode = resolvedRange ? 206 : 200;
-      response.setHeader("Content-Type", contentTypeFor(targetPath));
-      response.setHeader(
-        "Content-Length",
-        String(resolvedRange ? resolvedRange.end - resolvedRange.start + 1 : stats.size),
-      );
-      response.setHeader("Accept-Ranges", "bytes");
-      response.setHeader("Vary", "Range");
-      if (resolvedRange) {
-        response.setHeader("Content-Range", `bytes ${resolvedRange.start}-${resolvedRange.end}/${stats.size}`);
-      }
-      applyStaticSecurityHeaders(response, {
-        cacheControl: cacheControlFor(targetPath),
-      });
-
-      const stream = fs.createReadStream(
-        targetPath,
-        resolvedRange
-          ? {
-              start: resolvedRange.start,
-              end: resolvedRange.end,
-            }
-          : undefined,
-      );
-      response.on("close", () => {
-        stream.destroy();
-      });
-      stream.on("error", () => {
-        if (!response.headersSent) {
-          respondText(404, "Not found");
-          return;
-        }
-        response.destroy();
-      });
-      stream.pipe(response);
-    });
+    respondWithStaticFile(resolvedPath.filePath, requestMethod);
   });
 
   return new Promise<{
