@@ -745,6 +745,9 @@ function startStaticWebServer(distRoot: string, port: number) {
       });
 
       const stream = fs.createReadStream(targetPath);
+      response.on("close", () => {
+        stream.destroy();
+      });
       stream.on("error", () => {
         if (!response.headersSent) {
           respondText(404, "Not found");
