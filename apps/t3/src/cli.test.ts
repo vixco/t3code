@@ -92,6 +92,17 @@ describe("parseCliOptions", () => {
     expect(options.noOpen).toBe(true);
   });
 
+  it("treats trimmed uppercase falsey values for T3_NO_OPEN as disabled", () => {
+    const options = parseCliOptions(
+      [],
+      {
+        T3_NO_OPEN: "\tOFF\t",
+      },
+      "/workspace",
+    );
+    expect(options.noOpen).toBe(false);
+  });
+
   it("supports explicit equals-style --no-open boolean overrides", () => {
     const options = parseCliOptions(
       ["--no-open=false"],
