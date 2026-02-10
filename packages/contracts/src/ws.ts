@@ -6,6 +6,16 @@ export const WS_EVENT_CHANNELS = {
   agentExit: "agent:exit",
 } as const;
 
+export const WS_CLOSE_CODES = {
+  replacedByNewClient: 4000,
+  unauthorized: 4001,
+} as const;
+
+export const WS_CLOSE_REASONS = {
+  replacedByNewClient: "replaced-by-new-client",
+  unauthorized: "unauthorized",
+} as const;
+
 const wsRequestSchema = z.object({
   type: z.literal("request"),
   id: z.string().min(1),

@@ -14,6 +14,8 @@ import {
   type WsClientMessage,
   type WsResponseMessage,
   WS_EVENT_CHANNELS,
+  WS_CLOSE_CODES,
+  WS_CLOSE_REASONS,
   agentConfigSchema,
   agentSessionIdSchema,
   newTodoInputSchema,
@@ -611,12 +613,15 @@ export async function startRuntimeApiServer(
 
   wss.on("connection", (socket, request) => {
     if (!isAuthorizedConnection(request.url)) {
-      socket.close(4001, "unauthorized");
+      socket.close(WS_CLOSE_CODES.unauthorized, WS_CLOSE_REASONS.unauthorized);
       return;
     }
 
     if (activeClient && activeClient !== socket) {
-      activeClient.close(4000, "replaced-by-new-client");
+      activeClient.close(
+        WS_CLOSE_CODES.replacedByNewClient,
+        WS_CLOSE_REASONS.replacedByNewClient,
+      );
     }
 
     activeClient = socket;
