@@ -475,6 +475,17 @@ async function main() {
       );
     }
     const staleUnmodifiedSince = new Date(parsedLastModifiedMs - 1_000).toUTCString();
+    const staleUnmodifiedWithNoneMatchAsset = await fetch(assetUrl, {
+      headers: {
+        "If-Unmodified-Since": staleUnmodifiedSince,
+        "If-None-Match": assetEtag,
+      },
+    });
+    if (staleUnmodifiedWithNoneMatchAsset.status !== 412) {
+      throw new Error(
+        `Smoke test failed: expected stale If-Unmodified-Since + If-None-Match status 412, received ${staleUnmodifiedWithNoneMatchAsset.status}.`,
+      );
+    }
     const ifUnmodifiedSinceStaleAsset = await fetch(assetUrl, {
       headers: {
         "If-Unmodified-Since": staleUnmodifiedSince,
