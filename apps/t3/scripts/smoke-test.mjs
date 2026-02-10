@@ -222,6 +222,12 @@ async function main() {
         )}.`,
       );
     }
+    if ((postPage.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {
+      throw new Error("Smoke test failed: expected cache-control=no-store on POST response.");
+    }
+    if ((postPage.headers.get("x-content-type-options") ?? "").toLowerCase() !== "nosniff") {
+      throw new Error("Smoke test failed: expected nosniff on POST response.");
+    }
     const headPage = await fetch(parsedAppUrl, { method: "HEAD" });
     if (headPage.status !== 200) {
       throw new Error(
