@@ -756,6 +756,20 @@ describe("runtimeApiServer", () => {
         unexpected: true,
       }),
     );
+    client.socket.send(
+      JSON.stringify({
+        type: "request",
+        id: "x".repeat(300),
+        method: "todos.list",
+      }),
+    );
+    client.socket.send(
+      JSON.stringify({
+        type: "request",
+        id: "malformed-long-method",
+        method: "m".repeat(300),
+      }),
+    );
 
     const response = await sendRequest(
       client.socket,

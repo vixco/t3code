@@ -2140,6 +2140,20 @@ async function main() {
         unexpected: true,
       }),
     );
+    ws.send(
+      JSON.stringify({
+        type: "request",
+        id: "x".repeat(300),
+        method: "app.health",
+      }),
+    );
+    ws.send(
+      JSON.stringify({
+        type: "request",
+        id: "smoke-malformed-long-method",
+        method: "m".repeat(300),
+      }),
+    );
     const postMalformedHealthResponse = await sendWsRequest(ws, {
       id: "smoke-health-after-malformed",
       method: "app.health",
