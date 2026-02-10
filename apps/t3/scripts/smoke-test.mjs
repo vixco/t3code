@@ -14,6 +14,12 @@ const WS_CLOSE_REASONS = {
   unauthorized: "unauthorized",
 };
 
+const WS_EVENT_CHANNELS = {
+  providerEvent: "provider:event",
+  agentOutput: "agent:output",
+  agentExit: "agent:exit",
+};
+
 function isRecord(value) {
   return typeof value === "object" && value !== null;
 }
@@ -45,13 +51,7 @@ function parseWsMessage(raw) {
   }
 
   if (parsed.type === "event") {
-    if (typeof parsed.channel !== "string") {
-      return null;
-    }
-    if (!hasOwn(parsed, "payload")) {
-      return null;
-    }
-    return parsed;
+    return parseWsEventMessage(parsed);
   }
 
   if (parsed.type !== "response") {
@@ -82,6 +82,77 @@ function parseWsMessage(raw) {
   }
 
   return parsed;
+}
+
+function parseWsEventMessage(parsed) {
+  if (!hasOwn(parsed, "payload")) {
+    return null;
+  }
+
+  if (parsed.channel === WS_EVENT_CHANNELS.providerEvent) {
+    if (!isValidProviderEventPayload(parsed.payload)) {
+      return null;
+    }
+    return parsed;
+  }
+
+  if (parsed.channel === WS_EVENT_CHANNELS.agentOutput) {
+    if (!isValidAgentOutputPayload(parsed.payload)) {
+      return null;
+    }
+    return parsed;
+  }
+
+  if (parsed.channel === WS_EVENT_CHANNELS.agentExit) {
+    if (!isValidAgentExitPayload(parsed.payload)) {
+      return null;
+    }
+    return parsed;
+  }
+
+  return null;
+}
+
+function isValidProviderEventPayload(payload) {
+  if (!isRecord(payload)) {
+    return false;
+  }
+
+  return (
+    typeof payload.id === "string" &&
+    payload.id.length > 0 &&
+    typeof payload.kind === "string" &&
+    typeof payload.provider === "string" &&
+    typeof payload.sessionId === "string" &&
+    payload.sessionId.length > 0 &&
+    typeof payload.createdAt === "string" &&
+    payload.createdAt.length > 0 &&
+    typeof payload.method === "string" &&
+    payload.method.length > 0
+  );
+}
+
+function isValidAgentOutputPayload(payload) {
+  if (!isRecord(payload)) {
+    return false;
+  }
+
+  return (
+    typeof payload.sessionId === "string" &&
+    payload.sessionId.length > 0 &&
+    (payload.stream === "stdout" || payload.stream === "stderr") &&
+    typeof payload.data === "string"
+  );
+}
+
+function isValidAgentExitPayload(payload) {
+  if (!isRecord(payload)) {
+    return false;
+  }
+
+  const validCode = payload.code === null || Number.isInteger(payload.code);
+  const validSignal = payload.signal === null || typeof payload.signal === "string";
+  return typeof payload.sessionId === "string" && payload.sessionId.length > 0 && validCode && validSignal;
 }
 
 function getFreePort() {
