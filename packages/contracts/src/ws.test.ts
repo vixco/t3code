@@ -220,6 +220,39 @@ describe("wsServerMessageSchema", () => {
     ).toThrow();
   });
 
+  it("rejects unexpected event properties", () => {
+    expect(() =>
+      wsServerMessageSchema.parse({
+        type: "event",
+        channel: WS_EVENT_CHANNELS.providerEvent,
+        payload: {
+          id: "evt-1",
+          kind: "notification",
+          provider: "codex",
+          sessionId: "sess-1",
+          createdAt: "2026-02-01T00:00:00.000Z",
+          method: "turn/started",
+        },
+        unexpected: true,
+      }),
+    ).toThrow();
+  });
+
+  it("rejects unexpected response error properties", () => {
+    expect(() =>
+      wsServerMessageSchema.parse({
+        type: "response",
+        id: "req-1",
+        ok: false,
+        error: {
+          code: "request_failed",
+          message: "boom",
+          unexpected: true,
+        },
+      }),
+    ).toThrow();
+  });
+
   it("accepts hello server messages", () => {
     const parsed = wsServerMessageSchema.parse({
       type: "hello",
