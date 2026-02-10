@@ -516,9 +516,13 @@ function staticEtagFor(stats: fs.Stats): string {
   return `"${stats.size.toString(16)}-${Math.trunc(stats.mtimeMs).toString(16)}"`;
 }
 
+function isWeakEtag(value: string): boolean {
+  return /^w\//i.test(value.trim());
+}
+
 function normalizeWeakEtag(etag: string): string {
   const trimmed = etag.trim();
-  return trimmed.startsWith("W/") ? trimmed.slice(2).trim() : trimmed;
+  return isWeakEtag(trimmed) ? trimmed.slice(2).trim() : trimmed;
 }
 
 function normalizeEtagHeaderValue(value: string | string[] | undefined): string[] {
@@ -561,13 +565,13 @@ export function ifMatchSatisfied(ifMatchHeader: string | string[] | undefined, e
   }
 
   const normalizedCurrentTag = etag.trim();
-  if (normalizedCurrentTag.startsWith("W/")) {
+  if (isWeakEtag(normalizedCurrentTag)) {
     return false;
   }
 
   return candidates.some((candidate) => {
     const normalizedCandidate = candidate.trim();
-    if (normalizedCandidate.startsWith("W/")) {
+    if (isWeakEtag(normalizedCandidate)) {
       return false;
     }
 
@@ -639,7 +643,7 @@ export function ifRangeSatisfied(
   if (trimmed.startsWith("\"")) {
     return trimmed === etag;
   }
-  if (trimmed.startsWith("W/")) {
+  if (isWeakEtag(trimmed)) {
     return false;
   }
 

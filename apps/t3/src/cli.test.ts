@@ -980,6 +980,7 @@ describe("ifNoneMatchSatisfied", () => {
   it("matches weak and strong forms using weak comparison semantics", () => {
     expect(ifNoneMatchSatisfied("W/\"abc\"", "\"abc\"")).toBe(true);
     expect(ifNoneMatchSatisfied("\"abc\"", "W/\"abc\"")).toBe(true);
+    expect(ifNoneMatchSatisfied("w/\"abc\"", "\"abc\"")).toBe(true);
   });
 
   it("does not match non-identical etags", () => {
@@ -1008,6 +1009,7 @@ describe("ifMatchSatisfied", () => {
 
   it("rejects weak validators and mismatches", () => {
     expect(ifMatchSatisfied("W/\"abc\"", "\"abc\"")).toBe(false);
+    expect(ifMatchSatisfied("w/\"abc\"", "\"abc\"")).toBe(false);
     expect(ifMatchSatisfied("\"xyz\"", "\"abc\"")).toBe(false);
   });
 
@@ -1075,6 +1077,7 @@ describe("ifRangeSatisfied", () => {
     expect(ifRangeSatisfied("\"abc\"", "\"abc\"", Date.now())).toBe(true);
     expect(ifRangeSatisfied("\"abc\"", "\"xyz\"", Date.now())).toBe(false);
     expect(ifRangeSatisfied("W/\"abc\"", "\"abc\"", Date.now())).toBe(false);
+    expect(ifRangeSatisfied("w/\"abc\"", "\"abc\"", Date.now())).toBe(false);
   });
 
   it("rejects wildcard etag values", () => {
