@@ -247,6 +247,31 @@ describe("runtimeApiServer", () => {
     client.socket.close();
   });
 
+  it("responds to providers.listSessions over websocket RPC", async () => {
+    const server = await startRuntimeApiServer({
+      port: 0,
+      launchCwd: process.cwd(),
+    });
+    servers.push(server);
+
+    const client = await connectClient(server.wsUrl);
+    await client.nextMessage();
+
+    const response = await sendRequest(
+      client.socket,
+      client.nextMessage,
+      "providers-list-1",
+      "providers.listSessions",
+    );
+    expect(response.ok).toBe(true);
+    if (!response.ok) {
+      throw new Error("Expected providers.listSessions response to succeed.");
+    }
+    expect(Array.isArray(response.result)).toBe(true);
+
+    client.socket.close();
+  });
+
   it("ignores malformed client messages and continues processing", async () => {
     const server = await startRuntimeApiServer({
       port: 0,
