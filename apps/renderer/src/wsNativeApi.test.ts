@@ -738,6 +738,19 @@ describe("wsNativeApi", () => {
     await expect(request).rejects.toThrow("websocket disconnected (reason: custom-reason-only)");
   });
 
+  it("trims generic close reason details when code is missing on disconnect", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4513");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.todos.list();
+    const socket = MockWebSocket.instances[0];
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) > 0);
+    socket?.closeWith({ reason: "  custom-reason-only  " });
+
+    await expect(request).rejects.toThrow("websocket disconnected (reason: custom-reason-only)");
+  });
+
   it("falls back to generic disconnect message when close reason is whitespace-only", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4495");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
@@ -1970,6 +1983,20 @@ describe("wsNativeApi", () => {
     MockWebSocket.failCloseBeforeOpen = true;
     MockWebSocket.failCloseBeforeOpenEvent = {
       reason: "custom-reason-only",
+    };
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    await expect(api.todos.list()).rejects.toThrow(
+      "Failed to connect to local t3 runtime (close reason: custom-reason-only).",
+    );
+  });
+
+  it("trims generic close reason when websocket closes before opening without code", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4514");
+    MockWebSocket.failCloseBeforeOpen = true;
+    MockWebSocket.failCloseBeforeOpenEvent = {
+      reason: "  custom-reason-only  ",
     };
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
     const api = getOrCreateWsNativeApi();
