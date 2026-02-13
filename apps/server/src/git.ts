@@ -224,21 +224,12 @@ export class GitCoreService {
   async prepareCommitContext(cwd: string): Promise<GitPreparedCommitContext | null> {
     await this.git(cwd, ["add", "-A"]);
 
-    const stagedSummary = await this.gitStdout(cwd, [
-      "diff",
-      "--cached",
-      "--name-status",
-    ]);
+    const stagedSummary = await this.gitStdout(cwd, ["diff", "--cached", "--name-status"]);
     if (trimStdout(stagedSummary).length === 0) {
       return null;
     }
 
-    const stagedPatch = await this.gitStdout(cwd, [
-      "diff",
-      "--cached",
-      "--patch",
-      "--minimal",
-    ]);
+    const stagedPatch = await this.gitStdout(cwd, ["diff", "--cached", "--patch", "--minimal"]);
 
     return {
       stagedSummary,

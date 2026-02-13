@@ -302,7 +302,9 @@ export default function ChatView() {
     (terminalId: string) => {
       if (!activeThreadId || !api) return;
       const fallbackExitWrite = () =>
-        api.terminal.write({ threadId: activeThreadId, terminalId, data: "exit\n" }).catch(() => undefined);
+        api.terminal
+          .write({ threadId: activeThreadId, terminalId, data: "exit\n" })
+          .catch(() => undefined);
       if ("close" in api.terminal && typeof api.terminal.close === "function") {
         void api.terminal
           .close({ threadId: activeThreadId, terminalId })
@@ -764,13 +766,15 @@ export default function ChatView() {
     setIsSending(true);
     try {
       const turnAttachments = await Promise.all(
-        composerImagesSnapshot.map(async (image): Promise<ProviderSendTurnAttachmentInput> => ({
-          type: "image",
-          name: image.name,
-          mimeType: image.mimeType,
-          sizeBytes: image.sizeBytes,
-          dataUrl: await readFileAsDataUrl(image.file),
-        })),
+        composerImagesSnapshot.map(
+          async (image): Promise<ProviderSendTurnAttachmentInput> => ({
+            type: "image",
+            name: image.name,
+            mimeType: image.mimeType,
+            sizeBytes: image.sizeBytes,
+            dataUrl: await readFileAsDataUrl(image.file),
+          }),
+        ),
       );
       const shouldBootstrap =
         previousMessages.length > 0 &&
@@ -782,7 +786,7 @@ export default function ChatView() {
             latestPromptForBootstrap,
             PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
           ).text
-        : (trimmed || undefined);
+        : trimmed || undefined;
       await api.providers.sendTurn({
         sessionId: sessionInfo.sessionId,
         ...(input ? { input } : {}),
@@ -1443,7 +1447,9 @@ export default function ChatView() {
                   <button
                     type="submit"
                     className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/90 text-primary-foreground transition-all duration-150 hover:bg-primary hover:scale-105 disabled:opacity-30 disabled:hover:scale-100"
-                    disabled={isSending || isConnecting || (!prompt.trim() && composerImages.length === 0)}
+                    disabled={
+                      isSending || isConnecting || (!prompt.trim() && composerImages.length === 0)
+                    }
                     aria-label={
                       isConnecting ? "Connecting" : isSending ? "Sending" : "Send message"
                     }

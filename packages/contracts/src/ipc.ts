@@ -102,9 +102,7 @@ export interface NativeApi {
     init: (input: GitInitInput) => Promise<void>;
     // Stacked action API
     status: (input: GitStatusInput) => Promise<GitStatusResult>;
-    runStackedAction: (
-      input: GitRunStackedActionInput,
-    ) => Promise<GitRunStackedActionResult>;
+    runStackedAction: (input: GitRunStackedActionInput) => Promise<GitRunStackedActionResult>;
   };
   contextMenu: {
     show: <T extends string>(

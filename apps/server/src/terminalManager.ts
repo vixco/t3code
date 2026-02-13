@@ -97,12 +97,7 @@ function resolveShellCandidates(shellResolver: () => string): string[] {
   const requested = normalizeShellCommand(shellResolver());
 
   if (process.platform === "win32") {
-    return uniqueShells([
-      requested,
-      process.env.ComSpec ?? null,
-      "powershell.exe",
-      "cmd.exe",
-    ]);
+    return uniqueShells([requested, process.env.ComSpec ?? null, "powershell.exe", "cmd.exe"]);
   }
 
   return uniqueShells([
@@ -405,11 +400,7 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
     const input = terminalCloseInputSchema.parse(raw);
     await this.runWithThreadLock(input.threadId, async () => {
       if (input.terminalId) {
-        await this.closeSession(
-          input.threadId,
-          input.terminalId,
-          input.deleteHistory === true,
-        );
+        await this.closeSession(input.threadId, input.terminalId, input.deleteHistory === true);
         return;
       }
 
@@ -490,13 +481,9 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
 
       if (!ptyProcess) {
         const detail =
-          lastSpawnError instanceof Error
-            ? lastSpawnError.message
-            : "Terminal start failed";
+          lastSpawnError instanceof Error ? lastSpawnError.message : "Terminal start failed";
         const tried =
-          shellCandidates.length > 0
-            ? ` Tried shells: ${shellCandidates.join(", ")}.`
-            : "";
+          shellCandidates.length > 0 ? ` Tried shells: ${shellCandidates.join(", ")}.` : "";
         throw new Error(`${detail}.${tried}`.trim());
       }
 
@@ -942,10 +929,7 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
     return path.join(this.logsDir, `${legacySafeThreadId(threadId)}.log`);
   }
 
-  private async runWithThreadLock<T>(
-    threadId: string,
-    task: () => Promise<T>,
-  ): Promise<T> {
+  private async runWithThreadLock<T>(threadId: string, task: () => Promise<T>): Promise<T> {
     const previous = this.threadLocks.get(threadId) ?? Promise.resolve();
     let release: () => void = () => {};
     const current = new Promise<void>((resolve) => {

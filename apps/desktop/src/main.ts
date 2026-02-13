@@ -18,6 +18,7 @@ const CONTEXT_MENU_CHANNEL = "desktop:context-menu";
 const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
 const ROOT_DIR = path.resolve(__dirname, "../../..");
 const LOOPBACK_HOST = "127.0.0.1";
+const DEFAULT_BACKEND_PORT = 3773;
 const BACKEND_READY_TIMEOUT_MS = 10_000;
 const BACKEND_READY_RETRY_DELAY_MS = 100;
 const BACKEND_ENTRY = path.join(ROOT_DIR, "apps/server/dist/index.mjs");
@@ -33,22 +34,16 @@ let restartAttempt = 0;
 let restartTimer: ReturnType<typeof setTimeout> | null = null;
 let isQuitting = false;
 
-async function reserveLoopbackPort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = net.createServer();
-    probe.listen(0, LOOPBACK_HOST, () => {
-      const address = probe.address();
-      const port = typeof address === "object" && address !== null ? address.port : 0;
-      probe.close(() => {
-        if (port > 0) {
-          resolve(port);
-          return;
-        }
-        reject(new Error("Failed to reserve backend port"));
-      });
-    });
-    probe.on("error", reject);
-  });
+function resolveBackendPort(raw: string | undefined): number {
+  if (!raw || raw.trim().length === 0) {
+    return DEFAULT_BACKEND_PORT;
+  }
+
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
+    throw new Error(`Invalid T3CODE_PORT: ${raw}`);
+  }
+  return parsed;
 }
 
 function backendEnv(): NodeJS.ProcessEnv {
@@ -311,7 +306,8 @@ function createWindow(): BrowserWindow {
 }
 
 async function bootstrap(): Promise<void> {
-  backendPort = await reserveLoopbackPort();
+  backendPort = resolveBackendPort(process.env.T3CODE_PORT);
+  process.env.T3CODE_PORT = String(backendPort);
   backendAuthToken = randomBytes(24).toString("hex");
   backendWsUrl = `ws://${LOOPBACK_HOST}:${backendPort}/?token=${encodeURIComponent(backendAuthToken)}`;
   process.env.T3CODE_DESKTOP_WS_URL = backendWsUrl;
