@@ -40,6 +40,7 @@ child.on("exit", () => {
     "Uncaught Error",
     "Uncaught TypeError",
     "Uncaught ReferenceError",
+    "ERR_FILE_NOT_FOUND",
   ];
   const failures = fatalPatterns.filter((pattern) => output.includes(pattern));
 

@@ -17,8 +17,10 @@ const CONFIRM_CHANNEL = "desktop:confirm";
 const CONTEXT_MENU_CHANNEL = "desktop:context-menu";
 const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
 const ROOT_DIR = path.resolve(__dirname, "../../..");
+const LOOPBACK_HOST = "127.0.0.1";
+const BACKEND_READY_TIMEOUT_MS = 10_000;
+const BACKEND_READY_RETRY_DELAY_MS = 100;
 const BACKEND_ENTRY = path.join(ROOT_DIR, "apps/server/dist/index.mjs");
-const WEB_ENTRY = path.join(ROOT_DIR, "apps/web/dist/index.html");
 const STATE_DIR = path.join(os.homedir(), ".t3", "userdata");
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 
@@ -34,7 +36,7 @@ let isQuitting = false;
 async function reserveLoopbackPort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const probe = net.createServer();
-    probe.listen(0, "127.0.0.1", () => {
+    probe.listen(0, LOOPBACK_HOST, () => {
       const address = probe.address();
       const port = typeof address === "object" && address !== null ? address.port : 0;
       probe.close(() => {
@@ -127,6 +129,76 @@ function stopBackend(): void {
       }
     }, 2_000).unref();
   }
+}
+
+function backendHttpUrl(): string {
+  return `http://${LOOPBACK_HOST}:${backendPort}`;
+}
+
+function canConnectToBackendPort(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host: LOOPBACK_HOST, port });
+    let settled = false;
+
+    const finish = (connected: boolean) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(connected);
+    };
+
+    socket.once("connect", () => finish(true));
+    socket.once("error", () => finish(false));
+    socket.setTimeout(500, () => finish(false));
+  });
+}
+
+async function waitForBackendReady(): Promise<void> {
+  const startedAt = Date.now();
+
+  return new Promise((resolve, reject) => {
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const stop = () => {
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+    };
+
+    const attempt = () => {
+      if (isQuitting) {
+        stop();
+        reject(new Error("Backend startup cancelled while app is quitting"));
+        return;
+      }
+
+      if (Date.now() - startedAt >= BACKEND_READY_TIMEOUT_MS) {
+        stop();
+        reject(
+          new Error(
+            `Backend did not start listening on ${LOOPBACK_HOST}:${backendPort} within ${BACKEND_READY_TIMEOUT_MS}ms`,
+          ),
+        );
+        return;
+      }
+
+      void canConnectToBackendPort(backendPort)
+        .then((connected) => {
+          if (connected) {
+            stop();
+            resolve();
+            return;
+          }
+          retryTimer = setTimeout(attempt, BACKEND_READY_RETRY_DELAY_MS);
+        })
+        .catch(() => {
+          retryTimer = setTimeout(attempt, BACKEND_READY_RETRY_DELAY_MS);
+        });
+    };
+
+    attempt();
+  });
 }
 
 function registerIpcHandlers(): void {
@@ -226,10 +298,7 @@ function createWindow(): BrowserWindow {
     void window.loadURL(process.env.VITE_DEV_SERVER_URL as string);
     window.webContents.openDevTools({ mode: "detach" });
   } else {
-    if (!fs.existsSync(WEB_ENTRY)) {
-      throw new Error(`Web bundle missing at ${WEB_ENTRY}`);
-    }
-    void window.loadFile(WEB_ENTRY);
+    void window.loadURL(backendHttpUrl());
   }
 
   window.on("closed", () => {
@@ -244,11 +313,14 @@ function createWindow(): BrowserWindow {
 async function bootstrap(): Promise<void> {
   backendPort = await reserveLoopbackPort();
   backendAuthToken = randomBytes(24).toString("hex");
-  backendWsUrl = `ws://127.0.0.1:${backendPort}/?token=${encodeURIComponent(backendAuthToken)}`;
+  backendWsUrl = `ws://${LOOPBACK_HOST}:${backendPort}/?token=${encodeURIComponent(backendAuthToken)}`;
   process.env.T3CODE_DESKTOP_WS_URL = backendWsUrl;
 
   registerIpcHandlers();
   startBackend();
+  if (!isDevelopment) {
+    await waitForBackendReady();
+  }
   mainWindow = createWindow();
 }
 
@@ -258,7 +330,10 @@ app.on("before-quit", () => {
 });
 
 app.whenReady().then(() => {
-  void bootstrap();
+  void bootstrap().catch((error) => {
+    console.error("[desktop] failed to bootstrap app", error);
+    app.quit();
+  });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
