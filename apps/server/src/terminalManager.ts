@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
+import { request as httpRequest } from "node:http";
 import path from "node:path";
 
 import {
@@ -27,9 +28,13 @@ const DEFAULT_HISTORY_LINE_LIMIT = 5_000;
 const DEFAULT_PERSIST_DEBOUNCE_MS = 40;
 const DEFAULT_SUBPROCESS_POLL_INTERVAL_MS = 1_000;
 const TERMINAL_ENV_BLOCKLIST = new Set(["PORT", "ELECTRON_RENDERER_PORT", "ELECTRON_RUN_AS_NODE"]);
+const DEFAULT_WEB_PORT_PROBE_TIMEOUT_MS = 500;
+const DEFAULT_WEB_PORT_PROBE_TTL_MS = 10_000;
+const WEB_PORT_PROBE_MAX_BODY_BYTES = 8_192;
 const MAX_PORT_NUMBER = 65_535;
 
 type TerminalSubprocessChecker = (terminalPid: number) => Promise<boolean>;
+type TerminalWebPortInspector = (port: number) => Promise<boolean>;
 interface TerminalSubprocessActivity {
   hasRunningSubprocess: boolean;
   runningPorts: number[];
@@ -49,6 +54,8 @@ export interface TerminalManagerOptions {
   shellResolver?: () => string;
   subprocessChecker?: TerminalSubprocessChecker;
   subprocessInspector?: TerminalSubprocessInspector;
+  webPortInspector?: TerminalWebPortInspector;
+  webPortProbeCacheTtlMs?: number;
   subprocessPollIntervalMs?: number;
 }
 
@@ -382,6 +389,115 @@ async function defaultSubprocessInspector(
   return { hasRunningSubprocess: true, runningPorts };
 }
 
+interface WebProbeResult {
+  status: number;
+  contentType: string;
+  body: string;
+  location: string;
+}
+
+function normalizeHeaderValue(value: string | string[] | undefined): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value[0] ?? "";
+  return "";
+}
+
+function isLikelyWebProbe(result: WebProbeResult | null): boolean {
+  if (!result) return false;
+  if (result.status === 404) return false;
+  if (result.status >= 300 && result.status < 400 && result.location.length > 0) {
+    return true;
+  }
+  const contentType = result.contentType.toLowerCase();
+  if (contentType.includes("text/html") || contentType.includes("application/xhtml+xml")) {
+    return true;
+  }
+  const body = result.body.toLowerCase();
+  return (
+    body.includes("<!doctype") ||
+    body.includes("<html") ||
+    body.includes("<head")
+  );
+}
+
+async function probeWebPortOnHost(
+  port: number,
+  host: string,
+): Promise<WebProbeResult | null> {
+  return new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let settled = false;
+    const settle = (result: WebProbeResult | null) => {
+      if (settled) return;
+      settled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+      resolve(result);
+    };
+
+    const req = httpRequest(
+      {
+        host,
+        port,
+        method: "GET",
+        path: "/",
+        timeout: DEFAULT_WEB_PORT_PROBE_TIMEOUT_MS,
+      },
+      (res) => {
+        const chunks: string[] = [];
+        let received = 0;
+        res.setEncoding("utf8");
+        res.on("data", (chunk: string) => {
+          if (received >= WEB_PORT_PROBE_MAX_BODY_BYTES) return;
+          const remaining = WEB_PORT_PROBE_MAX_BODY_BYTES - received;
+          const fragment = chunk.slice(0, remaining);
+          received += fragment.length;
+          chunks.push(fragment);
+          if (received >= WEB_PORT_PROBE_MAX_BODY_BYTES) {
+            res.destroy();
+          }
+        });
+        res.on("end", () => {
+          settle({
+            status: res.statusCode ?? 0,
+            contentType: normalizeHeaderValue(res.headers["content-type"]),
+            location: normalizeHeaderValue(res.headers.location),
+            body: chunks.join(""),
+          });
+        });
+        res.on("error", () => {
+          settle(null);
+        });
+      },
+    );
+
+    req.on("timeout", () => {
+      req.destroy();
+      settle(null);
+    });
+    req.on("error", () => {
+      settle(null);
+    });
+
+    timer = setTimeout(() => {
+      req.destroy();
+      settle(null);
+    }, DEFAULT_WEB_PORT_PROBE_TIMEOUT_MS + 50);
+
+    req.end();
+  });
+}
+
+async function defaultWebPortInspector(port: number): Promise<boolean> {
+  const ipv4Result = await probeWebPortOnHost(port, "127.0.0.1");
+  if (isLikelyWebProbe(ipv4Result)) {
+    return true;
+  }
+  const ipv6Result = await probeWebPortOnHost(port, "::1");
+  return isLikelyWebProbe(ipv6Result);
+}
+
 function capHistory(history: string, maxLines: number): string {
   if (history.length === 0) return history;
   const hasTrailingNewline = history.endsWith("\n");
@@ -443,6 +559,13 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
   private readonly threadLocks = new Map<string, Promise<void>>();
   private readonly persistDebounceMs: number;
   private readonly subprocessInspector: TerminalSubprocessInspector;
+  private readonly webPortInspector: TerminalWebPortInspector;
+  private readonly webPortProbeCacheTtlMs: number;
+  private readonly webPortProbeCache = new Map<
+    number,
+    { isWeb: boolean; checkedAt: number }
+  >();
+  private readonly webPortProbeInFlight = new Map<number, Promise<boolean>>();
   private readonly subprocessPollIntervalMs: number;
   private subprocessPollTimer: ReturnType<typeof setInterval> | null = null;
   private subprocessPollInFlight = false;
@@ -463,6 +586,9 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
             runningPorts: [],
           })
         : defaultSubprocessInspector);
+    this.webPortInspector = options.webPortInspector ?? defaultWebPortInspector;
+    this.webPortProbeCacheTtlMs =
+      options.webPortProbeCacheTtlMs ?? DEFAULT_WEB_PORT_PROBE_TTL_MS;
     this.subprocessPollIntervalMs =
       options.subprocessPollIntervalMs ?? DEFAULT_SUBPROCESS_POLL_INTERVAL_MS;
     fs.mkdirSync(this.logsDir, { recursive: true });
@@ -647,6 +773,8 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
     this.pendingPersistHistory.clear();
     this.threadLocks.clear();
     this.persistQueues.clear();
+    this.webPortProbeCache.clear();
+    this.webPortProbeInFlight.clear();
   }
 
   private startSession(
@@ -993,6 +1121,48 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
     this.subprocessPollTimer = null;
   }
 
+  private async inspectWebPortCached(port: number): Promise<boolean> {
+    const now = Date.now();
+    const cached = this.webPortProbeCache.get(port);
+    if (cached && now - cached.checkedAt <= this.webPortProbeCacheTtlMs) {
+      return cached.isWeb;
+    }
+
+    const inFlight = this.webPortProbeInFlight.get(port);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const probe = this.webPortInspector(port)
+      .then((isWeb) => {
+        this.webPortProbeCache.set(port, {
+          isWeb,
+          checkedAt: Date.now(),
+        });
+        return isWeb;
+      })
+      .catch(() => false)
+      .finally(() => {
+        this.webPortProbeInFlight.delete(port);
+      });
+    this.webPortProbeInFlight.set(port, probe);
+    return probe;
+  }
+
+  private async detectWebPorts(runningPorts: number[]): Promise<number[]> {
+    if (runningPorts.length === 0) return [];
+    const checks = await Promise.all(
+      runningPorts.map(async (port) => ({
+        port,
+        isWeb: await this.inspectWebPortCached(port),
+      })),
+    );
+    return checks
+      .filter((entry) => entry.isWeb)
+      .map((entry) => entry.port)
+      .toSorted((left, right) => left - right);
+  }
+
   private async pollSubprocessActivity(): Promise<void> {
     if (this.subprocessPollInFlight) return;
 
@@ -1032,7 +1202,9 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
           }
           const hasRunningSubprocess = activity.hasRunningSubprocess === true;
           const runningPorts = hasRunningSubprocess
-            ? normalizeRunningPorts(activity.runningPorts)
+            ? normalizeRunningPorts(
+                await this.detectWebPorts(normalizeRunningPorts(activity.runningPorts)),
+              )
             : [];
           if (
             liveSession.hasRunningSubprocess === hasRunningSubprocess &&

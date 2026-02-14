@@ -1,5 +1,5 @@
-import { MonitorIcon, MoonIcon, SunIcon, TerminalIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { GlobeIcon, MonitorIcon, MoonIcon, SunIcon, TerminalIcon } from "lucide-react";
+import { type MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isElectron } from "../env";
@@ -51,7 +51,7 @@ interface TerminalStatusIndicator {
   label: string;
   colorClass: string;
   pulse: boolean;
-  portsLabel: string | null;
+  primaryWebPort: number | null;
 }
 
 function hasUnseenCompletion(thread: Thread): boolean {
@@ -119,17 +119,20 @@ function terminalStatusIndicator(thread: Thread): TerminalStatusIndicator | null
     .toSorted((left, right) => left - right);
 
   const label =
-    runningPorts.length === 1
-      ? `Terminal process running on port ${runningPorts[0]}`
-      : runningPorts.length > 1
-        ? `Terminal process running on ports ${runningPorts.join(", ")}`
-        : "Terminal process running";
+    runningPorts.length === 0
+      ? "Terminal process running"
+      : runningPorts.length === 1
+        ? `Open web server: http://localhost:${runningPorts[0]}`
+        : `Open web server: http://localhost:${runningPorts[0]} (detected web ports: ${runningPorts.join(", ")})`;
 
   return {
     label,
-    colorClass: "text-teal-600 dark:text-teal-300/90",
+    colorClass:
+      runningPorts.length >= 1
+        ? "text-sky-600 dark:text-sky-300/90"
+        : "text-teal-600 dark:text-teal-300/90",
     pulse: true,
-    portsLabel: runningPorts.length > 0 ? runningPorts.join(", ") : null,
+    primaryWebPort: runningPorts[0] ?? null,
   };
 }
 
@@ -398,6 +401,16 @@ export default function Sidebar() {
     [api, dispatch, state.projects, state.threads],
   );
 
+  const openWebPort = useCallback(
+    (event: MouseEvent<HTMLElement>, port: number) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!api) return;
+      void api.shell.openExternal(`http://localhost:${port}`).catch(() => undefined);
+    },
+    [api],
+  );
+
   useEffect(() => {
     const onWindowKeyDown = (event: KeyboardEvent) => {
       if (!isChatNewShortcut(event, keybindings)) return;
@@ -545,24 +558,43 @@ export default function Sidebar() {
                         </div>
                         <div className="ml-2 flex shrink-0 items-center gap-1.5">
                           {terminalStatus && (
-                            <span className="inline-flex items-center gap-1">
-                              <span
-                                role="img"
-                                aria-label={terminalStatus.label}
-                                title={terminalStatus.label}
-                                className={`inline-flex items-center justify-center ${terminalStatus.colorClass}`}
-                              >
-                                <TerminalIcon
-                                  className={`size-3 ${terminalStatus.pulse ? "animate-pulse" : ""}`}
-                                />
-                              </span>
-                              {terminalStatus.portsLabel && (
+                            <span className="inline-flex items-center">
+                              {terminalStatus.primaryWebPort !== null ? (
                                 <span
-                                  className={`max-w-20 truncate text-[10px] ${terminalStatus.colorClass}`}
-                                  aria-label={`Ports ${terminalStatus.portsLabel}`}
-                                  title={`Ports ${terminalStatus.portsLabel}`}
+                                  role="link"
+                                  tabIndex={0}
+                                  aria-label={terminalStatus.label}
+                                  title={terminalStatus.label}
+                                  className={`inline-flex items-center justify-center ${terminalStatus.colorClass}`}
+                                  onClick={(event) =>
+                                    openWebPort(event, terminalStatus.primaryWebPort!)
+                                  }
+                                  onKeyDown={(event) => {
+                                    if (event.key !== "Enter" && event.key !== " ") return;
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    if (!api) return;
+                                    void api.shell
+                                      .openExternal(
+                                        `http://localhost:${terminalStatus.primaryWebPort!}`,
+                                      )
+                                      .catch(() => undefined);
+                                  }}
                                 >
-                                  {terminalStatus.portsLabel}
+                                  <GlobeIcon
+                                    className={`size-3 ${terminalStatus.pulse ? "animate-pulse" : ""}`}
+                                  />
+                                </span>
+                              ) : (
+                                <span
+                                  role="img"
+                                  aria-label={terminalStatus.label}
+                                  title={terminalStatus.label}
+                                  className={`inline-flex items-center justify-center ${terminalStatus.colorClass}`}
+                                >
+                                  <TerminalIcon
+                                    className={`size-3 ${terminalStatus.pulse ? "animate-pulse" : ""}`}
+                                  />
                                 </span>
                               )}
                             </span>

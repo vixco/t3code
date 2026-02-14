@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 
@@ -147,6 +148,7 @@ describe("TerminalManager", () => {
       subprocessInspector?: (
         terminalPid: number,
       ) => Promise<{ hasRunningSubprocess: boolean; runningPorts: number[] }>;
+      webPortInspector?: (port: number) => Promise<boolean>;
       subprocessPollIntervalMs?: number;
     } = {},
   ) {
@@ -160,6 +162,7 @@ describe("TerminalManager", () => {
       shellResolver: options.shellResolver ?? (() => "/bin/bash"),
       ...(options.subprocessChecker ? { subprocessChecker: options.subprocessChecker } : {}),
       ...(options.subprocessInspector ? { subprocessInspector: options.subprocessInspector } : {}),
+      ...(options.webPortInspector ? { webPortInspector: options.webPortInspector } : {}),
       ...(options.subprocessPollIntervalMs
         ? { subprocessPollIntervalMs: options.subprocessPollIntervalMs }
         : {}),
@@ -299,6 +302,7 @@ describe("TerminalManager", () => {
     };
     const { manager } = makeManager(5, {
       subprocessInspector: async () => activity,
+      webPortInspector: async (port) => port === 3000,
       subprocessPollIntervalMs: 20,
     });
     const events: TerminalEvent[] = [];
@@ -322,14 +326,14 @@ describe("TerminalManager", () => {
       1_200,
     );
 
-    activity = { hasRunningSubprocess: true, runningPorts: [5173, 3000] };
+    activity = { hasRunningSubprocess: true, runningPorts: [5173] };
     await waitFor(
       () =>
         events.some(
           (event) =>
             event.type === "activity" &&
             event.hasRunningSubprocess === true &&
-            event.runningPorts.join(",") === "3000,5173",
+            event.runningPorts.length === 0,
         ),
       1_200,
     );
@@ -347,6 +351,67 @@ describe("TerminalManager", () => {
     );
 
     manager.dispose();
+  });
+
+  it("ignores ports that return HTTP 404 at root during web-port detection", async () => {
+    const notFoundServer = createServer((_req, res) => {
+      res.statusCode = 404;
+      res.end();
+    });
+    await new Promise<void>((resolve, reject) => {
+      notFoundServer.listen(0, "127.0.0.1", (error?: Error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+
+    const address = notFoundServer.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    expect(port).toBeGreaterThan(0);
+
+    const events: TerminalEvent[] = [];
+    let activity = {
+      hasRunningSubprocess: false,
+      runningPorts: [] as number[],
+    };
+    const { manager } = makeManager(5, {
+      subprocessInspector: async () => activity,
+      subprocessPollIntervalMs: 20,
+    });
+    manager.on("event", (event) => {
+      events.push(event);
+    });
+
+    try {
+      await manager.open(openInput());
+      await waitFor(() => events.some((event) => event.type === "started"));
+
+      activity = { hasRunningSubprocess: true, runningPorts: [port] };
+      await waitFor(
+        () =>
+          events.some(
+            (event) =>
+              event.type === "activity" &&
+              event.hasRunningSubprocess === true &&
+              event.runningPorts.length === 0,
+          ),
+        1_500,
+      );
+    } finally {
+      manager.dispose();
+      await new Promise<void>((resolve, reject) => {
+        notFoundServer.close((error?: Error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+    }
   });
 
   it("caps persisted history to configured line limit", async () => {
