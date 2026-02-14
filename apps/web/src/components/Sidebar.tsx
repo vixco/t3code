@@ -48,9 +48,10 @@ interface ThreadStatusPill {
 }
 
 interface TerminalStatusIndicator {
-  label: "Terminal process running";
+  label: string;
   colorClass: string;
   pulse: boolean;
+  portsLabel: string | null;
 }
 
 function hasUnseenCompletion(thread: Thread): boolean {
@@ -108,10 +109,27 @@ function terminalStatusIndicator(thread: Thread): TerminalStatusIndicator | null
   if (thread.runningTerminalIds.length === 0) {
     return null;
   }
+
+  const runningPorts = [...new Set(
+    thread.runningTerminalIds.flatMap(
+      (terminalId) => thread.runningTerminalPorts[terminalId] ?? [],
+    ),
+  )]
+    .filter((port) => Number.isInteger(port) && port > 0 && port <= 65_535)
+    .toSorted((left, right) => left - right);
+
+  const label =
+    runningPorts.length === 1
+      ? `Terminal process running on port ${runningPorts[0]}`
+      : runningPorts.length > 1
+        ? `Terminal process running on ports ${runningPorts.join(", ")}`
+        : "Terminal process running";
+
   return {
-    label: "Terminal process running",
+    label,
     colorClass: "text-teal-600 dark:text-teal-300/90",
     pulse: true,
+    portsLabel: runningPorts.length > 0 ? runningPorts.join(", ") : null,
   };
 }
 
@@ -153,6 +171,7 @@ export default function Sidebar() {
           terminalHeight: DEFAULT_THREAD_TERMINAL_HEIGHT,
           terminalIds: [DEFAULT_THREAD_TERMINAL_ID],
           runningTerminalIds: [],
+          runningTerminalPorts: {},
           activeTerminalId: DEFAULT_THREAD_TERMINAL_ID,
           terminalGroups: [
             {
@@ -526,15 +545,26 @@ export default function Sidebar() {
                         </div>
                         <div className="ml-2 flex shrink-0 items-center gap-1.5">
                           {terminalStatus && (
-                            <span
-                              role="img"
-                              aria-label={terminalStatus.label}
-                              title={terminalStatus.label}
-                              className={`inline-flex items-center justify-center ${terminalStatus.colorClass}`}
-                            >
-                              <TerminalIcon
-                                className={`size-3 ${terminalStatus.pulse ? "animate-pulse" : ""}`}
-                              />
+                            <span className="inline-flex items-center gap-1">
+                              <span
+                                role="img"
+                                aria-label={terminalStatus.label}
+                                title={terminalStatus.label}
+                                className={`inline-flex items-center justify-center ${terminalStatus.colorClass}`}
+                              >
+                                <TerminalIcon
+                                  className={`size-3 ${terminalStatus.pulse ? "animate-pulse" : ""}`}
+                                />
+                              </span>
+                              {terminalStatus.portsLabel && (
+                                <span
+                                  className={`max-w-20 truncate text-[10px] ${terminalStatus.colorClass}`}
+                                  aria-label={`Ports ${terminalStatus.portsLabel}`}
+                                  title={`Ports ${terminalStatus.portsLabel}`}
+                                >
+                                  {terminalStatus.portsLabel}
+                                </span>
+                              )}
                             </span>
                           )}
                           <span className="text-[10px] text-muted-foreground/40">

@@ -144,6 +144,9 @@ describe("TerminalManager", () => {
     options: {
       shellResolver?: () => string;
       subprocessChecker?: (terminalPid: number) => Promise<boolean>;
+      subprocessInspector?: (
+        terminalPid: number,
+      ) => Promise<{ hasRunningSubprocess: boolean; runningPorts: number[] }>;
       subprocessPollIntervalMs?: number;
     } = {},
   ) {
@@ -156,6 +159,7 @@ describe("TerminalManager", () => {
       historyLineLimit,
       shellResolver: options.shellResolver ?? (() => "/bin/bash"),
       ...(options.subprocessChecker ? { subprocessChecker: options.subprocessChecker } : {}),
+      ...(options.subprocessInspector ? { subprocessInspector: options.subprocessInspector } : {}),
       ...(options.subprocessPollIntervalMs
         ? { subprocessPollIntervalMs: options.subprocessPollIntervalMs }
         : {}),
@@ -289,9 +293,12 @@ describe("TerminalManager", () => {
   });
 
   it("emits subprocess activity events when child-process state changes", async () => {
-    let hasRunningSubprocess = false;
+    let activity = {
+      hasRunningSubprocess: false,
+      runningPorts: [] as number[],
+    };
     const { manager } = makeManager(5, {
-      subprocessChecker: async () => hasRunningSubprocess,
+      subprocessInspector: async () => activity,
       subprocessPollIntervalMs: 20,
     });
     const events: TerminalEvent[] = [];
@@ -303,17 +310,39 @@ describe("TerminalManager", () => {
     await waitFor(() => events.some((event) => event.type === "started"));
     expect(events.some((event) => event.type === "activity")).toBe(false);
 
-    hasRunningSubprocess = true;
+    activity = { hasRunningSubprocess: true, runningPorts: [3000] };
     await waitFor(
       () =>
-        events.some((event) => event.type === "activity" && event.hasRunningSubprocess === true),
+        events.some(
+          (event) =>
+            event.type === "activity" &&
+            event.hasRunningSubprocess === true &&
+            event.runningPorts.join(",") === "3000",
+        ),
       1_200,
     );
 
-    hasRunningSubprocess = false;
+    activity = { hasRunningSubprocess: true, runningPorts: [5173, 3000] };
     await waitFor(
       () =>
-        events.some((event) => event.type === "activity" && event.hasRunningSubprocess === false),
+        events.some(
+          (event) =>
+            event.type === "activity" &&
+            event.hasRunningSubprocess === true &&
+            event.runningPorts.join(",") === "3000,5173",
+        ),
+      1_200,
+    );
+
+    activity = { hasRunningSubprocess: false, runningPorts: [5173] };
+    await waitFor(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "activity" &&
+            event.hasRunningSubprocess === false &&
+            event.runningPorts.length === 0,
+        ),
       1_200,
     );
 
