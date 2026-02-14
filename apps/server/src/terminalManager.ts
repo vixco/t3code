@@ -298,7 +298,7 @@ async function checkPosixListeningPorts(processIds: number[]): Promise<number[]>
   try {
     const result = await runProcess(
       "lsof",
-      ["-nP", "-iTCP", "-sTCP:LISTEN", "-p", processIds.join(",")],
+      ["-nP", "-a", "-iTCP", "-sTCP:LISTEN", "-p", processIds.join(",")],
       {
         timeoutMs: 1_500,
         allowNonZeroExit: true,
