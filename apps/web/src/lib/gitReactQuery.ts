@@ -1,4 +1,4 @@
-import type { GitStackedAction, NativeApi } from "@t3tools/contracts";
+import type { GitListBranchesResult, GitStackedAction, NativeApi } from "@t3tools/contracts";
 import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react-query";
 
 export const gitQueryKeys = {
@@ -9,6 +9,50 @@ export const gitQueryKeys = {
 
 export function invalidateGitQueries(queryClient: QueryClient) {
   return queryClient.invalidateQueries({ queryKey: gitQueryKeys.all });
+}
+
+export function projectGitBranchesToCurrent(
+  existing: GitListBranchesResult | undefined,
+  currentBranch: string,
+): GitListBranchesResult | undefined {
+  if (!existing) return existing;
+
+  let nextCurrent: GitListBranchesResult["branches"][number] | null = null;
+  const remaining: GitListBranchesResult["branches"] = [];
+
+  for (const branch of existing.branches) {
+    if (branch.name === currentBranch) {
+      nextCurrent = branch.current ? branch : { ...branch, current: true };
+      continue;
+    }
+    remaining.push(branch.current ? { ...branch, current: false } : branch);
+  }
+
+  if (!nextCurrent) {
+    nextCurrent = {
+      name: currentBranch,
+      current: true,
+      isDefault: false,
+      worktreePath: null,
+    };
+  }
+
+  return {
+    ...existing,
+    branches: [nextCurrent, ...remaining],
+  };
+}
+
+export function setGitBranchesCurrentBranch(
+  queryClient: QueryClient,
+  cwd: string | null,
+  currentBranch: string,
+) {
+  if (!cwd) return;
+
+  queryClient.setQueryData<GitListBranchesResult>(gitQueryKeys.branches(cwd), (existing) =>
+    projectGitBranchesToCurrent(existing, currentBranch),
+  );
 }
 
 export function gitStatusQueryOptions(api: NativeApi | undefined, cwd: string | null) {
@@ -63,7 +107,8 @@ export function gitCheckoutMutationOptions(input: {
       if (!input.api || !input.cwd) throw new Error("Git checkout is unavailable.");
       return input.api.git.checkout({ cwd: input.cwd, branch });
     },
-    onSuccess: async () => {
+    onSuccess: async (_result, branch) => {
+      setGitBranchesCurrentBranch(input.queryClient, input.cwd, branch);
       await invalidateGitQueries(input.queryClient);
     },
   });
@@ -80,7 +125,8 @@ export function gitCreateBranchAndCheckoutMutationOptions(input: {
       await input.api.git.createBranch({ cwd: input.cwd, branch });
       return input.api.git.checkout({ cwd: input.cwd, branch });
     },
-    onSuccess: async () => {
+    onSuccess: async (_result, branch) => {
+      setGitBranchesCurrentBranch(input.queryClient, input.cwd, branch);
       await invalidateGitQueries(input.queryClient);
     },
   });
