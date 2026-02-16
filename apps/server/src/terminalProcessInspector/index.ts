@@ -28,21 +28,25 @@ export async function defaultSubprocessInspector(
 
   if (process.platform === "win32") {
     const childPids = await collectWindowsChildPids(terminalPid);
-    if (childPids.length === 0) {
-      return { hasRunningSubprocess: false, runningPorts: [] };
-    }
-    const runningPorts = await checkWindowsListeningPorts(childPids);
-    return { hasRunningSubprocess: true, runningPorts };
+    const processPidsForPortScan = [terminalPid, ...childPids];
+    const runningPorts = await checkWindowsListeningPorts(processPidsForPortScan);
+    return {
+      hasRunningSubprocess: childPids.length > 0 || runningPorts.length > 0,
+      runningPorts,
+    };
   }
 
   const processFamilyPids = await collectPosixProcessFamilyPids(terminalPid);
-  const subprocessPids = processFamilyPids.filter((pid) => pid !== terminalPid);
-  if (subprocessPids.length === 0) {
+  if (processFamilyPids.length === 0) {
     return { hasRunningSubprocess: false, runningPorts: [] };
   }
 
-  const runningPorts = await checkPosixListeningPorts(subprocessPids);
-  return { hasRunningSubprocess: true, runningPorts };
+  const subprocessPids = processFamilyPids.filter((pid) => pid !== terminalPid);
+  const runningPorts = await checkPosixListeningPorts(processFamilyPids);
+  return {
+    hasRunningSubprocess: subprocessPids.length > 0 || runningPorts.length > 0,
+    runningPorts,
+  };
 }
 
 export function subprocessCheckerToInspector(

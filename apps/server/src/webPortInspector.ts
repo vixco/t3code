@@ -1,7 +1,7 @@
 import { request as httpRequest } from "node:http";
 
 export const DEFAULT_WEB_PORT_PROBE_TTL_MS = 10_000;
-const DEFAULT_WEB_PORT_PROBE_TIMEOUT_MS = 500;
+const DEFAULT_WEB_PORT_PROBE_TIMEOUT_MS = 2_000;
 const WEB_PORT_PROBE_MAX_BODY_BYTES = 8_192;
 
 interface WebProbeResult {
@@ -60,6 +60,35 @@ async function probeWebPortOnHost(
         timeout: DEFAULT_WEB_PORT_PROBE_TIMEOUT_MS,
       },
       (res) => {
+        const status = res.statusCode ?? 0;
+        const contentType = normalizeHeaderValue(res.headers["content-type"]);
+        const location = normalizeHeaderValue(res.headers.location);
+
+        const settleFromChunks = (chunks: string[]) => {
+          settle({
+            status,
+            contentType,
+            location,
+            body: chunks.join(""),
+          });
+        };
+
+        // Resolve immediately for clear web responses based on status/headers.
+        if (
+          (status >= 300 && status < 400 && location.length > 0) ||
+          contentType.toLowerCase().includes("text/html") ||
+          contentType.toLowerCase().includes("application/xhtml+xml")
+        ) {
+          settle({
+            status,
+            contentType,
+            location,
+            body: "",
+          });
+          req.destroy();
+          return;
+        }
+
         const chunks: string[] = [];
         let received = 0;
         res.setEncoding("utf8");
@@ -70,16 +99,12 @@ async function probeWebPortOnHost(
           received += fragment.length;
           chunks.push(fragment);
           if (received >= WEB_PORT_PROBE_MAX_BODY_BYTES) {
+            settleFromChunks(chunks);
             res.destroy();
           }
         });
         res.on("end", () => {
-          settle({
-            status: res.statusCode ?? 0,
-            contentType: normalizeHeaderValue(res.headers["content-type"]),
-            location: normalizeHeaderValue(res.headers.location),
-            body: chunks.join(""),
-          });
+          settleFromChunks(chunks);
         });
         res.on("error", () => {
           settle(null);
