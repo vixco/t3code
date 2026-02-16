@@ -125,6 +125,74 @@ interface PerfPersistedState {
   activeThreadId: string | null;
 }
 
+const LARGE_THREAD_EXCHANGE_COUNT = 120;
+
+function buildLargeThreadMessage(
+  projectName: string,
+  exchangeIndex: number,
+  role: "user" | "assistant",
+): string {
+  if (role === "user") {
+    return [
+      `Large-thread perf scenario ${exchangeIndex + 1} for ${projectName}.`,
+      "Please audit render cost while scrolling and switching among heavy histories.",
+      "Include hotspots in markdown rendering, timeline grouping, and message list virtualization candidates.",
+      "Track regressions across interaction loops and report any long-task spikes.",
+    ].join("\n");
+  }
+
+  return [
+    `### Perf analysis batch ${exchangeIndex + 1}`,
+    "",
+    "- Checked keypress/input dispatch cost and scheduler churn.",
+    "- Compared component update cadence before/after thread switch.",
+    "- Captured timeline and branch/tool state snapshots.",
+    "",
+    "```txt",
+    `project=${projectName}`,
+    `batch=${exchangeIndex + 1}`,
+    "status=stable",
+    "focus=render-throughput",
+    "```",
+    "",
+    "Observed stable behavior under bursty UI events; continue profiling for long-thread rendering regressions.",
+  ].join("\n");
+}
+
+function buildLargePerfThread(project: PerfPersistedProject, now: number): PerfPersistedThread {
+  const threadId = `${project.id}-thread-large`;
+  const createdAt = new Date(now - 1_500_000).toISOString();
+  const messages: PerfPersistedMessage[] = [];
+  for (let exchangeIndex = 0; exchangeIndex < LARGE_THREAD_EXCHANGE_COUNT; exchangeIndex += 1) {
+    const offsetMs = (LARGE_THREAD_EXCHANGE_COUNT - exchangeIndex) * 11_000;
+    messages.push({
+      id: `${threadId}-user-${exchangeIndex + 1}`,
+      role: "user",
+      text: buildLargeThreadMessage(project.name, exchangeIndex, "user"),
+      createdAt: new Date(now - offsetMs - 2_000).toISOString(),
+      streaming: false,
+    });
+    messages.push({
+      id: `${threadId}-assistant-${exchangeIndex + 1}`,
+      role: "assistant",
+      text: buildLargeThreadMessage(project.name, exchangeIndex, "assistant"),
+      createdAt: new Date(now - offsetMs).toISOString(),
+      streaming: false,
+    });
+  }
+
+  return {
+    id: threadId,
+    projectId: project.id,
+    title: `${project.name} perf large thread`,
+    model: "gpt-5-codex",
+    terminalOpen: false,
+    messages,
+    createdAt,
+    lastVisitedAt: new Date(now - 1_000_000).toISOString(),
+  };
+}
+
 function buildPerfSeedState(): PerfPersistedState {
   const now = Date.now();
   const projects: PerfPersistedProject[] = [
@@ -193,6 +261,10 @@ function buildPerfSeedState(): PerfPersistedState {
     }
   }
 
+  for (const project of projects) {
+    threads.push(buildLargePerfThread(project, now));
+  }
+
   return {
     version: 7,
     runtimeMode: "approval-required",
@@ -216,12 +288,26 @@ async function seedRendererState(window: BrowserWindow): Promise<void> {
 
 async function runRendererPerfInteractions(
   window: BrowserWindow,
-): Promise<{ threadClicks: number; typedChars: number; selectedModel: string | null }> {
+): Promise<{
+  threadClicks: number;
+  typedChars: number;
+  selectedModel: string | null;
+  largeThreadRenderStats: { threadId: string; messageCount: number; renderMs: number }[];
+}> {
   const script = `
     (async () => {
       const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       const must = (condition, message) => {
         if (!condition) throw new Error(message);
+      };
+      const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      const waitFor = async (predicate, timeoutMs, message) => {
+        const deadline = performance.now() + timeoutMs;
+        while (performance.now() < deadline) {
+          if (predicate()) return;
+          await nextFrame();
+        }
+        throw new Error(message);
       };
 
       const clickElement = (node) => {
@@ -240,6 +326,43 @@ async function runRendererPerfInteractions(
       for (let index = 0; index < clickCount; index += 1) {
         clickElement(threadButtons[index]);
         await sleep(80);
+      }
+
+      const measureThreadRender = async (threadId) => {
+        const selector = '[data-perf-thread-id="' + threadId + '"]';
+        const targetButton = document.querySelector(selector);
+        must(targetButton instanceof HTMLElement, "Thread button missing for " + threadId);
+        const start = performance.now();
+        clickElement(targetButton);
+        await waitFor(
+          () => {
+            const scroller = document.querySelector("[data-perf-messages-scroll]");
+            return (
+              scroller instanceof HTMLElement &&
+              scroller.getAttribute("data-perf-active-thread-id") === threadId
+            );
+          },
+          15_000,
+          "Timed out waiting for thread activation " + threadId,
+        );
+        await nextFrame();
+        await nextFrame();
+        const scroller = document.querySelector("[data-perf-messages-scroll]");
+        const messageCountRaw =
+          scroller instanceof HTMLElement ? scroller.getAttribute("data-perf-message-count") : null;
+        const messageCount =
+          messageCountRaw && /^\\d+$/.test(messageCountRaw) ? Number(messageCountRaw) : 0;
+        return {
+          threadId,
+          messageCount,
+          renderMs: Number((performance.now() - start).toFixed(2)),
+        };
+      };
+
+      const largeThreadRenderStats = [];
+      const largeThreadIds = ["perf-project-1-thread-large", "perf-project-2-thread-large"];
+      for (const threadId of largeThreadIds) {
+        largeThreadRenderStats.push(await measureThreadRender(threadId));
       }
 
       const scroller = document.querySelector("[data-perf-messages-scroll]");
@@ -319,6 +442,7 @@ async function runRendererPerfInteractions(
         threadClicks: clickCount,
         typedChars: inputText.length,
         selectedModel,
+        largeThreadRenderStats,
       };
     })();
   `;
