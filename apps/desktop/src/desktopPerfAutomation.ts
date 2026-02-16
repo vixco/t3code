@@ -6,6 +6,7 @@ import { BrowserWindow, contentTracing, type WebContents } from "electron";
 const PERF_AUTOMATION_ENABLED = process.env.T3CODE_DESKTOP_PERF_AUTOMATION === "1";
 const PERF_TRACE_OUT_PATH = process.env.T3CODE_DESKTOP_PERF_TRACE_OUT?.trim() ?? "";
 const PERF_DONE_OUT_PATH = process.env.T3CODE_DESKTOP_PERF_DONE_OUT?.trim() ?? "";
+const PERF_SEED_PATH = process.env.T3CODE_DESKTOP_PERF_SEED_PATH?.trim() ?? "";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -126,6 +127,95 @@ interface PerfPersistedState {
 }
 
 const LARGE_THREAD_EXCHANGE_COUNT = 120;
+const BENCHMARK_THREAD_COUNT = 2;
+
+interface PerfThreadStat {
+  id: string;
+  messageCount: number;
+}
+
+interface ResolvedPerfSeed {
+  source: string;
+  resolvedPath: string | null;
+  state: unknown;
+  benchmarkThreadIds: string[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function collectThreadStats(state: unknown): PerfThreadStat[] {
+  if (!isRecord(state)) return [];
+  const threads = state.threads;
+  if (!Array.isArray(threads)) return [];
+
+  const stats: PerfThreadStat[] = [];
+  for (const thread of threads) {
+    if (!isRecord(thread)) continue;
+    const id = typeof thread.id === "string" ? thread.id : "";
+    if (id.length === 0) continue;
+    const messages = thread.messages;
+    const messageCount = Array.isArray(messages) ? messages.length : 0;
+    stats.push({ id, messageCount });
+  }
+
+  return stats;
+}
+
+function pickBenchmarkThreadIds(stats: PerfThreadStat[]): string[] {
+  return [...stats]
+    .sort((a, b) => b.messageCount - a.messageCount)
+    .slice(0, BENCHMARK_THREAD_COUNT)
+    .map((entry) => entry.id);
+}
+
+function resolvePerfSeed(): ResolvedPerfSeed {
+  if (PERF_SEED_PATH.length === 0) {
+    const generated = buildPerfSeedState();
+    const stats = collectThreadStats(generated);
+    return {
+      source: "generated",
+      resolvedPath: null,
+      state: generated,
+      benchmarkThreadIds: pickBenchmarkThreadIds(stats),
+    };
+  }
+
+  const resolvedPath = path.isAbsolute(PERF_SEED_PATH)
+    ? PERF_SEED_PATH
+    : path.resolve(process.cwd(), PERF_SEED_PATH);
+
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error(`Perf seed file not found: ${resolvedPath}`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(resolvedPath, "utf8"));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse perf seed JSON at ${resolvedPath}: ${message}`);
+  }
+
+  if (!isRecord(parsed)) {
+    throw new Error(`Perf seed must be a JSON object: ${resolvedPath}`);
+  }
+  if (!Array.isArray(parsed.projects)) {
+    throw new Error(`Perf seed is missing "projects" array: ${resolvedPath}`);
+  }
+  if (!Array.isArray(parsed.threads)) {
+    throw new Error(`Perf seed is missing "threads" array: ${resolvedPath}`);
+  }
+
+  const stats = collectThreadStats(parsed);
+  return {
+    source: "file",
+    resolvedPath,
+    state: parsed,
+    benchmarkThreadIds: pickBenchmarkThreadIds(stats),
+  };
+}
 
 function buildLargeThreadMessage(
   projectName: string,
@@ -274,8 +364,7 @@ function buildPerfSeedState(): PerfPersistedState {
   };
 }
 
-async function seedRendererState(window: BrowserWindow): Promise<void> {
-  const state = buildPerfSeedState();
+async function seedRendererState(window: BrowserWindow, state: unknown): Promise<void> {
   const script = `
     (() => {
       const key = "t3code:renderer-state:v7";
@@ -288,11 +377,13 @@ async function seedRendererState(window: BrowserWindow): Promise<void> {
 
 async function runRendererPerfInteractions(
   window: BrowserWindow,
+  benchmarkThreadIds: string[],
 ): Promise<{
   threadClicks: number;
   typedChars: number;
   selectedModel: string | null;
   largeThreadRenderStats: { threadId: string; messageCount: number; renderMs: number }[];
+  benchmarkThreadIds: string[];
 }> {
   const script = `
     (async () => {
@@ -319,8 +410,20 @@ async function runRendererPerfInteractions(
         return true;
       };
 
-      const threadButtons = Array.from(document.querySelectorAll("[data-perf-thread-id]"));
-      must(threadButtons.length >= 4, "Expected seeded thread rows to be rendered.");
+      const getThreadButtons = () =>
+        Array.from(document.querySelectorAll("[data-perf-thread-id]")).filter(
+          (node) => node instanceof HTMLElement,
+        );
+      await waitFor(
+        () => getThreadButtons().length >= 1,
+        15_000,
+        "Expected seeded thread rows to be rendered.",
+      );
+      const threadButtons = getThreadButtons();
+      must(threadButtons.length >= 1, "Expected seeded thread rows to be rendered.");
+      const renderedThreadIds = threadButtons
+        .map((node) => node.getAttribute("data-perf-thread-id"))
+        .filter((value) => typeof value === "string" && value.length > 0);
 
       const clickCount = Math.min(8, threadButtons.length);
       for (let index = 0; index < clickCount; index += 1) {
@@ -360,8 +463,17 @@ async function runRendererPerfInteractions(
       };
 
       const largeThreadRenderStats = [];
-      const largeThreadIds = ["perf-project-1-thread-large", "perf-project-2-thread-large"];
-      for (const threadId of largeThreadIds) {
+      const preferredThreadIds = ${JSON.stringify(benchmarkThreadIds)}.filter(
+        (value) => typeof value === "string" && value.length > 0,
+      );
+      const benchmarkThreadIds = preferredThreadIds.filter((threadId) =>
+        renderedThreadIds.includes(threadId),
+      );
+      if (benchmarkThreadIds.length === 0) {
+        benchmarkThreadIds.push(...renderedThreadIds.slice(0, ${BENCHMARK_THREAD_COUNT}));
+      }
+
+      for (const threadId of benchmarkThreadIds) {
         largeThreadRenderStats.push(await measureThreadRender(threadId));
       }
 
@@ -443,6 +555,7 @@ async function runRendererPerfInteractions(
         typedChars: inputText.length,
         selectedModel,
         largeThreadRenderStats,
+        benchmarkThreadIds,
       };
     })();
   `;
@@ -494,14 +607,23 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
   let tracePath = PERF_TRACE_OUT_PATH;
   let isTraceRecording = false;
   const startedAt = Date.now();
+  let seed: ResolvedPerfSeed | null = null;
   try {
+    seed = resolvePerfSeed();
+    const seedLabel =
+      seed.source === "file" ? `file (${seed.resolvedPath ?? "unknown"})` : seed.source;
+    const benchmarkThreadLabel =
+      seed.benchmarkThreadIds.length > 0 ? seed.benchmarkThreadIds.join(", ") : "none";
+    console.log(`[desktop-perf] seed source: ${seedLabel}`);
+    console.log(`[desktop-perf] benchmark thread ids: ${benchmarkThreadLabel}`);
+
     console.log("[desktop-perf] waiting for initial load");
     await waitForDidFinishLoad(window.webContents, {
       timeoutMs: 60_000,
       label: "initial load",
     });
     console.log("[desktop-perf] seeding renderer state");
-    await seedRendererState(window);
+    await seedRendererState(window, seed.state);
     window.webContents.reload();
     console.log("[desktop-perf] waiting for reload");
     await waitForDidFinishLoad(window.webContents, {
@@ -515,7 +637,7 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
     await contentTracing.startRecording(traceConfig);
     isTraceRecording = true;
     console.log("[desktop-perf] running scripted interactions");
-    const interactions = await runRendererPerfInteractions(window);
+    const interactions = await runRendererPerfInteractions(window, seed.benchmarkThreadIds);
     await delay(300);
     console.log("[desktop-perf] stopping trace recording");
     tracePath = await withTimeout(
@@ -536,6 +658,10 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
             status: "ok",
             tracePath,
             interactions,
+            seed: {
+              source: seed.source,
+              path: seed.resolvedPath,
+            },
             startedAt: new Date(startedAt).toISOString(),
             completedAt: new Date(completedAt).toISOString(),
             durationMs: completedAt - startedAt,
@@ -571,6 +697,13 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
             status: "error",
             error: message,
             tracePath,
+            seed:
+              seed === null
+                ? undefined
+                : {
+                    source: seed.source,
+                    path: seed.resolvedPath,
+                  },
             startedAt: new Date(startedAt).toISOString(),
             completedAt: new Date().toISOString(),
           },

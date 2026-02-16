@@ -7,15 +7,56 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 const marker = "<!-- desktop-perf-trace-summary -->";
+const defaultPerfProjects = [
+  {
+    id: "perf-project-1",
+    cwd: "/tmp/perf/codething-mvp",
+    name: "codething-mvp",
+  },
+  {
+    id: "perf-project-2",
+    cwd: "/tmp/perf/contracts-bench",
+    name: "contracts-bench",
+  },
+];
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function parseArgs(argv) {
-  const args = new Set(argv.slice(2));
+  let postPr = false;
+  let seedPath = null;
+
+  for (let index = 2; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--post-pr") {
+      postPr = true;
+      continue;
+    }
+    if (arg === "--seed") {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error("--seed requires a file path");
+      }
+      seedPath = value;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--seed=")) {
+      const value = arg.slice("--seed=".length).trim();
+      if (value.length === 0) {
+        throw new Error("--seed= requires a non-empty path");
+      }
+      seedPath = value;
+      continue;
+    }
+    throw new Error(`Unknown argument: ${arg}`);
+  }
+
   return {
-    postPr: args.has("--post-pr"),
+    postPr,
+    seedPath,
   };
 }
 
@@ -165,6 +206,10 @@ function createMarkdownSummary({ tracePath, donePayload, summary, thresholds }) 
   const largeThreadRenderStats = Array.isArray(donePayload.interactions?.largeThreadRenderStats)
     ? donePayload.interactions.largeThreadRenderStats
     : [];
+  const seedSource =
+    donePayload.seed?.source === "file"
+      ? `file (\`${donePayload.seed?.path ?? "unknown"}\`)`
+      : donePayload.seed?.source ?? "generated";
   const lines = [
     marker,
     "## Desktop Dev Perf Trace",
@@ -174,6 +219,7 @@ function createMarkdownSummary({ tracePath, donePayload, summary, thresholds }) 
     `- Started: ${donePayload.startedAt ?? "n/a"}`,
     `- Completed: ${donePayload.completedAt ?? "n/a"}`,
     `- Duration: ${donePayload.durationMs ?? "n/a"} ms`,
+    `- Seed source: ${seedSource}`,
     "",
     "### Interaction Run",
     "",
@@ -181,7 +227,7 @@ function createMarkdownSummary({ tracePath, donePayload, summary, thresholds }) 
     `- Typed chars: ${donePayload.interactions?.typedChars ?? "n/a"}`,
     `- Model selected: ${donePayload.interactions?.selectedModel ?? "n/a"}`,
     "",
-    "### Large Thread Render",
+    "### Benchmark Thread Render",
     "",
     "| Thread | Messages | Render (ms) |",
     "| --- | ---: | ---: |",
@@ -310,24 +356,15 @@ function postSummaryToPr(summaryPath) {
   );
 }
 
-function prepareDesktopPerfState(stateDir) {
+function prepareDesktopPerfState(stateDir, perfProjects = defaultPerfProjects) {
   fs.mkdirSync(stateDir, { recursive: true });
 
-  const perfProjects = [
-    {
-      id: "perf-project-1",
-      cwd: "/tmp/perf/codething-mvp",
-      name: "codething-mvp",
-    },
-    {
-      id: "perf-project-2",
-      cwd: "/tmp/perf/contracts-bench",
-      name: "contracts-bench",
-    },
-  ];
-
   for (const project of perfProjects) {
-    fs.mkdirSync(project.cwd, { recursive: true });
+    try {
+      fs.mkdirSync(project.cwd, { recursive: true });
+    } catch {
+      // Some seeded paths may point to unavailable locations in CI; registry entries still work.
+    }
   }
 
   const now = new Date().toISOString();
@@ -350,6 +387,52 @@ function prepareDesktopPerfState(stateDir) {
   );
 }
 
+function resolveSeedPath(seedPathArg) {
+  const candidateArg = seedPathArg ?? process.env.T3CODE_DESKTOP_PERF_SEED_PATH ?? "";
+  if (!candidateArg || candidateArg.trim().length === 0) {
+    const defaultCandidates = ["scripts/perf-seed.json", "apps/desktop/scripts/perf-seed.json"];
+    for (const candidate of defaultCandidates) {
+      const resolved = path.resolve(repoRoot, candidate);
+      if (fs.existsSync(resolved)) {
+        return resolved;
+      }
+    }
+    return null;
+  }
+
+  const resolved = path.isAbsolute(candidateArg)
+    ? candidateArg
+    : path.resolve(repoRoot, candidateArg);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`Seed file not found: ${resolved}`);
+  }
+  return resolved;
+}
+
+function extractProjectsFromSeed(seedPath) {
+  const raw = JSON.parse(fs.readFileSync(seedPath, "utf8"));
+  if (!raw || typeof raw !== "object" || !Array.isArray(raw.projects)) {
+    return null;
+  }
+
+  const projects = raw.projects
+    .map((project) => {
+      if (!project || typeof project !== "object") return null;
+      const id = typeof project.id === "string" ? project.id : "";
+      const cwd = typeof project.cwd === "string" ? project.cwd : "";
+      const name = typeof project.name === "string" ? project.name : "";
+      if (id.length === 0 || cwd.length === 0 || name.length === 0) return null;
+      return { id, cwd, name };
+    })
+    .filter((project) => project !== null);
+
+  if (projects.length === 0) {
+    return null;
+  }
+
+  return projects;
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -361,7 +444,9 @@ async function main() {
   const summaryPath = path.join(artifactsDir, "summary.md");
   const logPath = path.join(artifactsDir, "run.log");
   const stateDir = path.join(artifactsDir, "state");
-  prepareDesktopPerfState(stateDir);
+  const seedPath = resolveSeedPath(args.seedPath);
+  const seedProjects = seedPath ? extractProjectsFromSeed(seedPath) : null;
+  prepareDesktopPerfState(stateDir, seedProjects ?? defaultPerfProjects);
 
   const maxKeypressAvgMs = Number(process.env.T3CODE_PERF_MAX_KEYPRESS_AVG_MS ?? "12");
   const maxKeypressMaxMs = Number(process.env.T3CODE_PERF_MAX_KEYPRESS_MAX_MS ?? "24");
@@ -376,6 +461,7 @@ async function main() {
       T3CODE_DESKTOP_PERF_AUTOMATION: "1",
       T3CODE_DESKTOP_PERF_TRACE_OUT: tracePath,
       T3CODE_DESKTOP_PERF_DONE_OUT: donePath,
+      ...(seedPath ? { T3CODE_DESKTOP_PERF_SEED_PATH: seedPath } : {}),
       T3CODE_DEV_INSTANCE: `desktop-perf-${timestamp}`,
       T3CODE_LOG_WS_EVENTS: "0",
       T3CODE_STATE_DIR: stateDir,
