@@ -7,6 +7,7 @@ import {
 import { isMacPlatform } from "./lib/utils";
 
 export interface ShortcutEventLike {
+  type?: string;
   key: string;
   metaKey: boolean;
   ctrlKey: boolean;
@@ -24,6 +25,11 @@ interface ShortcutMatchOptions {
   platform?: string;
   context?: Partial<ShortcutMatchContext>;
 }
+
+const TERMINAL_WORD_BACKWARD = "\u001bb";
+const TERMINAL_WORD_FORWARD = "\u001bf";
+const TERMINAL_LINE_START = "\u0001";
+const TERMINAL_LINE_END = "\u0005";
 
 function normalizeEventKey(key: string): string {
   const normalized = key.toLowerCase();
@@ -184,12 +190,28 @@ export function isTerminalNewShortcut(
   return matchesCommandShortcut(event, keybindings, "terminal.new", options);
 }
 
+export function isTerminalCloseShortcut(
+  event: ShortcutEventLike,
+  keybindings: ResolvedKeybindingsConfig,
+  options?: ShortcutMatchOptions,
+): boolean {
+  return matchesCommandShortcut(event, keybindings, "terminal.close", options);
+}
+
 export function isChatNewShortcut(
   event: ShortcutEventLike,
   keybindings: ResolvedKeybindingsConfig,
   options?: ShortcutMatchOptions,
 ): boolean {
   return matchesCommandShortcut(event, keybindings, "chat.new", options);
+}
+
+export function isChatNewLocalShortcut(
+  event: ShortcutEventLike,
+  keybindings: ResolvedKeybindingsConfig,
+  options?: ShortcutMatchOptions,
+): boolean {
+  return matchesCommandShortcut(event, keybindings, "chat.newLocal", options);
 }
 
 export function isOpenFavoriteEditorShortcut(
@@ -204,6 +226,10 @@ export function isTerminalClearShortcut(
   event: ShortcutEventLike,
   platform = navigator.platform,
 ): boolean {
+  if (event.type !== undefined && event.type !== "keydown") {
+    return false;
+  }
+
   const key = event.key.toLowerCase();
 
   if (key === "l" && event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
@@ -218,4 +244,43 @@ export function isTerminalClearShortcut(
     !event.altKey &&
     !event.shiftKey
   );
+}
+
+export function terminalNavigationShortcutData(
+  event: ShortcutEventLike,
+  platform = navigator.platform,
+): string | null {
+  if (event.type !== undefined && event.type !== "keydown") {
+    return null;
+  }
+
+  if (event.shiftKey) return null;
+
+  const key = normalizeEventKey(event.key);
+  if (key !== "arrowleft" && key !== "arrowright") {
+    return null;
+  }
+
+  const moveWord = key === "arrowleft" ? TERMINAL_WORD_BACKWARD : TERMINAL_WORD_FORWARD;
+  const moveLine = key === "arrowleft" ? TERMINAL_LINE_START : TERMINAL_LINE_END;
+
+  if (isMacPlatform(platform)) {
+    if (event.altKey && !event.metaKey && !event.ctrlKey) {
+      return moveWord;
+    }
+    if (event.metaKey && !event.altKey && !event.ctrlKey) {
+      return moveLine;
+    }
+    return null;
+  }
+
+  if (event.ctrlKey && !event.metaKey && !event.altKey) {
+    return moveWord;
+  }
+
+  if (event.altKey && !event.metaKey && !event.ctrlKey) {
+    return moveWord;
+  }
+
+  return null;
 }

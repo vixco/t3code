@@ -14,6 +14,18 @@ describe("keybindings contracts", () => {
       command: "terminal.toggle",
     });
     assert.strictEqual(parsed.command, "terminal.toggle");
+
+    const parsedClose = keybindingRuleSchema.parse({
+      key: "mod+w",
+      command: "terminal.close",
+    });
+    assert.strictEqual(parsedClose.command, "terminal.close");
+
+    const parsedLocal = keybindingRuleSchema.parse({
+      key: "mod+shift+n",
+      command: "chat.newLocal",
+    });
+    assert.strictEqual(parsedLocal.command, "chat.newLocal");
   });
 
   it("rejects invalid command values", () => {

@@ -9,12 +9,15 @@ import {
 import {
   formatShortcutLabel,
   isChatNewShortcut,
+  isChatNewLocalShortcut,
   isOpenFavoriteEditorShortcut,
   isTerminalClearShortcut,
+  isTerminalCloseShortcut,
   isTerminalNewShortcut,
   isTerminalSplitShortcut,
   isTerminalToggleShortcut,
   shortcutLabelForCommand,
+  terminalNavigationShortcutData,
   type ShortcutEventLike,
 } from "./keybindings";
 
@@ -82,7 +85,13 @@ const DEFAULT_BINDINGS = compile([
     command: "terminal.new",
     whenAst: whenIdentifier("terminalFocus"),
   },
+  {
+    shortcut: modShortcut("w"),
+    command: "terminal.close",
+    whenAst: whenIdentifier("terminalFocus"),
+  },
   { shortcut: modShortcut("o", { shiftKey: true }), command: "chat.new" },
+  { shortcut: modShortcut("n", { shiftKey: true }), command: "chat.newLocal" },
   { shortcut: modShortcut("o"), command: "editor.openFavorite" },
 ]);
 
@@ -100,8 +109,8 @@ describe("isTerminalToggleShortcut", () => {
   });
 });
 
-describe("split/new terminal shortcuts", () => {
-  it("requires terminalFocus for default split/new bindings", () => {
+describe("split/new/close terminal shortcuts", () => {
+  it("requires terminalFocus for default split/new/close bindings", () => {
     assert.isFalse(
       isTerminalSplitShortcut(event({ key: "d", metaKey: true }), DEFAULT_BINDINGS, {
         platform: "MacIntel",
@@ -110,6 +119,12 @@ describe("split/new terminal shortcuts", () => {
     );
     assert.isFalse(
       isTerminalNewShortcut(event({ key: "d", ctrlKey: true, shiftKey: true }), DEFAULT_BINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: false },
+      }),
+    );
+    assert.isFalse(
+      isTerminalCloseShortcut(event({ key: "w", ctrlKey: true }), DEFAULT_BINDINGS, {
         platform: "Linux",
         context: { terminalFocus: false },
       }),
@@ -125,6 +140,12 @@ describe("split/new terminal shortcuts", () => {
     );
     assert.isTrue(
       isTerminalNewShortcut(event({ key: "d", ctrlKey: true, shiftKey: true }), DEFAULT_BINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: true },
+      }),
+    );
+    assert.isTrue(
+      isTerminalCloseShortcut(event({ key: "w", ctrlKey: true }), DEFAULT_BINDINGS, {
         platform: "Linux",
         context: { terminalFocus: true },
       }),
@@ -221,6 +242,27 @@ describe("chat/editor shortcuts", () => {
       isChatNewShortcut(event({ key: "o", ctrlKey: true, shiftKey: true }), DEFAULT_BINDINGS, {
         platform: "Linux",
       }),
+    );
+  });
+
+  it("matches chat.newLocal shortcut", () => {
+    assert.isTrue(
+      isChatNewLocalShortcut(
+        event({ key: "n", metaKey: true, shiftKey: true }),
+        DEFAULT_BINDINGS,
+        {
+          platform: "MacIntel",
+        },
+      ),
+    );
+    assert.isTrue(
+      isChatNewLocalShortcut(
+        event({ key: "n", ctrlKey: true, shiftKey: true }),
+        DEFAULT_BINDINGS,
+        {
+          platform: "Linux",
+        },
+      ),
     );
   });
 
@@ -323,6 +365,65 @@ describe("isTerminalClearShortcut", () => {
 
   it("matches Cmd+K on macOS", () => {
     assert.isTrue(isTerminalClearShortcut(event({ key: "k", metaKey: true }), "MacIntel"));
+  });
+
+  it("ignores non-keydown events", () => {
+    assert.isFalse(isTerminalClearShortcut(event({ type: "keyup", key: "l", ctrlKey: true }), "Linux"));
+  });
+});
+
+describe("terminalNavigationShortcutData", () => {
+  it("maps Option+Arrow on macOS to word movement", () => {
+    assert.strictEqual(
+      terminalNavigationShortcutData(event({ key: "ArrowLeft", altKey: true }), "MacIntel"),
+      "\u001bb",
+    );
+    assert.strictEqual(
+      terminalNavigationShortcutData(event({ key: "ArrowRight", altKey: true }), "MacIntel"),
+      "\u001bf",
+    );
+  });
+
+  it("maps Cmd+Arrow on macOS to line movement", () => {
+    assert.strictEqual(
+      terminalNavigationShortcutData(event({ key: "ArrowLeft", metaKey: true }), "MacIntel"),
+      "\u0001",
+    );
+    assert.strictEqual(
+      terminalNavigationShortcutData(event({ key: "ArrowRight", metaKey: true }), "MacIntel"),
+      "\u0005",
+    );
+  });
+
+  it("maps Ctrl+Arrow on non-macOS to word movement", () => {
+    assert.strictEqual(
+      terminalNavigationShortcutData(event({ key: "ArrowLeft", ctrlKey: true }), "Win32"),
+      "\u001bb",
+    );
+    assert.strictEqual(
+      terminalNavigationShortcutData(event({ key: "ArrowRight", ctrlKey: true }), "Linux"),
+      "\u001bf",
+    );
+  });
+
+  it("rejects unsupported combinations", () => {
+    assert.isNull(
+      terminalNavigationShortcutData(
+        event({ key: "ArrowLeft", shiftKey: true, altKey: true }),
+        "MacIntel",
+      ),
+    );
+    assert.isNull(terminalNavigationShortcutData(event({ key: "ArrowLeft", metaKey: true }), "Linux"));
+    assert.isNull(terminalNavigationShortcutData(event({ key: "a", altKey: true }), "MacIntel"));
+  });
+
+  it("ignores non-keydown events", () => {
+    assert.isNull(
+      terminalNavigationShortcutData(
+        event({ type: "keyup", key: "ArrowLeft", altKey: true }),
+        "MacIntel",
+      ),
+    );
   });
 });
 

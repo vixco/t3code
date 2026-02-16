@@ -7,7 +7,7 @@ import { useTheme } from "../hooks/useTheme";
 import { DEFAULT_MODEL } from "../model-logic";
 import { derivePendingApprovals } from "../session-logic";
 import { useStore } from "../store";
-import { isChatNewShortcut } from "../keybindings";
+import { isChatNewLocalShortcut, isChatNewShortcut } from "../keybindings";
 import {
   DEFAULT_THREAD_TERMINAL_HEIGHT,
   DEFAULT_THREAD_TERMINAL_ID,
@@ -151,7 +151,13 @@ export default function Sidebar() {
   }, [state.threads]);
 
   const handleNewThread = useCallback(
-    (projectId: string) => {
+    (
+      projectId: string,
+      options?: {
+        branch?: string | null;
+        worktreePath?: string | null;
+      },
+    ) => {
       dispatch({
         type: "ADD_THREAD",
         thread: {
@@ -178,8 +184,8 @@ export default function Sidebar() {
           events: [],
           error: null,
           createdAt: new Date().toISOString(),
-          branch: null,
-          worktreePath: null,
+          branch: options?.branch ?? null,
+          worktreePath: options?.worktreePath ?? null,
         },
       });
     },
@@ -403,14 +409,23 @@ export default function Sidebar() {
 
   useEffect(() => {
     const onWindowKeyDown = (event: KeyboardEvent) => {
-      if (!isChatNewShortcut(event, keybindings)) return;
-
       const activeThread = state.threads.find((t) => t.id === state.activeThreadId);
+      if (isChatNewLocalShortcut(event, keybindings)) {
+        const projectId = activeThread?.projectId ?? state.projects[0]?.id;
+        if (!projectId) return;
+        event.preventDefault();
+        handleNewThread(projectId);
+        return;
+      }
+
+      if (!isChatNewShortcut(event, keybindings)) return;
       const projectId = activeThread?.projectId ?? state.projects[0]?.id;
       if (!projectId) return;
-
       event.preventDefault();
-      handleNewThread(projectId);
+      handleNewThread(projectId, {
+        branch: activeThread?.branch ?? null,
+        worktreePath: activeThread?.worktreePath ?? null,
+      });
     };
 
     window.addEventListener("keydown", onWindowKeyDown);
