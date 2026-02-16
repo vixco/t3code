@@ -27,20 +27,51 @@ async function canConnect(host, probePort, timeoutMs = 1_000) {
 
 function waitForDesktopBundles(timeoutMs) {
   const startedAt = Date.now();
-  const bundleFiles = ["dist-electron/main.js", "dist-electron/preload.js", "../server/dist/index.mjs"];
+  const bundleFiles = [
+    { path: "dist-electron/main.js", requireFresh: true },
+    { path: "dist-electron/preload.js", requireFresh: true },
+    { path: "../server/dist/index.mjs", requireFresh: false },
+  ];
 
   return new Promise((resolve, reject) => {
     const tick = () => {
-      const missing = bundleFiles.filter((filePath) => !fs.existsSync(filePath));
-      if (missing.length === 0) {
+      const missing = [];
+      const stale = [];
+
+      for (const bundleFile of bundleFiles) {
+        if (!fs.existsSync(bundleFile.path)) {
+          missing.push(bundleFile.path);
+          continue;
+        }
+        if (!bundleFile.requireFresh) {
+          continue;
+        }
+        try {
+          const stat = fs.statSync(bundleFile.path);
+          if (stat.mtimeMs < startedAt) {
+            stale.push(bundleFile.path);
+          }
+        } catch {
+          missing.push(bundleFile.path);
+        }
+      }
+
+      if (missing.length === 0 && stale.length === 0) {
         resolve();
         return;
       }
 
       if (Date.now() - startedAt >= timeoutMs) {
+        const parts = [];
+        if (missing.length > 0) {
+          parts.push(`missing: ${missing.join(", ")}`);
+        }
+        if (stale.length > 0) {
+          parts.push(`stale: ${stale.join(", ")}`);
+        }
         reject(
           new Error(
-            `[dev-electron] timed out after ${timeoutMs}ms waiting for bundles: ${missing.join(", ")}`,
+            `[dev-electron] timed out after ${timeoutMs}ms waiting for bundles (${parts.join("; ")})`,
           ),
         );
         return;
