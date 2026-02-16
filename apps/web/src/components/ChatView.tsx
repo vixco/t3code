@@ -15,7 +15,6 @@ import {
   type ClipboardEvent,
   type DragEvent,
   type FormEvent,
-  Fragment,
   type KeyboardEvent,
   memo,
   type RefObject,
@@ -28,6 +27,7 @@ import {
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDebouncedValue } from "@tanstack/react-pacer/debouncer";
+import { type VirtualItem, useVirtualizer } from "@tanstack/react-virtual";
 import { gitBranchesQueryOptions, gitCreateWorktreeMutationOptions } from "~/lib/gitReactQuery";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
 import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
@@ -324,7 +324,6 @@ export default function ChatView() {
   const [composerCursor, setComposerCursor] = useState(0);
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerCommandInputRef = useRef<HTMLInputElement>(null);
@@ -1353,6 +1352,7 @@ export default function ChatView() {
         <MessagesTimeline
           hasMessages={activeThread.messages.length > 0}
           isWorking={isWorking}
+          scrollContainerRef={messagesScrollRef}
           timelineEntries={timelineEntries}
           completionDividerBeforeEntryId={completionDividerBeforeEntryId}
           completionSummary={completionSummary}
@@ -1361,7 +1361,6 @@ export default function ChatView() {
           expandedWorkGroups={expandedWorkGroups}
           onToggleWorkGroup={onToggleWorkGroup}
           onImageExpand={onExpandTimelineImage}
-          messagesEndRef={messagesEndRef}
         />
       </div>
 
@@ -1790,6 +1789,7 @@ const PendingApprovalsPanel = memo(function PendingApprovalsPanel({
 interface MessagesTimelineProps {
   hasMessages: boolean;
   isWorking: boolean;
+  scrollContainerRef: RefObject<HTMLDivElement | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
   completionDividerBeforeEntryId: string | null;
   completionSummary: string | null;
@@ -1798,12 +1798,34 @@ interface MessagesTimelineProps {
   expandedWorkGroups: Record<string, boolean>;
   onToggleWorkGroup: (groupId: string) => void;
   onImageExpand: (image: ExpandedImagePreview) => void;
-  messagesEndRef: RefObject<HTMLDivElement | null>;
 }
+
+type TimelineEntry = ReturnType<typeof deriveTimelineEntries>[number];
+type TimelineMessage = Extract<TimelineEntry, { kind: "message" }>["message"];
+
+type TimelineRow =
+  | {
+      kind: "work";
+      id: string;
+      groupedEntries: {
+        id: string;
+        tone: "thinking" | "tool" | "info" | "error";
+        label: string;
+        detail?: string | null;
+      }[];
+    }
+  | {
+      kind: "message";
+      id: string;
+      message: TimelineMessage;
+      showCompletionDivider: boolean;
+    }
+  | { kind: "working"; id: string };
 
 const MessagesTimeline = memo(function MessagesTimeline({
   hasMessages,
   isWorking,
+  scrollContainerRef,
   timelineEntries,
   completionDividerBeforeEntryId,
   completionSummary,
@@ -1812,8 +1834,67 @@ const MessagesTimeline = memo(function MessagesTimeline({
   expandedWorkGroups,
   onToggleWorkGroup,
   onImageExpand,
-  messagesEndRef,
 }: MessagesTimelineProps) {
+  const rows = useMemo<TimelineRow[]>(() => {
+    const nextRows: TimelineRow[] = [];
+
+    for (let index = 0; index < timelineEntries.length; index += 1) {
+      const timelineEntry = timelineEntries[index];
+      if (!timelineEntry) {
+        continue;
+      }
+
+      if (timelineEntry.kind === "work") {
+        const groupedEntries = [timelineEntry.entry];
+        let cursor = index + 1;
+        while (cursor < timelineEntries.length) {
+          const nextEntry = timelineEntries[cursor];
+          if (!nextEntry || nextEntry.kind !== "work") break;
+          groupedEntries.push(nextEntry.entry);
+          cursor += 1;
+        }
+        nextRows.push({
+          kind: "work",
+          id: timelineEntry.id,
+          groupedEntries,
+        });
+        index = cursor - 1;
+        continue;
+      }
+
+      nextRows.push({
+        kind: "message",
+        id: timelineEntry.id,
+        message: timelineEntry.message,
+        showCompletionDivider:
+          timelineEntry.message.role === "assistant" &&
+          completionDividerBeforeEntryId === timelineEntry.id,
+      });
+    }
+
+    if (isWorking) {
+      nextRows.push({ kind: "working", id: "working-indicator-row" });
+    }
+
+    return nextRows;
+  }, [timelineEntries, completionDividerBeforeEntryId, isWorking]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: (index: number) => {
+      const row = rows[index];
+      if (!row) return 96;
+      if (row.kind === "work") return 112;
+      if (row.kind === "working") return 40;
+      return row.message.role === "assistant" ? 180 : 150;
+    },
+    measureElement: (element: HTMLElement) => element.getBoundingClientRect().height,
+    overscan: 8,
+  });
+
+  const virtualRows = rowVirtualizer.getVirtualItems();
+
   if (!hasMessages && !isWorking) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -1825,181 +1906,177 @@ const MessagesTimeline = memo(function MessagesTimeline({
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
-      {timelineEntries.map((timelineEntry, index) => {
-        if (timelineEntry.kind === "work" && timelineEntries[index - 1]?.kind === "work") {
-          return null;
-        }
+    <div className="relative mx-auto max-w-3xl" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
+      {virtualRows.map((virtualRow: VirtualItem) => {
+        const row = rows[virtualRow.index];
+        if (!row) return null;
 
-        const showCompletionDivider =
-          timelineEntry.kind === "message" &&
-          timelineEntry.message.role === "assistant" &&
-          completionDividerBeforeEntryId === timelineEntry.id;
+        return (
+          <div
+            key={row.id}
+            data-index={virtualRow.index}
+            ref={rowVirtualizer.measureElement}
+            className="absolute left-0 top-0 w-full"
+            style={{ transform: `translateY(${virtualRow.start}px)` }}
+          >
+            <div className="pb-4">
+              {row.kind === "work" && (() => {
+                const groupId = row.id;
+                const groupedEntries = row.groupedEntries;
+                const isExpanded = expandedWorkGroups[groupId] ?? false;
+                const hasOverflow = groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
+                const visibleEntries =
+                  hasOverflow && !isExpanded
+                    ? groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
+                    : groupedEntries;
+                const hiddenCount = groupedEntries.length - visibleEntries.length;
+                const onlyToolEntries = groupedEntries.every((entry) => entry.tone === "tool");
+                const groupLabel = onlyToolEntries
+                  ? groupedEntries.length === 1
+                    ? "Tool call"
+                    : `Tool calls (${groupedEntries.length})`
+                  : groupedEntries.length === 1
+                    ? "Work event"
+                    : `Work log (${groupedEntries.length})`;
 
-        if (timelineEntry.kind === "work") {
-          const groupedEntries = [timelineEntry.entry];
-          let cursor = index + 1;
-          while (cursor < timelineEntries.length) {
-            const nextEntry = timelineEntries[cursor];
-            if (!nextEntry || nextEntry.kind !== "work") break;
-            groupedEntries.push(nextEntry.entry);
-            cursor += 1;
-          }
-
-          const groupId = timelineEntry.id;
-          const isExpanded = expandedWorkGroups[groupId] ?? false;
-          const hasOverflow = groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
-          const visibleEntries =
-            hasOverflow && !isExpanded
-              ? groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
-              : groupedEntries;
-          const hiddenCount = groupedEntries.length - visibleEntries.length;
-          const onlyToolEntries = groupedEntries.every((entry) => entry.tone === "tool");
-          const groupLabel = onlyToolEntries
-            ? groupedEntries.length === 1
-              ? "Tool call"
-              : `Tool calls (${groupedEntries.length})`
-            : groupedEntries.length === 1
-              ? "Work event"
-              : `Work log (${groupedEntries.length})`;
-
-          return (
-            <Fragment key={timelineEntry.id}>
-              <div className="rounded-lg border border-border/80 bg-card/45 px-3 py-2">
-                <div className="mb-1.5 flex items-center justify-between gap-3">
-                  <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
-                    {groupLabel}
-                  </p>
-                  {hasOverflow && (
-                    <button
-                      type="button"
-                      className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/55 transition-colors duration-150 hover:text-muted-foreground/80"
-                      onClick={() => onToggleWorkGroup(groupId)}
-                    >
-                      {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
-                    </button>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  {visibleEntries.map((workEntry) => (
-                    <div key={`work-row:${workEntry.id}`} className="flex items-start gap-2 py-0.5">
-                      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/30" />
-                      <p
-                        className={`py-[2px] text-[11px] leading-relaxed ${workToneClass(workEntry.tone)}`}
-                      >
-                        {workEntry.detail ? (
-                          <>
-                            {workEntry.label}
-                            <span
-                              className="ml-1.5 inline-block max-w-[70ch] truncate align-bottom font-mono text-[11px] opacity-60"
-                              title={workEntry.detail}
-                            >
-                              {workEntry.detail}
-                            </span>
-                          </>
-                        ) : (
-                          workEntry.label
-                        )}
+                return (
+                  <div className="rounded-lg border border-border/80 bg-card/45 px-3 py-2">
+                    <div className="mb-1.5 flex items-center justify-between gap-3">
+                      <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
+                        {groupLabel}
                       </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </Fragment>
-          );
-        }
-
-        if (timelineEntry.message.role === "user") {
-          const userImages = timelineEntry.message.attachments ?? [];
-          return (
-            <Fragment key={timelineEntry.id}>
-              <div className="flex justify-end">
-                <div className="max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
-                  {userImages.length > 0 && (
-                    <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
-                      {userImages.map((image) => (
-                        <div
-                          key={image.id}
-                          className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
+                      {hasOverflow && (
+                        <button
+                          type="button"
+                          className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/55 transition-colors duration-150 hover:text-muted-foreground/80"
+                          onClick={() => onToggleWorkGroup(groupId)}
                         >
-                          {image.previewUrl ? (
-                            <img
-                              src={image.previewUrl}
-                              alt={image.name}
-                              className="h-full max-h-[220px] w-full cursor-zoom-in object-cover"
-                              onClick={() =>
-                                onImageExpand({ src: image.previewUrl!, name: image.name })
-                              }
-                            />
-                          ) : (
-                            <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
-                              {image.name}
-                            </div>
-                          )}
+                          {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      {visibleEntries.map((workEntry) => (
+                        <div key={`work-row:${workEntry.id}`} className="flex items-start gap-2 py-0.5">
+                          <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/30" />
+                          <p
+                            className={`py-[2px] text-[11px] leading-relaxed ${workToneClass(workEntry.tone)}`}
+                          >
+                            {workEntry.detail ? (
+                              <>
+                                {workEntry.label}
+                                <span
+                                  className="ml-1.5 inline-block max-w-[70ch] truncate align-bottom font-mono text-[11px] opacity-60"
+                                  title={workEntry.detail}
+                                >
+                                  {workEntry.detail}
+                                </span>
+                              </>
+                            ) : (
+                              workEntry.label
+                            )}
+                          </p>
                         </div>
                       ))}
                     </div>
-                  )}
-                  {timelineEntry.message.text && (
-                    <pre className="whitespace-pre-wrap wrap-break-word font-mono text-sm leading-relaxed text-foreground">
-                      {timelineEntry.message.text}
-                    </pre>
-                  )}
-                  <p className="mt-1.5 text-right text-[10px] text-muted-foreground/30">
-                    {formatTimestamp(timelineEntry.message.createdAt)}
-                  </p>
-                </div>
-              </div>
-            </Fragment>
-          );
-        }
+                  </div>
+                );
+              })()}
 
-        return (
-          <Fragment key={timelineEntry.id}>
-            {showCompletionDivider && (
-              <div className="my-3 flex items-center gap-3">
-                <span className="h-px flex-1 bg-border" />
-                <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/80">
-                  {completionSummary ? `Response • ${completionSummary}` : "Response"}
-                </span>
-                <span className="h-px flex-1 bg-border" />
-              </div>
-            )}
-            <div className="px-1 py-0.5">
-              <ChatMarkdown
-                text={
-                  timelineEntry.message.text ||
-                  (timelineEntry.message.streaming ? "" : "(empty response)")
-                }
-              />
-              <p className="mt-1.5 text-[10px] text-muted-foreground/30">
-                {formatMessageMeta(
-                  timelineEntry.message.createdAt,
-                  timelineEntry.message.streaming
-                    ? formatElapsed(timelineEntry.message.createdAt, nowIso)
-                    : formatElapsed(
-                        timelineEntry.message.createdAt,
-                        assistantCompletionByItemId.get(timelineEntry.message.id),
-                      ),
-                )}
-              </p>
+              {row.kind === "message" &&
+                row.message.role === "user" &&
+                (() => {
+                  const userImages = row.message.attachments ?? [];
+                  return (
+                    <div className="flex justify-end">
+                      <div className="max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
+                        {userImages.length > 0 && (
+                          <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
+                            {userImages.map((image: NonNullable<TimelineMessage["attachments"]>[number]) => (
+                              <div
+                                key={image.id}
+                                className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
+                              >
+                                {image.previewUrl ? (
+                                  <img
+                                    src={image.previewUrl}
+                                    alt={image.name}
+                                    className="h-full max-h-[220px] w-full cursor-zoom-in object-cover"
+                                    onClick={() =>
+                                      onImageExpand({ src: image.previewUrl!, name: image.name })
+                                    }
+                                  />
+                                ) : (
+                                  <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
+                                    {image.name}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {row.message.text && (
+                          <pre className="whitespace-pre-wrap wrap-break-word font-mono text-sm leading-relaxed text-foreground">
+                            {row.message.text}
+                          </pre>
+                        )}
+                        <p className="mt-1.5 text-right text-[10px] text-muted-foreground/30">
+                          {formatTimestamp(row.message.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+              {row.kind === "message" &&
+                row.message.role === "assistant" &&
+                (() => {
+                  const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
+                  return (
+                    <>
+                      {row.showCompletionDivider && (
+                        <div className="my-3 flex items-center gap-3">
+                          <span className="h-px flex-1 bg-border" />
+                          <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/80">
+                            {completionSummary ? `Response • ${completionSummary}` : "Response"}
+                          </span>
+                          <span className="h-px flex-1 bg-border" />
+                        </div>
+                      )}
+                      <div className="px-1 py-0.5">
+                        <ChatMarkdown text={messageText} />
+                        <p className="mt-1.5 text-[10px] text-muted-foreground/30">
+                          {formatMessageMeta(
+                            row.message.createdAt,
+                            row.message.streaming
+                              ? formatElapsed(row.message.createdAt, nowIso)
+                              : formatElapsed(
+                                  row.message.createdAt,
+                                  assistantCompletionByItemId.get(row.message.id),
+                                ),
+                          )}
+                        </p>
+                      </div>
+                    </>
+                  );
+                })()}
+
+              {row.kind === "working" && (
+                <div className="flex items-center gap-2 py-0.5 pl-1.5">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/30" />
+                  <div className="flex items-center pt-1">
+                    <span className="inline-flex items-center gap-[3px]">
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse" />
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:200ms]" />
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:400ms]" />
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
-          </Fragment>
+          </div>
         );
       })}
-      {isWorking && (
-        <div className="flex items-center gap-2 py-0.5 pl-1.5">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/30" />
-          <div className="flex items-center pt-1">
-            <span className="inline-flex items-center gap-[3px]">
-              <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse" />
-              <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:200ms]" />
-              <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:400ms]" />
-            </span>
-          </div>
-        </div>
-      )}
-      <div ref={messagesEndRef} />
     </div>
   );
 });
