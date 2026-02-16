@@ -1012,6 +1012,7 @@ export default function ChatView() {
       {/* Messages */}
       <div
         ref={messagesScrollRef}
+        data-perf-messages-scroll
         className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
         onScroll={onMessagesScroll}
       >
@@ -1080,6 +1081,7 @@ export default function ChatView() {
               )}
               <textarea
                 ref={textareaRef}
+                data-perf-composer-input
                 className="w-full resize-none bg-transparent text-[14px] leading-relaxed text-foreground placeholder:text-muted-foreground/35 focus:outline-none"
                 rows={2}
                 value={prompt}
@@ -1116,6 +1118,7 @@ export default function ChatView() {
                   className="text-muted-foreground/70 hover:text-foreground/80"
                   size="sm"
                   type="button"
+                  data-perf-runtime-toggle
                   disabled={isSwitchingRuntimeMode}
                   onClick={() =>
                     void handleRuntimeModeChange(
@@ -1314,6 +1317,7 @@ const ChatHeader = memo(function ChatHeader({
         <Button
           size="xs"
           variant="ghost"
+          data-perf-diff-toggle
           className={cn(
             "text-muted-foreground/70 hover:text-foreground/80",
             diffOpen && "bg-accent text-accent-foreground",
@@ -1638,12 +1642,12 @@ const ModelPicker = memo(function ModelPicker(props: {
       value={props.model}
       onValueChange={(value) => (value ? props.onModelChange(value) : undefined)}
     >
-      <SelectTrigger size="sm" variant="ghost">
+      <SelectTrigger size="sm" variant="ghost" data-perf-model-trigger>
         <SelectValue />
       </SelectTrigger>
       <SelectPopup alignItemWithTrigger={false}>
         {MODEL_OPTIONS.map(({ slug, name }) => (
-          <SelectItem key={slug} value={slug}>
+          <SelectItem key={slug} value={slug} data-perf-model-option={slug}>
             {name}
           </SelectItem>
         ))}
@@ -1661,12 +1665,12 @@ const ReasoningEffortPicker = memo(function ReasoningEffortPicker(props: {
       value={props.effort}
       onValueChange={(value) => (value ? props.onEffortChange(value) : undefined)}
     >
-      <SelectTrigger variant="ghost" size="sm">
+      <SelectTrigger variant="ghost" size="sm" data-perf-reasoning-trigger>
         <SelectValue />
       </SelectTrigger>
       <SelectPopup alignItemWithTrigger={false}>
         {REASONING_OPTIONS.map((effort) => (
-          <SelectItem key={effort} value={effort}>
+          <SelectItem key={effort} value={effort} data-perf-reasoning-option={effort}>
             {effort}
             {effort === DEFAULT_REASONING ? " (default)" : ""}
           </SelectItem>
