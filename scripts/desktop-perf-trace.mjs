@@ -162,6 +162,9 @@ function summarizeTrace(tracePath) {
 }
 
 function createMarkdownSummary({ tracePath, donePayload, summary, thresholds }) {
+  const largeThreadRenderStats = Array.isArray(donePayload.interactions?.largeThreadRenderStats)
+    ? donePayload.interactions.largeThreadRenderStats
+    : [];
   const lines = [
     marker,
     "## Desktop Dev Perf Trace",
@@ -177,6 +180,16 @@ function createMarkdownSummary({ tracePath, donePayload, summary, thresholds }) 
     `- Thread clicks: ${donePayload.interactions?.threadClicks ?? "n/a"}`,
     `- Typed chars: ${donePayload.interactions?.typedChars ?? "n/a"}`,
     `- Model selected: ${donePayload.interactions?.selectedModel ?? "n/a"}`,
+    "",
+    "### Large Thread Render",
+    "",
+    "| Thread | Messages | Render (ms) |",
+    "| --- | ---: | ---: |",
+    ...(largeThreadRenderStats.length > 0
+      ? largeThreadRenderStats.map(
+          (stat) => `| ${stat.threadId} | ${stat.messageCount} | ${stat.renderMs} |`,
+        )
+      : ["| n/a | n/a | n/a |"]),
     "",
     "### Input Event Metrics",
     "",

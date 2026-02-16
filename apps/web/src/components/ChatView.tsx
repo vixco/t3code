@@ -1013,6 +1013,8 @@ export default function ChatView() {
       <div
         ref={messagesScrollRef}
         data-perf-messages-scroll
+        data-perf-active-thread-id={activeThread.id}
+        data-perf-message-count={activeThread.messages.length}
         className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
         onScroll={onMessagesScroll}
       >
