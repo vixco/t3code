@@ -11,6 +11,26 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`Timed out waiting for ${label} (${timeoutMs}ms).`));
+    }, timeoutMs);
+    timeout.unref();
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
+
 function waitForDidFinishLoad(
   webContents: WebContents,
   options?: { timeoutMs?: number; label?: string },
@@ -348,6 +368,7 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
   };
 
   let tracePath = PERF_TRACE_OUT_PATH;
+  let isTraceRecording = false;
   const startedAt = Date.now();
   try {
     console.log("[desktop-perf] waiting for initial load");
@@ -368,11 +389,17 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
     fs.mkdirSync(path.dirname(PERF_TRACE_OUT_PATH), { recursive: true });
     console.log("[desktop-perf] starting trace recording");
     await contentTracing.startRecording(traceConfig);
+    isTraceRecording = true;
     console.log("[desktop-perf] running scripted interactions");
     const interactions = await runRendererPerfInteractions(window);
     await delay(300);
     console.log("[desktop-perf] stopping trace recording");
-    tracePath = await contentTracing.stopRecording(PERF_TRACE_OUT_PATH);
+    tracePath = await withTimeout(
+      contentTracing.stopRecording(PERF_TRACE_OUT_PATH),
+      15_000,
+      "trace recording to stop",
+    );
+    isTraceRecording = false;
     const completedAt = Date.now();
 
     console.log(`[desktop-perf] trace recorded at ${tracePath}`);
@@ -395,10 +422,19 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
       );
     }
   } catch (error) {
-    try {
-      tracePath = await contentTracing.stopRecording(PERF_TRACE_OUT_PATH);
-    } catch {
-      // Ignore errors while attempting to stop a recording that may not have started.
+    if (isTraceRecording) {
+      try {
+        tracePath = await withTimeout(
+          contentTracing.stopRecording(PERF_TRACE_OUT_PATH),
+          15_000,
+          "trace recording to stop after failure",
+        );
+      } catch (stopError) {
+        const stopMessage = stopError instanceof Error ? stopError.message : String(stopError);
+        console.error("[desktop-perf] failed to stop trace recording:", stopMessage);
+      } finally {
+        isTraceRecording = false;
+      }
     }
     const message = error instanceof Error ? error.message : String(error);
     console.error("[desktop-perf] automation failed:", message);

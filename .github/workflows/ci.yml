@@ -57,8 +57,12 @@ jobs:
         if: github.event_name != 'pull_request'
         run: xvfb-run -a bun run test:desktop-perf
 
+      - name: Desktop perf trace test (fork PR)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: xvfb-run -a bun run test:desktop-perf
+
       - name: Desktop perf trace test and PR summary
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ github.token }}
         run: xvfb-run -a bun run test:desktop-perf:post
