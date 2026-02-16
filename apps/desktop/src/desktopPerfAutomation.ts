@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { BrowserWindow, contentTracing, type WebContents } from "electron";
@@ -128,9 +129,11 @@ interface PerfPersistedState {
 
 const LARGE_THREAD_EXCHANGE_COUNT = 120;
 const BENCHMARK_THREAD_COUNT = 2;
+const BENCHMARK_TITLE_PREVIEW_LENGTH = 15;
 
 interface PerfThreadStat {
   id: string;
+  title: string;
   messageCount: number;
 }
 
@@ -138,7 +141,36 @@ interface ResolvedPerfSeed {
   source: string;
   resolvedPath: string | null;
   state: unknown;
+  benchmarkThreads: PerfThreadStat[];
+}
+
+interface PerfLargeThreadRenderStat {
+  threadId: string;
+  messageCount: number;
+  firstRenderMs: number;
+  followUpRenderMs: number;
+  followUpMinMs: number;
+  followUpMaxMs: number;
+  followUpSampleCount: number;
+  deltaMs: number;
+  deltaPct: number;
+}
+
+interface RendererPerfInteractions {
+  threadClicks: number;
+  typedChars: number;
+  selectedModel: string | null;
+  largeThreadRenderStats: PerfLargeThreadRenderStat[];
   benchmarkThreadIds: string[];
+}
+
+interface TerminalPerfInteractions {
+  openedByShortcut: boolean;
+  splitCount: number;
+  commandMarker: string;
+  commandEchoObserved: boolean;
+  commandFileTouched: boolean;
+  modifierUsed: "meta" | "control";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -155,19 +187,22 @@ function collectThreadStats(state: unknown): PerfThreadStat[] {
     if (!isRecord(thread)) continue;
     const id = typeof thread.id === "string" ? thread.id : "";
     if (id.length === 0) continue;
+    const title = typeof thread.title === "string" ? thread.title : "";
     const messages = thread.messages;
     const messageCount = Array.isArray(messages) ? messages.length : 0;
-    stats.push({ id, messageCount });
+    stats.push({ id, title, messageCount });
   }
 
   return stats;
 }
 
-function pickBenchmarkThreadIds(stats: PerfThreadStat[]): string[] {
-  return [...stats]
-    .sort((a, b) => b.messageCount - a.messageCount)
-    .slice(0, BENCHMARK_THREAD_COUNT)
-    .map((entry) => entry.id);
+function pickBenchmarkThreads(stats: PerfThreadStat[], benchmarkAll: boolean): PerfThreadStat[] {
+  const sorted = [...stats].sort((a, b) => b.messageCount - a.messageCount);
+  return benchmarkAll ? sorted : sorted.slice(0, BENCHMARK_THREAD_COUNT);
+}
+
+function toTitlePreview(title: string): string {
+  return title.slice(0, BENCHMARK_TITLE_PREVIEW_LENGTH);
 }
 
 function resolvePerfSeed(): ResolvedPerfSeed {
@@ -178,7 +213,7 @@ function resolvePerfSeed(): ResolvedPerfSeed {
       source: "generated",
       resolvedPath: null,
       state: generated,
-      benchmarkThreadIds: pickBenchmarkThreadIds(stats),
+      benchmarkThreads: pickBenchmarkThreads(stats, false),
     };
   }
 
@@ -213,7 +248,7 @@ function resolvePerfSeed(): ResolvedPerfSeed {
     source: "file",
     resolvedPath,
     state: parsed,
-    benchmarkThreadIds: pickBenchmarkThreadIds(stats),
+    benchmarkThreads: pickBenchmarkThreads(stats, true),
   };
 }
 
@@ -378,13 +413,7 @@ async function seedRendererState(window: BrowserWindow, state: unknown): Promise
 async function runRendererPerfInteractions(
   window: BrowserWindow,
   benchmarkThreadIds: string[],
-): Promise<{
-  threadClicks: number;
-  typedChars: number;
-  selectedModel: string | null;
-  largeThreadRenderStats: { threadId: string; messageCount: number; renderMs: number }[];
-  benchmarkThreadIds: string[];
-}> {
+): Promise<RendererPerfInteractions> {
   const script = `
     (async () => {
       const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -409,7 +438,6 @@ async function runRendererPerfInteractions(
         node.click();
         return true;
       };
-
       const getThreadButtons = () =>
         Array.from(document.querySelectorAll("[data-perf-thread-id]")).filter(
           (node) => node instanceof HTMLElement,
@@ -424,12 +452,19 @@ async function runRendererPerfInteractions(
       const renderedThreadIds = threadButtons
         .map((node) => node.getAttribute("data-perf-thread-id"))
         .filter((value) => typeof value === "string" && value.length > 0);
-
-      const clickCount = Math.min(8, threadButtons.length);
-      for (let index = 0; index < clickCount; index += 1) {
-        clickElement(threadButtons[index]);
-        await sleep(80);
-      }
+      const getActiveThreadId = () => {
+        const scroller = document.querySelector("[data-perf-messages-scroll]");
+        if (!(scroller instanceof HTMLElement)) return null;
+        const value = scroller.getAttribute("data-perf-active-thread-id");
+        return typeof value === "string" && value.length > 0 ? value : null;
+      };
+      const waitForActiveThread = async (threadId) => {
+        await waitFor(
+          () => getActiveThreadId() === threadId,
+          15_000,
+          "Timed out waiting for thread activation " + threadId,
+        );
+      };
 
       const measureThreadRender = async (threadId) => {
         const selector = '[data-perf-thread-id="' + threadId + '"]';
@@ -437,17 +472,7 @@ async function runRendererPerfInteractions(
         must(targetButton instanceof HTMLElement, "Thread button missing for " + threadId);
         const start = performance.now();
         clickElement(targetButton);
-        await waitFor(
-          () => {
-            const scroller = document.querySelector("[data-perf-messages-scroll]");
-            return (
-              scroller instanceof HTMLElement &&
-              scroller.getAttribute("data-perf-active-thread-id") === threadId
-            );
-          },
-          15_000,
-          "Timed out waiting for thread activation " + threadId,
-        );
+        await waitForActiveThread(threadId);
         await nextFrame();
         await nextFrame();
         const scroller = document.querySelector("[data-perf-messages-scroll]");
@@ -461,8 +486,16 @@ async function runRendererPerfInteractions(
           renderMs: Number((performance.now() - start).toFixed(2)),
         };
       };
+      const median = (values) => {
+        if (!Array.isArray(values) || values.length === 0) return 0;
+        const sorted = [...values].sort((a, b) => a - b);
+        const middle = Math.floor(sorted.length / 2);
+        if (sorted.length % 2 === 0) {
+          return Number((((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2).toFixed(2));
+        }
+        return Number((sorted[middle] ?? 0).toFixed(2));
+      };
 
-      const largeThreadRenderStats = [];
       const preferredThreadIds = ${JSON.stringify(benchmarkThreadIds)}.filter(
         (value) => typeof value === "string" && value.length > 0,
       );
@@ -473,8 +506,73 @@ async function runRendererPerfInteractions(
         benchmarkThreadIds.push(...renderedThreadIds.slice(0, ${BENCHMARK_THREAD_COUNT}));
       }
 
+      const ensureThreadSwitchTarget = async (threadId) => {
+        if (getActiveThreadId() !== threadId) {
+          return;
+        }
+        const fallbackThreadId = renderedThreadIds.find((id) => id !== threadId);
+        if (!fallbackThreadId) return;
+        const fallbackButton = document.querySelector('[data-perf-thread-id="' + fallbackThreadId + '"]');
+        if (!(fallbackButton instanceof HTMLElement)) return;
+        clickElement(fallbackButton);
+        await waitForActiveThread(fallbackThreadId);
+        await nextFrame();
+      };
+
+      const firstPassByThreadId = new Map();
       for (const threadId of benchmarkThreadIds) {
-        largeThreadRenderStats.push(await measureThreadRender(threadId));
+        await ensureThreadSwitchTarget(threadId);
+        firstPassByThreadId.set(threadId, await measureThreadRender(threadId));
+      }
+
+      const followUpSamplesByThreadId = new Map();
+      for (const threadId of benchmarkThreadIds) {
+        followUpSamplesByThreadId.set(threadId, []);
+      }
+      const followUpPassCount = 3;
+      for (let passIndex = 0; passIndex < followUpPassCount; passIndex += 1) {
+        for (const threadId of benchmarkThreadIds) {
+          await ensureThreadSwitchTarget(threadId);
+          const sample = await measureThreadRender(threadId);
+          const samples = followUpSamplesByThreadId.get(threadId);
+          if (Array.isArray(samples)) {
+            samples.push(sample.renderMs);
+          } else {
+            followUpSamplesByThreadId.set(threadId, [sample.renderMs]);
+          }
+        }
+      }
+
+      const largeThreadRenderStats = benchmarkThreadIds.map((threadId) => {
+        const first = firstPassByThreadId.get(threadId);
+        const followUpSamples = followUpSamplesByThreadId.get(threadId);
+        const followUpValues =
+          Array.isArray(followUpSamples) && followUpSamples.length > 0 ? followUpSamples : [0];
+        const followUpMinMs = Number(Math.min(...followUpValues).toFixed(2));
+        const followUpMaxMs = Number(Math.max(...followUpValues).toFixed(2));
+        const followUpRenderMs = median(followUpValues);
+        const messageCount = first?.messageCount ?? 0;
+        const firstRenderMs = first?.renderMs ?? 0;
+        const deltaMs = Number((followUpRenderMs - firstRenderMs).toFixed(2));
+        const deltaPct =
+          firstRenderMs > 0 ? Number((((followUpRenderMs - firstRenderMs) / firstRenderMs) * 100).toFixed(1)) : 0;
+        return {
+          threadId,
+          messageCount,
+          firstRenderMs,
+          followUpRenderMs,
+          followUpMinMs,
+          followUpMaxMs,
+          followUpSampleCount: followUpValues.length,
+          deltaMs,
+          deltaPct,
+        };
+      });
+
+      const clickCount = Math.min(8, threadButtons.length);
+      for (let index = 0; index < clickCount; index += 1) {
+        clickElement(threadButtons[index]);
+        await sleep(80);
       }
 
       const scroller = document.querySelector("[data-perf-messages-scroll]");
@@ -563,6 +661,188 @@ async function runRendererPerfInteractions(
   return window.webContents.executeJavaScript(script, true);
 }
 
+async function evaluateRenderer<T>(window: BrowserWindow, script: string): Promise<T> {
+  return window.webContents.executeJavaScript(script, true) as Promise<T>;
+}
+
+async function waitForRendererCondition(
+  window: BrowserWindow,
+  script: string,
+  message: string,
+  timeoutMs = 15_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const matched = await evaluateRenderer<boolean>(window, script);
+    if (matched) return;
+    await delay(50);
+  }
+  throw new Error(message);
+}
+
+function sendShortcutKey(
+  webContents: WebContents,
+  keyCode: string,
+  modifier: TerminalPerfInteractions["modifierUsed"],
+): void {
+  webContents.sendInputEvent({
+    type: "keyDown",
+    keyCode,
+    modifiers: [modifier],
+  });
+  webContents.sendInputEvent({
+    type: "keyUp",
+    keyCode,
+    modifiers: [modifier],
+  });
+}
+
+async function sendTextInput(webContents: WebContents, text: string): Promise<void> {
+  for (const character of text) {
+    webContents.sendInputEvent({
+      type: "char",
+      keyCode: character,
+    });
+    await delay(4);
+  }
+}
+
+async function pressEnter(webContents: WebContents): Promise<void> {
+  webContents.sendInputEvent({
+    type: "keyDown",
+    keyCode: "Enter",
+  });
+  webContents.sendInputEvent({
+    type: "keyUp",
+    keyCode: "Enter",
+  });
+  await delay(20);
+}
+
+async function focusActiveTerminalInput(window: BrowserWindow): Promise<void> {
+  await waitForRendererCondition(
+    window,
+    `(() => {
+      const inputs = Array.from(
+        document.querySelectorAll(".thread-terminal-drawer .xterm-helper-textarea"),
+      );
+      const target = inputs[inputs.length - 1];
+      if (!(target instanceof HTMLTextAreaElement)) return false;
+      target.focus();
+      return document.activeElement === target;
+    })()`,
+    "Active terminal input is not focusable.",
+    15_000,
+  );
+}
+
+async function runTerminalPerfInteractions(window: BrowserWindow): Promise<TerminalPerfInteractions> {
+  window.focus();
+  window.webContents.focus();
+
+  const modifier = await evaluateRenderer<TerminalPerfInteractions["modifierUsed"]>(
+    window,
+    `navigator.platform.toLowerCase().includes("mac") ? "meta" : "control"`,
+  );
+  const terminalDrawerSelector = ".thread-terminal-drawer";
+
+  sendShortcutKey(window.webContents, "J", modifier);
+  await waitForRendererCondition(
+    window,
+    `document.querySelector(${JSON.stringify(terminalDrawerSelector)}) instanceof HTMLElement`,
+    "Terminal drawer did not open after shortcut.",
+    15_000,
+  );
+
+  await focusActiveTerminalInput(window);
+
+  let splitCount = 0;
+  for (let splitIndex = 0; splitIndex < 2; splitIndex += 1) {
+    await focusActiveTerminalInput(window);
+    sendShortcutKey(window.webContents, "D", modifier);
+    await waitForRendererCondition(
+      window,
+      `document.querySelectorAll(".thread-terminal-drawer .xterm-helper-textarea").length >= ${
+        splitIndex + 2
+      }`,
+      "Terminal split did not appear.",
+      15_000,
+    );
+    splitCount += 1;
+  }
+
+  const commandMarker = `perfterm${Date.now().toString(36)}`;
+  const markerFilePath = path.join(os.tmpdir(), `t3code-desktop-perf-${commandMarker}`);
+  try {
+    fs.rmSync(markerFilePath, { force: true });
+  } catch {
+    // best effort cleanup for stale marker file
+  }
+
+  await focusActiveTerminalInput(window);
+  await sendTextInput(window.webContents, `echo ${commandMarker}`);
+  await pressEnter(window.webContents);
+  await delay(120);
+
+  await focusActiveTerminalInput(window);
+  await sendTextInput(window.webContents, `touch ${markerFilePath}`);
+  await pressEnter(window.webContents);
+
+  const fileWaitDeadline = Date.now() + 20_000;
+  let commandFileTouched = false;
+  while (Date.now() < fileWaitDeadline) {
+    if (fs.existsSync(markerFilePath)) {
+      commandFileTouched = true;
+      break;
+    }
+    await delay(100);
+  }
+  if (!commandFileTouched) {
+    throw new Error(`Terminal command side effect file not observed at ${markerFilePath}.`);
+  }
+
+  let commandEchoObserved = false;
+  try {
+    await waitForRendererCondition(
+      window,
+      `(() => {
+        const marker = ${JSON.stringify(commandMarker)};
+        const drawer = document.querySelector(${JSON.stringify(terminalDrawerSelector)});
+        if (!(drawer instanceof HTMLElement)) return false;
+        const rawText = [
+          drawer.textContent ?? "",
+          ...Array.from(
+            drawer.querySelectorAll(
+              ".xterm-accessibility, .xterm-accessibility-tree, .xterm-helper-textarea",
+            ),
+          ).map((node) => node.textContent ?? ""),
+        ].join(" ");
+        return rawText.toLowerCase().includes(marker.toLowerCase());
+      })()`,
+      "Terminal command output marker was not found in terminal DOM.",
+      5_000,
+    );
+    commandEchoObserved = true;
+  } catch {
+    commandEchoObserved = false;
+  }
+
+  try {
+    fs.rmSync(markerFilePath, { force: true });
+  } catch {
+    // best effort cleanup after verification
+  }
+
+  return {
+    openedByShortcut: true,
+    splitCount,
+    commandMarker,
+    commandEchoObserved,
+    commandFileTouched,
+    modifierUsed: modifier,
+  };
+}
+
 export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<void> {
   if (!PERF_AUTOMATION_ENABLED) return;
   console.log("[desktop-perf] automation mode enabled");
@@ -613,9 +893,15 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
     const seedLabel =
       seed.source === "file" ? `file (${seed.resolvedPath ?? "unknown"})` : seed.source;
     const benchmarkThreadLabel =
-      seed.benchmarkThreadIds.length > 0 ? seed.benchmarkThreadIds.join(", ") : "none";
+      seed.benchmarkThreads.length > 0
+        ? seed.benchmarkThreads
+            .slice(0, 5)
+            .map((thread) => `${thread.id} (${toTitlePreview(thread.title)})`)
+            .join(", ")
+        : "none";
     console.log(`[desktop-perf] seed source: ${seedLabel}`);
-    console.log(`[desktop-perf] benchmark thread ids: ${benchmarkThreadLabel}`);
+    console.log(`[desktop-perf] benchmark thread count: ${seed.benchmarkThreads.length}`);
+    console.log(`[desktop-perf] benchmark thread preview: ${benchmarkThreadLabel}`);
 
     console.log("[desktop-perf] waiting for initial load");
     await waitForDidFinishLoad(window.webContents, {
@@ -637,7 +923,27 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
     await contentTracing.startRecording(traceConfig);
     isTraceRecording = true;
     console.log("[desktop-perf] running scripted interactions");
-    const interactions = await runRendererPerfInteractions(window, seed.benchmarkThreadIds);
+    const rendererInteractions = await runRendererPerfInteractions(
+      window,
+      seed.benchmarkThreads.map((thread) => thread.id),
+    );
+    console.log("[desktop-perf] running terminal shortcut interactions");
+    const terminalInteractions = await runTerminalPerfInteractions(window);
+    const interactions = {
+      ...rendererInteractions,
+      terminal: terminalInteractions,
+    };
+    const titleByThreadId = new Map(
+      seed.benchmarkThreads.map((thread) => [thread.id, toTitlePreview(thread.title)]),
+    );
+    const interactionsWithTitles = {
+      ...interactions,
+      largeThreadRenderStats: interactions.largeThreadRenderStats.map((stat) => ({
+        ...stat,
+        threadTitleShort:
+          titleByThreadId.get(stat.threadId) ?? stat.threadId.slice(0, BENCHMARK_TITLE_PREVIEW_LENGTH),
+      })),
+    };
     await delay(300);
     console.log("[desktop-perf] stopping trace recording");
     tracePath = await withTimeout(
@@ -657,7 +963,7 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
           {
             status: "ok",
             tracePath,
-            interactions,
+            interactions: interactionsWithTitles,
             seed: {
               source: seed.source,
               path: seed.resolvedPath,
