@@ -206,6 +206,35 @@ function createMarkdownSummary({ tracePath, donePayload, summary, thresholds }) 
   const largeThreadRenderStats = Array.isArray(donePayload.interactions?.largeThreadRenderStats)
     ? donePayload.interactions.largeThreadRenderStats
     : [];
+  const formatThreadRenderRow = (stat) => {
+    const threadShort =
+      typeof stat.threadId === "string" ? stat.threadId.slice(0, 8) : "n/a";
+    const titleShort =
+      typeof stat.threadTitleShort === "string"
+        ? stat.threadTitleShort
+        : typeof stat.threadId === "string"
+          ? stat.threadId.slice(0, 15)
+          : "n/a";
+    const firstRenderMs =
+      typeof stat.firstRenderMs === "number"
+        ? stat.firstRenderMs
+        : typeof stat.renderMs === "number"
+          ? stat.renderMs
+          : "n/a";
+    const followUpRenderMs = typeof stat.followUpRenderMs === "number" ? stat.followUpRenderMs : "n/a";
+    const followUpMinMs = typeof stat.followUpMinMs === "number" ? stat.followUpMinMs : "n/a";
+    const followUpMaxMs = typeof stat.followUpMaxMs === "number" ? stat.followUpMaxMs : "n/a";
+    const followUpSampleCount =
+      typeof stat.followUpSampleCount === "number" ? stat.followUpSampleCount : "n/a";
+    const deltaMs =
+      typeof stat.deltaMs === "number" ? stat.deltaMs : "n/a";
+    const deltaPct = typeof stat.deltaPct === "number" ? stat.deltaPct : "n/a";
+    const followUpRange =
+      typeof followUpMinMs === "number" && typeof followUpMaxMs === "number"
+        ? `${followUpMinMs}-${followUpMaxMs} (${followUpSampleCount}x)`
+        : "n/a";
+    return `| ${threadShort} | ${titleShort} | ${stat.messageCount} | ${firstRenderMs} | ${followUpRenderMs} | ${followUpRange} | ${deltaMs} | ${deltaPct}% |`;
+  };
   const seedSource =
     donePayload.seed?.source === "file"
       ? `file (\`${donePayload.seed?.path ?? "unknown"}\`)`
@@ -226,16 +255,20 @@ function createMarkdownSummary({ tracePath, donePayload, summary, thresholds }) 
     `- Thread clicks: ${donePayload.interactions?.threadClicks ?? "n/a"}`,
     `- Typed chars: ${donePayload.interactions?.typedChars ?? "n/a"}`,
     `- Model selected: ${donePayload.interactions?.selectedModel ?? "n/a"}`,
+    `- Terminal opened by shortcut: ${donePayload.interactions?.terminal?.openedByShortcut ?? "n/a"}`,
+    `- Terminal shortcut modifier: ${donePayload.interactions?.terminal?.modifierUsed ?? "n/a"}`,
+    `- Terminal splits: ${donePayload.interactions?.terminal?.splitCount ?? "n/a"}`,
+    `- Terminal command executed: ${donePayload.interactions?.terminal?.commandFileTouched ?? "n/a"}`,
+    `- Terminal output observed: ${donePayload.interactions?.terminal?.commandEchoObserved ?? "n/a"}`,
+    `- Terminal marker: ${donePayload.interactions?.terminal?.commandMarker ?? "n/a"}`,
     "",
     "### Benchmark Thread Render",
     "",
-    "| Thread | Messages | Render (ms) |",
-    "| --- | ---: | ---: |",
+    "| Thread | Title (15) | Messages | First Nav (ms) | Follow-up Median (ms) | Follow-up Range | Delta (ms) | Delta (%) |",
+    "| --- | --- | ---: | ---: | ---: | --- | ---: | ---: |",
     ...(largeThreadRenderStats.length > 0
-      ? largeThreadRenderStats.map(
-          (stat) => `| ${stat.threadId} | ${stat.messageCount} | ${stat.renderMs} |`,
-        )
-      : ["| n/a | n/a | n/a |"]),
+      ? largeThreadRenderStats.map((stat) => formatThreadRenderRow(stat))
+      : ["| n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |"]),
     "",
     "### Input Event Metrics",
     "",
