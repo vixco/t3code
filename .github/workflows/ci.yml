@@ -6,6 +6,10 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   quality:
     name: Lint, Typecheck, Test, Build
@@ -48,3 +52,13 @@ jobs:
         run: |
           test -f apps/desktop/dist-electron/preload.js
           grep -nE "desktopBridge|getWsUrl|PICK_FOLDER_CHANNEL|wsUrl" apps/desktop/dist-electron/preload.js
+
+      - name: Desktop perf trace test
+        if: github.event_name != 'pull_request'
+        run: xvfb-run -a bun run test:desktop-perf
+
+      - name: Desktop perf trace test and PR summary
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: xvfb-run -a bun run test:desktop-perf:post
