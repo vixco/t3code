@@ -1,3 +1,4 @@
+// oxlint-disable no-await-in-loop
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -197,7 +198,7 @@ function collectThreadStats(state: unknown): PerfThreadStat[] {
 }
 
 function pickBenchmarkThreads(stats: PerfThreadStat[], benchmarkAll: boolean): PerfThreadStat[] {
-  const sorted = [...stats].sort((a, b) => b.messageCount - a.messageCount);
+  const sorted = stats.toSorted((a, b) => b.messageCount - a.messageCount);
   return benchmarkAll ? sorted : sorted.slice(0, BENCHMARK_THREAD_COUNT);
 }
 
@@ -230,7 +231,9 @@ function resolvePerfSeed(): ResolvedPerfSeed {
     parsed = JSON.parse(fs.readFileSync(resolvedPath, "utf8"));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse perf seed JSON at ${resolvedPath}: ${message}`);
+    throw new Error(`Failed to parse perf seed JSON at ${resolvedPath}: ${message}`, {
+      cause: error,
+    });
   }
 
   if (!isRecord(parsed)) {
@@ -736,7 +739,9 @@ async function focusActiveTerminalInput(window: BrowserWindow): Promise<void> {
   );
 }
 
-async function runTerminalPerfInteractions(window: BrowserWindow): Promise<TerminalPerfInteractions> {
+async function runTerminalPerfInteractions(
+  window: BrowserWindow,
+): Promise<TerminalPerfInteractions> {
   window.focus();
   window.webContents.focus();
 
@@ -938,10 +943,12 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
     );
     const interactionsWithTitles = {
       ...interactions,
+      // oxlint-disable-next-line oxc/no-map-spread
       largeThreadRenderStats: interactions.largeThreadRenderStats.map((stat) => ({
         ...stat,
         threadTitleShort:
-          titleByThreadId.get(stat.threadId) ?? stat.threadId.slice(0, BENCHMARK_TITLE_PREVIEW_LENGTH),
+          titleByThreadId.get(stat.threadId) ??
+          stat.threadId.slice(0, BENCHMARK_TITLE_PREVIEW_LENGTH),
       })),
     };
     await delay(300);
