@@ -204,6 +204,7 @@ describe("shouldRunOptionalRendererPerfInteractions", () => {
   it("defaults to enabled outside CI and disabled in CI", () => {
     expect(shouldRunOptionalRendererPerfInteractions({ CI: "false" })).toBe(true);
     expect(shouldRunOptionalRendererPerfInteractions({ CI: "true" })).toBe(false);
+    expect(shouldRunOptionalRendererPerfInteractions({ CI: "ON" })).toBe(false);
   });
 
   it("supports explicit env overrides", () => {
@@ -216,6 +217,12 @@ describe("shouldRunOptionalRendererPerfInteractions", () => {
     expect(
       shouldRunOptionalRendererPerfInteractions({
         T3CODE_DESKTOP_PERF_RUN_OPTIONAL_RENDERER: "off",
+        CI: "false",
+      }),
+    ).toBe(false);
+    expect(
+      shouldRunOptionalRendererPerfInteractions({
+        T3CODE_DESKTOP_PERF_RUN_OPTIONAL_RENDERER: " FALSE ",
         CI: "false",
       }),
     ).toBe(false);
@@ -234,6 +241,12 @@ describe("shouldRunOptionalRendererPerfInteractions", () => {
         CI: "false",
       }),
     ).toBe(true);
+    expect(
+      shouldRunOptionalRendererPerfInteractions({
+        T3CODE_DESKTOP_PERF_RUN_OPTIONAL_RENDERER: " ",
+        CI: "true",
+      }),
+    ).toBe(false);
   });
 });
 
