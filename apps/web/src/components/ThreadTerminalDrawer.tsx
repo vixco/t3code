@@ -755,9 +755,9 @@ export default function ThreadTerminalDrawer({
           <div className="min-w-0 flex-1">
             {isSplitView ? (
               <div
-                className="grid h-full w-full min-w-0 gap-0 overflow-hidden"
+                className="grid h-full w-full min-w-0 gap-0 overflow-x-auto"
                 style={{
-                  gridTemplateColumns: `repeat(${visibleTerminalIds.length}, minmax(0, 1fr))`,
+                  gridTemplateColumns: `repeat(${visibleTerminalIds.length}, minmax(260px, 1fr))`,
                 }}
               >
                 {visibleTerminalIds.map((terminalId) => (
