@@ -13,6 +13,11 @@ type PerfBenchmarkEnv = {
   CI?: string | undefined;
 };
 
+type BenchmarkSweepToggleEnv = {
+  T3CODE_DESKTOP_PERF_RUN_BENCHMARK_SWEEP?: string | undefined;
+  CI?: string | undefined;
+};
+
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
 const FALSE_VALUES = new Set(["0", "false", "no", "off"]);
 const MAX_BENCHMARK_FOLLOW_UP_PASSES = 5;
@@ -48,6 +53,12 @@ export function shouldRunTerminalPerfInteractions(env: PerfToggleEnv): boolean {
 
 export function shouldRunOptionalRendererPerfInteractions(env: OptionalRendererToggleEnv): boolean {
   const toggleOverride = parseBooleanLike(env.T3CODE_DESKTOP_PERF_RUN_OPTIONAL_RENDERER);
+  if (toggleOverride !== null) return toggleOverride;
+  return !isCiEnvironment(env.CI);
+}
+
+export function shouldRunBenchmarkThreadSweep(env: BenchmarkSweepToggleEnv): boolean {
+  const toggleOverride = parseBooleanLike(env.T3CODE_DESKTOP_PERF_RUN_BENCHMARK_SWEEP);
   if (toggleOverride !== null) return toggleOverride;
   return !isCiEnvironment(env.CI);
 }

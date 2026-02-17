@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   resolveBenchmarkFollowUpPassCount,
+  shouldRunBenchmarkThreadSweep,
   shouldRunOptionalRendererPerfInteractions,
   shouldRunTerminalPerfInteractions,
 } from "./perfConfig";
@@ -202,6 +203,28 @@ describe("shouldRunOptionalRendererPerfInteractions", () => {
     expect(
       shouldRunOptionalRendererPerfInteractions({
         T3CODE_DESKTOP_PERF_RUN_OPTIONAL_RENDERER: "off",
+        CI: "false",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("shouldRunBenchmarkThreadSweep", () => {
+  it("defaults to enabled outside CI and disabled in CI", () => {
+    expect(shouldRunBenchmarkThreadSweep({ CI: "false" })).toBe(true);
+    expect(shouldRunBenchmarkThreadSweep({ CI: "true" })).toBe(false);
+  });
+
+  it("supports explicit env overrides", () => {
+    expect(
+      shouldRunBenchmarkThreadSweep({
+        T3CODE_DESKTOP_PERF_RUN_BENCHMARK_SWEEP: "1",
+        CI: "true",
+      }),
+    ).toBe(true);
+    expect(
+      shouldRunBenchmarkThreadSweep({
+        T3CODE_DESKTOP_PERF_RUN_BENCHMARK_SWEEP: "off",
         CI: "false",
       }),
     ).toBe(false);
