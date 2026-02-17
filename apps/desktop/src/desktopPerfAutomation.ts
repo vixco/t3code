@@ -9,6 +9,7 @@ const PERF_AUTOMATION_ENABLED = process.env.T3CODE_DESKTOP_PERF_AUTOMATION === "
 const PERF_TRACE_OUT_PATH = process.env.T3CODE_DESKTOP_PERF_TRACE_OUT?.trim() ?? "";
 const PERF_DONE_OUT_PATH = process.env.T3CODE_DESKTOP_PERF_DONE_OUT?.trim() ?? "";
 const PERF_SEED_PATH = process.env.T3CODE_DESKTOP_PERF_SEED_PATH?.trim() ?? "";
+const RUN_TERMINAL_INTERACTIONS = process.env.T3CODE_DESKTOP_PERF_RUN_TERMINAL === "1";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -1072,7 +1073,6 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
       const message = rendererError instanceof Error ? rendererError.message : String(rendererError);
       console.warn("[desktop-perf] renderer scripted interactions failed; continuing:", message);
     }
-    console.log("[desktop-perf] running terminal shortcut interactions");
     let terminalInteractions: TerminalPerfInteractions = {
       openedByShortcut: false,
       splitCount: 0,
@@ -1081,11 +1081,16 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
       commandFileTouched: false,
       modifierUsed: process.platform === "darwin" ? "meta" : "control",
     };
-    try {
-      terminalInteractions = await runTerminalPerfInteractions(window);
-    } catch (terminalError) {
-      const message = terminalError instanceof Error ? terminalError.message : String(terminalError);
-      console.warn("[desktop-perf] terminal scripted interactions failed; continuing:", message);
+    if (RUN_TERMINAL_INTERACTIONS) {
+      console.log("[desktop-perf] running terminal shortcut interactions");
+      try {
+        terminalInteractions = await runTerminalPerfInteractions(window);
+      } catch (terminalError) {
+        const message = terminalError instanceof Error ? terminalError.message : String(terminalError);
+        console.warn("[desktop-perf] terminal scripted interactions failed; continuing:", message);
+      }
+    } else {
+      console.log("[desktop-perf] terminal shortcut interactions disabled for this run");
     }
     const interactions = {
       ...rendererInteractions,
