@@ -1530,13 +1530,18 @@ const MessagesTimeline = memo(function MessagesTimeline({
   if (!hasMessages && !isWorking) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground/30">Send a message to start the conversation.</p>
+        <p className="text-sm text-muted-foreground/30">
+          Send a message to start the conversation.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="relative mx-auto max-w-3xl" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
+    <div
+      className="relative mx-auto max-w-3xl"
+      style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+    >
       {virtualRows.map((virtualRow: VirtualItem) => {
         const row = rows[virtualRow.index];
         if (!row) return null;
@@ -1550,68 +1555,72 @@ const MessagesTimeline = memo(function MessagesTimeline({
             style={{ transform: `translateY(${virtualRow.start}px)` }}
           >
             <div className="pb-4">
-              {row.kind === "work" && (() => {
-                const groupId = row.id;
-                const groupedEntries = row.groupedEntries;
-                const isExpanded = expandedWorkGroups[groupId] ?? false;
-                const hasOverflow = groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
-                const visibleEntries =
-                  hasOverflow && !isExpanded
-                    ? groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
-                    : groupedEntries;
-                const hiddenCount = groupedEntries.length - visibleEntries.length;
-                const onlyToolEntries = groupedEntries.every((entry) => entry.tone === "tool");
-                const groupLabel = onlyToolEntries
-                  ? groupedEntries.length === 1
-                    ? "Tool call"
-                    : `Tool calls (${groupedEntries.length})`
-                  : groupedEntries.length === 1
-                    ? "Work event"
-                    : `Work log (${groupedEntries.length})`;
+              {row.kind === "work" &&
+                (() => {
+                  const groupId = row.id;
+                  const groupedEntries = row.groupedEntries;
+                  const isExpanded = expandedWorkGroups[groupId] ?? false;
+                  const hasOverflow = groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
+                  const visibleEntries =
+                    hasOverflow && !isExpanded
+                      ? groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
+                      : groupedEntries;
+                  const hiddenCount = groupedEntries.length - visibleEntries.length;
+                  const onlyToolEntries = groupedEntries.every((entry) => entry.tone === "tool");
+                  const groupLabel = onlyToolEntries
+                    ? groupedEntries.length === 1
+                      ? "Tool call"
+                      : `Tool calls (${groupedEntries.length})`
+                    : groupedEntries.length === 1
+                      ? "Work event"
+                      : `Work log (${groupedEntries.length})`;
 
-                return (
-                  <div className="rounded-lg border border-border/80 bg-card/45 px-3 py-2">
-                    <div className="mb-1.5 flex items-center justify-between gap-3">
-                      <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
-                        {groupLabel}
-                      </p>
-                      {hasOverflow && (
-                        <button
-                          type="button"
-                          className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/55 transition-colors duration-150 hover:text-muted-foreground/80"
-                          onClick={() => onToggleWorkGroup(groupId)}
-                        >
-                          {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
-                        </button>
-                      )}
-                    </div>
-                    <div className="space-y-1">
-                      {visibleEntries.map((workEntry) => (
-                        <div key={`work-row:${workEntry.id}`} className="flex items-start gap-2 py-0.5">
-                          <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/30" />
-                          <p
-                            className={`py-[2px] text-[11px] leading-relaxed ${workToneClass(workEntry.tone)}`}
+                  return (
+                    <div className="rounded-lg border border-border/80 bg-card/45 px-3 py-2">
+                      <div className="mb-1.5 flex items-center justify-between gap-3">
+                        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
+                          {groupLabel}
+                        </p>
+                        {hasOverflow && (
+                          <button
+                            type="button"
+                            className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/55 transition-colors duration-150 hover:text-muted-foreground/80"
+                            onClick={() => onToggleWorkGroup(groupId)}
                           >
-                            {workEntry.detail ? (
-                              <>
-                                {workEntry.label}
-                                <span
-                                  className="ml-1.5 inline-block max-w-[70ch] truncate align-bottom font-mono text-[11px] opacity-60"
-                                  title={workEntry.detail}
-                                >
-                                  {workEntry.detail}
-                                </span>
-                              </>
-                            ) : (
-                              workEntry.label
-                            )}
-                          </p>
-                        </div>
-                      ))}
+                            {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
+                          </button>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        {visibleEntries.map((workEntry) => (
+                          <div
+                            key={`work-row:${workEntry.id}`}
+                            className="flex items-start gap-2 py-0.5"
+                          >
+                            <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/30" />
+                            <p
+                              className={`py-[2px] text-[11px] leading-relaxed ${workToneClass(workEntry.tone)}`}
+                            >
+                              {workEntry.detail ? (
+                                <>
+                                  {workEntry.label}
+                                  <span
+                                    className="ml-1.5 inline-block max-w-[70ch] truncate align-bottom font-mono text-[11px] opacity-60"
+                                    title={workEntry.detail}
+                                  >
+                                    {workEntry.detail}
+                                  </span>
+                                </>
+                              ) : (
+                                workEntry.label
+                              )}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                );
-              })()}
+                  );
+                })()}
 
               {row.kind === "message" &&
                 row.message.role === "user" &&
@@ -1622,27 +1631,29 @@ const MessagesTimeline = memo(function MessagesTimeline({
                       <div className="max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
                         {userImages.length > 0 && (
                           <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
-                            {userImages.map((image: NonNullable<TimelineMessage["attachments"]>[number]) => (
-                              <div
-                                key={image.id}
-                                className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
-                              >
-                                {image.previewUrl ? (
-                                  <img
-                                    src={image.previewUrl}
-                                    alt={image.name}
-                                    className="h-full max-h-[220px] w-full cursor-zoom-in object-cover"
-                                    onClick={() =>
-                                      onImageExpand({ src: image.previewUrl!, name: image.name })
-                                    }
-                                  />
-                                ) : (
-                                  <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
-                                    {image.name}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
+                            {userImages.map(
+                              (image: NonNullable<TimelineMessage["attachments"]>[number]) => (
+                                <div
+                                  key={image.id}
+                                  className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
+                                >
+                                  {image.previewUrl ? (
+                                    <img
+                                      src={image.previewUrl}
+                                      alt={image.name}
+                                      className="h-full max-h-[220px] w-full cursor-zoom-in object-cover"
+                                      onClick={() =>
+                                        onImageExpand({ src: image.previewUrl!, name: image.name })
+                                      }
+                                    />
+                                  ) : (
+                                    <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
+                                      {image.name}
+                                    </div>
+                                  )}
+                                </div>
+                              ),
+                            )}
                           </div>
                         )}
                         {row.message.text && (
@@ -1661,7 +1672,8 @@ const MessagesTimeline = memo(function MessagesTimeline({
               {row.kind === "message" &&
                 row.message.role === "assistant" &&
                 (() => {
-                  const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
+                  const messageText =
+                    row.message.text || (row.message.streaming ? "" : "(empty response)");
                   return (
                     <>
                       {row.showCompletionDivider && (

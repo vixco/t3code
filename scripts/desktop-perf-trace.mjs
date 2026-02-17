@@ -200,10 +200,11 @@ function summarizeTrace(tracePath) {
   };
 }
 
+const pad = (value, width) => String(value).padEnd(width, " ");
+
 function createMarkdownSummary({ tracePath, donePayload, summary, thresholds }) {
   const THREAD_COL_WIDTH = 8;
   const TITLE_COL_WIDTH = 15;
-  const pad = (value, width) => String(value).padEnd(width, " ");
   const largeThreadRenderStats = Array.isArray(donePayload.interactions?.largeThreadRenderStats)
     ? donePayload.interactions.largeThreadRenderStats
     : [];
@@ -332,6 +333,7 @@ async function waitForDoneFile(donePath, child, timeoutMs) {
     if (child.exitCode !== null) {
       throw new Error(`desktop dev process exited early (code ${child.exitCode})`);
     }
+    // oxlint-disable-next-line no-await-in-loop
     await sleep(500);
   }
   throw new Error(`Timed out waiting for done marker at ${donePath}`);
