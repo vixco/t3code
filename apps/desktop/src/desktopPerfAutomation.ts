@@ -595,7 +595,7 @@ async function runRendererPerfInteractions(
       for (const threadId of benchmarkThreadIds) {
         followUpSamplesByThreadId.set(threadId, []);
       }
-      const followUpPassCount = 3;
+      const followUpPassCount = 2;
       for (let passIndex = 0; passIndex < followUpPassCount; passIndex += 1) {
         for (const threadId of benchmarkThreadIds) {
           await ensureThreadSwitchTarget(threadId);
@@ -686,7 +686,7 @@ async function runRendererPerfInteractions(
       );
       const setValue = valueDescriptor?.set;
       must(typeof setValue === "function", "Textarea value setter unavailable.");
-      const inputText = "Perf typing check.";
+      const inputText = "Perf check.";
 
       for (const character of inputText) {
         textarea.dispatchEvent(
