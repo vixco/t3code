@@ -482,13 +482,92 @@ function resolveSeedPath(seedPathArg) {
   return resolved;
 }
 
-function extractProjectsFromSeed(seedPath) {
+function normalizeProjectPathForRuntime(rawCwd, projectName, projectId, projectIndex) {
+  const attemptedPath = path.resolve(rawCwd);
+  try {
+    fs.mkdirSync(attemptedPath, { recursive: true });
+    return attemptedPath;
+  } catch {
+    const safeName = (projectName || projectId || `project-${projectIndex + 1}`)
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48);
+    const fallbackPath = path.join(
+      os.tmpdir(),
+      "t3code-desktop-perf-seed-projects",
+      `${String(projectIndex + 1).padStart(2, "0")}-${safeName || "project"}`,
+    );
+    fs.mkdirSync(fallbackPath, { recursive: true });
+    return fallbackPath;
+  }
+}
+
+function materializeRuntimeSeed(seedPath, artifactsDir) {
   const raw = JSON.parse(fs.readFileSync(seedPath, "utf8"));
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.projects)) {
-    return null;
+    return { runtimeSeedPath: seedPath, projects: null };
   }
 
-  const projects = raw.projects
+  const rewrittenProjects = [];
+  let rewroteAnyProject = false;
+  for (let index = 0; index < raw.projects.length; index += 1) {
+    const project = raw.projects[index];
+    if (!project || typeof project !== "object") {
+      rewrittenProjects.push(project);
+      continue;
+    }
+
+    const id = typeof project.id === "string" ? project.id : "";
+    const name = typeof project.name === "string" ? project.name : "";
+    const cwd = typeof project.cwd === "string" ? project.cwd : "";
+    if (id.length === 0 || name.length === 0 || cwd.length === 0) {
+      rewrittenProjects.push(project);
+      continue;
+    }
+
+    const runtimeCwd = normalizeProjectPathForRuntime(cwd, name, id, index);
+    if (runtimeCwd !== cwd) {
+      rewroteAnyProject = true;
+    }
+    rewrittenProjects.push({
+      ...project,
+      cwd: runtimeCwd,
+    });
+  }
+
+  if (!rewroteAnyProject) {
+    const projects = rewrittenProjects
+      .map((project) => {
+        if (!project || typeof project !== "object") return null;
+        const id = typeof project.id === "string" ? project.id : "";
+        const cwd = typeof project.cwd === "string" ? project.cwd : "";
+        const name = typeof project.name === "string" ? project.name : "";
+        if (id.length === 0 || cwd.length === 0 || name.length === 0) return null;
+        return { id, cwd, name };
+      })
+      .filter((project) => project !== null);
+
+    return {
+      runtimeSeedPath: seedPath,
+      projects: projects.length > 0 ? projects : null,
+    };
+  }
+
+  const runtimeSeedPath = path.join(artifactsDir, "perf-seed.runtime.json");
+  fs.writeFileSync(
+    runtimeSeedPath,
+    JSON.stringify(
+      {
+        ...raw,
+        projects: rewrittenProjects,
+      },
+      null,
+      2,
+    ),
+  );
+
+  const projects = rewrittenProjects
     .map((project) => {
       if (!project || typeof project !== "object") return null;
       const id = typeof project.id === "string" ? project.id : "";
@@ -499,11 +578,10 @@ function extractProjectsFromSeed(seedPath) {
     })
     .filter((project) => project !== null);
 
-  if (projects.length === 0) {
-    return null;
-  }
-
-  return projects;
+  return {
+    runtimeSeedPath,
+    projects: projects.length > 0 ? projects : null,
+  };
 }
 
 async function main() {
@@ -518,7 +596,14 @@ async function main() {
   const logPath = path.join(artifactsDir, "run.log");
   const stateDir = path.join(artifactsDir, "state");
   const seedPath = resolveSeedPath(args.seedPath);
-  const seedProjects = seedPath ? extractProjectsFromSeed(seedPath) : null;
+  const materializedSeed = seedPath ? materializeRuntimeSeed(seedPath, artifactsDir) : null;
+  const runtimeSeedPath = materializedSeed?.runtimeSeedPath ?? seedPath;
+  const seedProjects = materializedSeed?.projects ?? null;
+  if (seedPath && runtimeSeedPath && runtimeSeedPath !== seedPath) {
+    console.log(
+      `[desktop-perf] rewrote seed project cwd paths for runtime compatibility: ${runtimeSeedPath}`,
+    );
+  }
   prepareDesktopPerfState(stateDir, seedProjects ?? defaultPerfProjects);
 
   const maxKeypressAvgMs = Number(process.env.T3CODE_PERF_MAX_KEYPRESS_AVG_MS ?? "12");
@@ -534,7 +619,7 @@ async function main() {
       T3CODE_DESKTOP_PERF_AUTOMATION: "1",
       T3CODE_DESKTOP_PERF_TRACE_OUT: tracePath,
       T3CODE_DESKTOP_PERF_DONE_OUT: donePath,
-      ...(seedPath ? { T3CODE_DESKTOP_PERF_SEED_PATH: seedPath } : {}),
+      ...(runtimeSeedPath ? { T3CODE_DESKTOP_PERF_SEED_PATH: runtimeSeedPath } : {}),
       T3CODE_DEV_INSTANCE: `desktop-perf-${timestamp}`,
       T3CODE_LOG_WS_EVENTS: "0",
       T3CODE_STATE_DIR: stateDir,
