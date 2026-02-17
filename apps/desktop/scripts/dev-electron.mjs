@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
+import path from "node:path";
 
 const port = Number(process.env.ELECTRON_RENDERER_PORT ?? 5173);
 const STARTUP_TIMEOUT_MS = Number(process.env.T3CODE_ELECTRON_STARTUP_TIMEOUT_MS ?? 120_000);
@@ -25,7 +26,7 @@ async function canConnect(host, probePort, timeoutMs = 1_000) {
   });
 }
 
-const f = (path) => path.join(import.meta.dirname, "..", path);
+const f = (p) => path.join(import.meta.dirname, "..", p);
 
 function waitForDesktopBundles(timeoutMs) {
   const FRESHNESS_GRACE_MS = 10_000;
