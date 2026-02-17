@@ -445,12 +445,31 @@ async function runRendererPerfInteractions(
         Array.from(document.querySelectorAll("[data-perf-thread-id]")).filter(
           (node) => node instanceof HTMLElement,
         );
+      const getPersistedStateStats = () => {
+        const key = "t3code:renderer-state:v7";
+        const raw = localStorage.getItem(key);
+        if (!raw) {
+          return { present: false, projects: 0, threads: 0 };
+        }
+        try {
+          const parsed = JSON.parse(raw);
+          const projects = Array.isArray(parsed?.projects) ? parsed.projects.length : 0;
+          const threads = Array.isArray(parsed?.threads) ? parsed.threads.length : 0;
+          return { present: true, projects, threads };
+        } catch {
+          return { present: true, projects: -1, threads: -1 };
+        }
+      };
       const getThreadListDiagnostics = () => ({
+        url: window.location.href,
         readyState: document.readyState,
         threadButtonCount: getThreadButtons().length,
         sidebarButtonCount: document.querySelectorAll("nav button").length,
         noProjectsVisible:
           document.body.textContent?.toLowerCase().includes("no projects yet") ?? false,
+        connectingVisible:
+          document.body.textContent?.toLowerCase().includes("connecting to t3 code server") ?? false,
+        persistedState: getPersistedStateStats(),
       });
       let threadButtons = [];
       let renderedThreadIds = [];
@@ -602,12 +621,34 @@ async function runRendererPerfInteractions(
         await sleep(60);
       }
 
-      await waitFor(
-        () => document.querySelector("[data-perf-composer-input]") instanceof HTMLTextAreaElement,
-        15_000,
-        "Composer textarea missing.",
-      );
-      const textarea = document.querySelector("[data-perf-composer-input]");
+      const getComposerTextarea = () => {
+        const direct = document.querySelector("[data-perf-composer-input]");
+        if (direct instanceof HTMLTextAreaElement) return direct;
+        const fallback = document.querySelector("form textarea");
+        if (fallback instanceof HTMLTextAreaElement) return fallback;
+        return null;
+      };
+      try {
+        await waitFor(
+          () => getComposerTextarea() instanceof HTMLTextAreaElement,
+          15_000,
+          "Composer textarea missing.",
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          "Composer textarea missing. diagnostics=" +
+            JSON.stringify({
+              ...getThreadListDiagnostics(),
+              hasMessagesScroll:
+                document.querySelector("[data-perf-messages-scroll]") instanceof HTMLElement,
+              activeThreadId: getActiveThreadId(),
+            }) +
+            "; cause=" +
+            message,
+        );
+      }
+      const textarea = getComposerTextarea();
       must(textarea instanceof HTMLTextAreaElement, "Composer textarea missing.");
       textarea.focus();
 
@@ -779,12 +820,31 @@ async function runTerminalPerfInteractions(
   const terminalDrawerSelector = ".thread-terminal-drawer";
 
   sendShortcutKey(window.webContents, "J", modifier);
-  await waitForRendererCondition(
-    window,
-    `document.querySelector(${JSON.stringify(terminalDrawerSelector)}) instanceof HTMLElement`,
-    "Terminal drawer did not open after shortcut.",
-    15_000,
-  );
+  try {
+    await waitForRendererCondition(
+      window,
+      `document.querySelector(${JSON.stringify(terminalDrawerSelector)}) instanceof HTMLElement`,
+      "Terminal drawer did not open after shortcut.",
+      15_000,
+    );
+  } catch (error) {
+    const diagnostics = await evaluateRenderer(window, `(() => ({
+      url: window.location.href,
+      readyState: document.readyState,
+      hasDrawer: document.querySelector(${JSON.stringify(terminalDrawerSelector)}) instanceof HTMLElement,
+      terminalButtonCount: document.querySelectorAll("[data-perf-terminal-toggle]").length,
+      activeElementTag: document.activeElement ? document.activeElement.tagName : null,
+      bodyHasConnectText:
+        document.body.textContent?.toLowerCase().includes("connecting to t3 code server") ?? false,
+    }))()`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Terminal drawer did not open after shortcut. diagnostics=${JSON.stringify(diagnostics)}; cause=${message}`,
+      {
+        cause: error,
+      },
+    );
+  }
 
   await focusActiveTerminalInput(window);
 
