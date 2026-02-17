@@ -257,10 +257,65 @@ describe("hydratePersistedState", () => {
     ]);
     expect(hydrated?.threads[0]?.activeTerminalGroupId).toBe(`group-${DEFAULT_THREAD_TERMINAL_ID}`);
   });
+
+  it("hydrates persisted image preview data urls", () => {
+    const payload = JSON.stringify({
+      version: 8,
+      runtimeMode: "full-access",
+      projects: [
+        {
+          id: "p-1",
+          name: "Project",
+          cwd: "/tmp/project",
+          model: "gpt-5.3-codex",
+          expanded: true,
+        },
+      ],
+      threads: [
+        {
+          id: "t-1",
+          codexThreadId: null,
+          projectId: "p-1",
+          title: "Thread",
+          model: "gpt-5.3-codex",
+          terminalOpen: true,
+          terminalHeight: 360,
+          terminalIds: [DEFAULT_THREAD_TERMINAL_ID],
+          activeTerminalId: DEFAULT_THREAD_TERMINAL_ID,
+          messages: [
+            {
+              id: "m-1",
+              role: "user",
+              text: "Here",
+              attachments: [
+                {
+                  type: "image",
+                  id: "img-1",
+                  name: "diagram.png",
+                  mimeType: "image/png",
+                  sizeBytes: 4_096,
+                  previewUrl: "data:image/png;base64,AAAA",
+                },
+              ],
+              createdAt: "2026-02-08T10:00:00.000Z",
+              streaming: false,
+            },
+          ],
+          createdAt: "2026-02-08T10:00:00.000Z",
+        },
+      ],
+      activeThreadId: "t-1",
+    });
+
+    const hydrated = hydratePersistedState(payload, false);
+    expect(hydrated?.threads[0]?.messages[0]?.attachments?.[0]?.previewUrl).toBe(
+      "data:image/png;base64,AAAA",
+    );
+  });
 });
 
 describe("toPersistedState", () => {
-  it("writes v7 payload and strips non-persisted thread fields", () => {
+  it("writes v8 payload and strips non-persisted thread fields", () => {
     const thread: Thread = {
       id: "t-1",
       codexThreadId: "thr_1",
@@ -320,7 +375,7 @@ describe("toPersistedState", () => {
       runtimeMode: "full-access",
     });
 
-    expect(persisted.version).toBe(7);
+    expect(persisted.version).toBe(8);
     expect(persisted.runtimeMode).toBe("full-access");
     expect(persisted.threads[0]).toEqual({
       id: "t-1",
@@ -366,5 +421,70 @@ describe("toPersistedState", () => {
 
     expect("error" in persistedThread).toBe(false);
     expect("session" in persistedThread).toBe(false);
+  });
+
+  it("persists preview data urls for image attachments", () => {
+    const thread: Thread = {
+      id: "t-1",
+      codexThreadId: null,
+      projectId: "p-1",
+      title: "Thread",
+      model: "gpt-5.3-codex",
+      terminalOpen: false,
+      terminalHeight: DEFAULT_THREAD_TERMINAL_HEIGHT,
+      terminalIds: [DEFAULT_THREAD_TERMINAL_ID],
+      runningTerminalIds: [],
+      activeTerminalId: DEFAULT_THREAD_TERMINAL_ID,
+      terminalGroups: [
+        { id: `group-${DEFAULT_THREAD_TERMINAL_ID}`, terminalIds: [DEFAULT_THREAD_TERMINAL_ID] },
+      ],
+      activeTerminalGroupId: `group-${DEFAULT_THREAD_TERMINAL_ID}`,
+      session: null,
+      messages: [
+        {
+          id: "m-1",
+          role: "user",
+          text: "Image",
+          attachments: [
+            {
+              type: "image",
+              id: "img-1",
+              name: "screenshot.png",
+              mimeType: "image/png",
+              sizeBytes: 1_024,
+              previewUrl: "data:image/png;base64,AAAA",
+            },
+          ],
+          createdAt: "2026-02-08T10:00:00.000Z",
+          streaming: false,
+        },
+      ],
+      events: [],
+      error: null,
+      createdAt: "2026-02-08T10:00:00.000Z",
+      branch: null,
+      worktreePath: null,
+    };
+
+    const persisted = toPersistedState({
+      projects: [
+        {
+          id: "p-1",
+          name: "Project",
+          cwd: "/tmp/project",
+          model: "gpt-5.3-codex",
+          expanded: true,
+        },
+      ],
+      threads: [thread],
+      activeThreadId: "t-1",
+      runtimeMode: "full-access",
+    });
+
+    expect(persisted.threads[0]?.messages[0]?.attachments?.[0]).toMatchObject({
+      type: "image",
+      id: "img-1",
+      previewUrl: "data:image/png;base64,AAAA",
+    });
   });
 });

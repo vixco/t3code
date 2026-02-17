@@ -33,6 +33,7 @@ const persistedMessageSchema = z.object({
         name: z.string().min(1),
         mimeType: z.string().min(1),
         sizeBytes: z.number().int().min(1),
+        previewUrl: z.string().min(1).optional(),
       }),
     )
     .optional(),
@@ -103,12 +104,18 @@ export const persistedStateV7Schema = persistedStateBodySchema.extend({
   version: z.literal(7).optional(),
 });
 
+export const persistedStateV8Schema = persistedStateBodySchema.extend({
+  runtimeMode: runtimeModeSchema.default(DEFAULT_RUNTIME_MODE),
+  version: z.literal(8).optional(),
+});
+
 export const persistedStateV5Schema = persistedStateBodySchema.extend({
   runtimeMode: runtimeModeSchema.default(DEFAULT_RUNTIME_MODE),
   version: z.literal(5).optional(),
 });
 
 const persistedStateSchema = z.union([
+  persistedStateV8Schema,
   persistedStateV7Schema,
   persistedStateV6Schema,
   persistedStateV5Schema,
@@ -252,7 +259,14 @@ function hydrateThread(
     activeTerminalGroupId,
     session: null,
     messages: thread.messages.map((message) => {
-      const hydratedAttachments = message.attachments?.map((attachment) => ({ ...attachment }));
+      const hydratedAttachments = message.attachments?.map((attachment) => ({
+        type: attachment.type,
+        id: attachment.id,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.sizeBytes,
+        ...(attachment.previewUrl ? { previewUrl: attachment.previewUrl } : {}),
+      }));
       return {
         id: message.id,
         role: message.role,
@@ -312,9 +326,9 @@ export function hydratePersistedState(
 
 export function toPersistedState(
   state: PersistedStoreSnapshot,
-): z.infer<typeof persistedStateV7Schema> {
+): z.infer<typeof persistedStateV8Schema> {
   return {
-    version: 7,
+    version: 8,
     projects: state.projects,
     threads: state.threads.map((thread) => ({
       id: thread.id,
@@ -340,6 +354,9 @@ export function toPersistedState(
                 name: attachment.name,
                 mimeType: attachment.mimeType,
                 sizeBytes: attachment.sizeBytes,
+                ...(attachment.previewUrl && /^data:image\//i.test(attachment.previewUrl)
+                  ? { previewUrl: attachment.previewUrl }
+                  : {}),
               })),
             }
           : {}),

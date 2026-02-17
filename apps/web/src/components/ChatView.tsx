@@ -823,41 +823,48 @@ export default function ChatView() {
     }
 
     setThreadError(activeThread.id, null);
-    const messageAttachments: ChatImageAttachment[] = composerImagesSnapshot.map((image) => ({
-      type: "image",
-      id: image.id,
-      name: image.name,
-      mimeType: image.mimeType,
-      sizeBytes: image.sizeBytes,
-      previewUrl: image.previewUrl,
-    }));
-    dispatch({
-      type: "PUSH_USER_MESSAGE",
-      threadId: activeThread.id,
-      id: crypto.randomUUID(),
-      text: trimmed,
-      ...(messageAttachments.length > 0 ? { attachments: messageAttachments } : {}),
-    });
     const previousMessages = activeThread.messages;
-    setPrompt("");
-    setComposerImages([]);
-
-    const sessionInfo = await ensureSession(sessionCwd);
-    if (!sessionInfo) return;
-
     setIsSending(true);
     try {
-      const turnAttachments = await Promise.all(
-        composerImagesSnapshot.map(
-          async (image): Promise<ProviderSendTurnAttachmentInput> => ({
+      const preparedImages = await Promise.all(
+        composerImagesSnapshot.map(async (image) => {
+          const attachment: ProviderSendTurnAttachmentInput = {
             type: "image",
             name: image.name,
             mimeType: image.mimeType,
             sizeBytes: image.sizeBytes,
             dataUrl: await readFileAsDataUrl(image.file),
-          }),
-        ),
+          };
+          return { image, attachment };
+        }),
       );
+      const turnAttachments = preparedImages.map(({ attachment }) => attachment);
+      const messageAttachments: ChatImageAttachment[] = preparedImages.map(
+        ({ image, attachment }) => ({
+          type: "image",
+          id: image.id,
+          name: image.name,
+          mimeType: image.mimeType,
+          sizeBytes: image.sizeBytes,
+          previewUrl: attachment.dataUrl,
+        }),
+      );
+      dispatch({
+        type: "PUSH_USER_MESSAGE",
+        threadId: activeThread.id,
+        id: crypto.randomUUID(),
+        text: trimmed,
+        ...(messageAttachments.length > 0 ? { attachments: messageAttachments } : {}),
+      });
+      setPrompt("");
+      setComposerImages((existing) => {
+        revokePreviewUrls(existing);
+        return [];
+      });
+
+      const sessionInfo = await ensureSession(sessionCwd);
+      if (!sessionInfo) return;
+
       const shouldBootstrap =
         previousMessages.length > 0 &&
         (sessionInfo.continuityState === "new" || sessionInfo.continuityState === "fallback_new");
