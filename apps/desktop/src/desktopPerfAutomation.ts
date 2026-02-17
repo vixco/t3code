@@ -6,6 +6,7 @@ import path from "node:path";
 import { BrowserWindow, contentTracing, type WebContents } from "electron";
 import {
   resolveBenchmarkFollowUpPassCount,
+  shouldRunBenchmarkThreadSweep,
   shouldRunOptionalRendererPerfInteractions,
   shouldRunTerminalPerfInteractions,
 } from "./perfConfig";
@@ -25,6 +26,10 @@ const RUN_OPTIONAL_RENDERER_INTERACTIONS = shouldRunOptionalRendererPerfInteract
 const BENCHMARK_FOLLOW_UP_PASS_COUNT = resolveBenchmarkFollowUpPassCount({
   T3CODE_DESKTOP_PERF_BENCHMARK_FOLLOW_UP_PASSES:
     process.env.T3CODE_DESKTOP_PERF_BENCHMARK_FOLLOW_UP_PASSES,
+  CI: process.env.CI,
+});
+const RUN_BENCHMARK_THREAD_SWEEP = shouldRunBenchmarkThreadSweep({
+  T3CODE_DESKTOP_PERF_RUN_BENCHMARK_SWEEP: process.env.T3CODE_DESKTOP_PERF_RUN_BENCHMARK_SWEEP,
   CI: process.env.CI,
 });
 
@@ -575,13 +580,14 @@ async function runRendererPerfInteractions(
         return Number((sorted[middle] ?? 0).toFixed(2));
       };
 
+      const runBenchmarkThreadSweep = ${RUN_BENCHMARK_THREAD_SWEEP};
       const preferredThreadIds = ${JSON.stringify(benchmarkThreadIds)}.filter(
         (value) => typeof value === "string" && value.length > 0,
       );
-      const benchmarkThreadIds = preferredThreadIds.filter((threadId) =>
-        renderedThreadIds.includes(threadId),
-      );
-      if (benchmarkThreadIds.length === 0) {
+      const benchmarkThreadIds = runBenchmarkThreadSweep
+        ? preferredThreadIds.filter((threadId) => renderedThreadIds.includes(threadId))
+        : [];
+      if (runBenchmarkThreadSweep && benchmarkThreadIds.length === 0) {
         benchmarkThreadIds.push(...renderedThreadIds.slice(0, ${BENCHMARK_THREAD_COUNT}));
       }
 
@@ -599,25 +605,27 @@ async function runRendererPerfInteractions(
       };
 
       const firstPassByThreadId = new Map();
-      for (const threadId of benchmarkThreadIds) {
-        await ensureThreadSwitchTarget(threadId);
-        firstPassByThreadId.set(threadId, await measureThreadRender(threadId));
-      }
-
       const followUpSamplesByThreadId = new Map();
-      for (const threadId of benchmarkThreadIds) {
-        followUpSamplesByThreadId.set(threadId, []);
-      }
-      const followUpPassCount = ${BENCHMARK_FOLLOW_UP_PASS_COUNT};
-      for (let passIndex = 0; passIndex < followUpPassCount; passIndex += 1) {
+      if (runBenchmarkThreadSweep) {
         for (const threadId of benchmarkThreadIds) {
           await ensureThreadSwitchTarget(threadId);
-          const sample = await measureThreadRender(threadId);
-          const samples = followUpSamplesByThreadId.get(threadId);
-          if (Array.isArray(samples)) {
-            samples.push(sample.renderMs);
-          } else {
-            followUpSamplesByThreadId.set(threadId, [sample.renderMs]);
+          firstPassByThreadId.set(threadId, await measureThreadRender(threadId));
+        }
+
+        for (const threadId of benchmarkThreadIds) {
+          followUpSamplesByThreadId.set(threadId, []);
+        }
+        const followUpPassCount = ${BENCHMARK_FOLLOW_UP_PASS_COUNT};
+        for (let passIndex = 0; passIndex < followUpPassCount; passIndex += 1) {
+          for (const threadId of benchmarkThreadIds) {
+            await ensureThreadSwitchTarget(threadId);
+            const sample = await measureThreadRender(threadId);
+            const samples = followUpSamplesByThreadId.get(threadId);
+            if (Array.isArray(samples)) {
+              samples.push(sample.renderMs);
+            } else {
+              followUpSamplesByThreadId.set(threadId, [sample.renderMs]);
+            }
           }
         }
       }
