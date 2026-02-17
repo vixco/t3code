@@ -263,6 +263,7 @@ function createMarkdownSummary({ tracePath, donePayload, summary, thresholds }) 
     `- Terminal command executed: ${donePayload.interactions?.terminal?.commandFileTouched ?? "n/a"}`,
     `- Terminal output observed: ${donePayload.interactions?.terminal?.commandEchoObserved ?? "n/a"}`,
     `- Terminal marker: ${donePayload.interactions?.terminal?.commandMarker ?? "n/a"}`,
+    `- Terminal interactions enabled: ${donePayload.config?.runTerminalInteractions ?? "n/a"}`,
     `- Optional renderer interactions enabled: ${donePayload.config?.runOptionalRendererInteractions ?? "n/a"}`,
     `- Benchmark sweep enabled: ${donePayload.config?.runBenchmarkThreadSweep ?? "n/a"}`,
     `- Benchmark follow-up pass count: ${donePayload.config?.benchmarkFollowUpPassCount ?? "n/a"}`,
