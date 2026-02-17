@@ -433,10 +433,10 @@ async function seedRendererState(
     (() => {
       const key = "t3code:renderer-state:v7";
       localStorage.setItem(key, JSON.stringify(${JSON.stringify(state)}));
-      window.location.reload();
     })();
   `;
   await window.webContents.executeJavaScript(script, true);
+  window.webContents.reload();
 }
 
 async function readRendererPersistedThreadCount(window: BrowserWindow): Promise<number> {
