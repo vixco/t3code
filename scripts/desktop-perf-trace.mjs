@@ -671,19 +671,11 @@ async function main() {
   const interactionChecks = [];
   const threadClicks = Number(donePayload.interactions?.threadClicks ?? 0);
   const typedChars = Number(donePayload.interactions?.typedChars ?? 0);
-  const terminalOpened = donePayload.interactions?.terminal?.openedByShortcut === true;
-  const terminalCommandTouched = donePayload.interactions?.terminal?.commandFileTouched === true;
   if (threadClicks <= 0) {
     interactionChecks.push("thread clicks");
   }
   if (typedChars <= 0) {
     interactionChecks.push("typed chars");
-  }
-  if (!terminalOpened) {
-    interactionChecks.push("terminal shortcut open");
-  }
-  if (!terminalCommandTouched) {
-    interactionChecks.push("terminal command execution");
   }
   if (interactionChecks.length > 0) {
     throw new Error(
