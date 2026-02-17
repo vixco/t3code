@@ -122,5 +122,11 @@ describe("shouldRunTerminalPerfInteractions", () => {
         CI: "false",
       }),
     ).toBe(true);
+    expect(
+      shouldRunTerminalPerfInteractions({
+        T3CODE_DESKTOP_PERF_RUN_TERMINAL: "unknown",
+        CI: "maybe",
+      }),
+    ).toBe(true);
   });
 });

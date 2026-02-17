@@ -21,6 +21,10 @@ function isCiEnvironment(value: string | undefined): boolean {
 /**
  * Controls whether desktop perf automation should include terminal shortcuts.
  *
+ * Accepted explicit env values:
+ * - truthy: "1", "true", "yes", "on"
+ * - falsy: "0", "false", "no", "off"
+ *
  * Defaults to "on" for local/dev runs, but "off" in CI unless explicitly enabled.
  * This keeps CI perf checks focused on renderer responsiveness while avoiding
  * flaky PTY-dependent interactions in ephemeral Linux runners.
