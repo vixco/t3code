@@ -1003,6 +1003,15 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
     console.log(`[desktop-perf] done marker path: ${PERF_DONE_OUT_PATH}`);
   }
   console.log(`[desktop-perf] trace path: ${PERF_TRACE_OUT_PATH}`);
+  console.log(
+    "[desktop-perf] interaction toggles:",
+    JSON.stringify({
+      terminal: RUN_TERMINAL_INTERACTIONS,
+      optionalRenderer: RUN_OPTIONAL_RENDERER_INTERACTIONS,
+      benchmarkSweep: RUN_BENCHMARK_THREAD_SWEEP,
+      benchmarkFollowUpPasses: BENCHMARK_FOLLOW_UP_PASS_COUNT,
+    }),
+  );
 
   if (PERF_TRACE_OUT_PATH.length === 0) {
     const error = new Error("T3CODE_DESKTOP_PERF_TRACE_OUT is required for perf automation.");
@@ -1164,6 +1173,12 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
               source: seed.source,
               path: seed.resolvedPath,
             },
+            config: {
+              runTerminalInteractions: RUN_TERMINAL_INTERACTIONS,
+              runOptionalRendererInteractions: RUN_OPTIONAL_RENDERER_INTERACTIONS,
+              runBenchmarkThreadSweep: RUN_BENCHMARK_THREAD_SWEEP,
+              benchmarkFollowUpPassCount: BENCHMARK_FOLLOW_UP_PASS_COUNT,
+            },
             startedAt: new Date(startedAt).toISOString(),
             completedAt: new Date(completedAt).toISOString(),
             durationMs: completedAt - startedAt,
@@ -1206,6 +1221,12 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
                     source: seed.source,
                     path: seed.resolvedPath,
                   },
+            config: {
+              runTerminalInteractions: RUN_TERMINAL_INTERACTIONS,
+              runOptionalRendererInteractions: RUN_OPTIONAL_RENDERER_INTERACTIONS,
+              runBenchmarkThreadSweep: RUN_BENCHMARK_THREAD_SWEEP,
+              benchmarkFollowUpPassCount: BENCHMARK_FOLLOW_UP_PASS_COUNT,
+            },
             startedAt: new Date(startedAt).toISOString(),
             completedAt: new Date().toISOString(),
           },
