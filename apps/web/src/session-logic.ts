@@ -579,7 +579,7 @@ export function deriveTurnDiffSummaries(events: ProviderEvent[]): TurnDiffSummar
 
     if (event.method === "turn/diff/updated") {
       const diff = normalizeDetail(asString(asObject(event.payload)?.diff));
-      if (diff) summary.unifiedDiff = diff;
+      if (diff) summary.unifiedDiff ??= diff;
       continue;
     }
 
@@ -588,7 +588,7 @@ export function deriveTurnDiffSummaries(events: ProviderEvent[]): TurnDiffSummar
       if (asString(item?.type) === "agentMessage") {
         const itemId = normalizeDetail(asString(item?.id));
         if (itemId) {
-          summary.assistantMessageId = itemId;
+          summary.assistantMessageId ??= itemId;
         }
       }
     }
