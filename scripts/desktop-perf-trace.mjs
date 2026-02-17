@@ -322,6 +322,12 @@ function createMarkdownSummary({ tracePath, donePayload, summary, thresholds }) 
     `- Benchmark sweep enabled: ${donePayload.config?.runBenchmarkThreadSweep ?? "n/a"}`,
     `- Benchmark follow-up pass count: ${donePayload.config?.benchmarkFollowUpPassCount ?? "n/a"}`,
     "",
+    "### Threshold Config",
+    "",
+    `- keypress avg max: ${thresholds.maxKeypressAvgMs}ms`,
+    `- keypress max max: ${thresholds.maxKeypressMaxMs}ms`,
+    `- long EventDispatch spike cap: ${thresholds.maxLongDispatchCount}`,
+    "",
     "### Benchmark Thread Render",
     "",
     "| Thread | Title (15) | Messages | First Nav (ms) | Follow-up Median (ms) | Follow-up Range | Delta (ms) | Delta (%) |",
@@ -684,6 +690,9 @@ async function main() {
     value: process.env.T3CODE_PERF_TIMEOUT_MS,
     fallback: 420000,
   });
+  console.log(
+    `[desktop-perf] thresholds: keypressAvg<=${maxKeypressAvgMs}ms, keypressMax<=${maxKeypressMaxMs}ms, longDispatch<=${maxLongDispatchCount}, timeoutMs=${timeoutMs}`,
+  );
 
   const child = spawn("bun", ["dev:desktop"], {
     cwd: repoRoot,
