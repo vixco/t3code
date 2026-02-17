@@ -4,17 +4,16 @@ import os from "node:os";
 import path from "node:path";
 
 import { BrowserWindow, contentTracing, type WebContents } from "electron";
+import { shouldRunTerminalPerfInteractions } from "./perfConfig";
 
 const PERF_AUTOMATION_ENABLED = process.env.T3CODE_DESKTOP_PERF_AUTOMATION === "1";
 const PERF_TRACE_OUT_PATH = process.env.T3CODE_DESKTOP_PERF_TRACE_OUT?.trim() ?? "";
 const PERF_DONE_OUT_PATH = process.env.T3CODE_DESKTOP_PERF_DONE_OUT?.trim() ?? "";
 const PERF_SEED_PATH = process.env.T3CODE_DESKTOP_PERF_SEED_PATH?.trim() ?? "";
-const RUN_TERMINAL_INTERACTIONS = (() => {
-  const raw = process.env.T3CODE_DESKTOP_PERF_RUN_TERMINAL?.trim().toLowerCase();
-  if (raw === "1" || raw === "true") return true;
-  if (raw === "0" || raw === "false") return false;
-  return process.env.CI !== "true";
-})();
+const RUN_TERMINAL_INTERACTIONS = shouldRunTerminalPerfInteractions({
+  T3CODE_DESKTOP_PERF_RUN_TERMINAL: process.env.T3CODE_DESKTOP_PERF_RUN_TERMINAL,
+  CI: process.env.CI,
+});
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
