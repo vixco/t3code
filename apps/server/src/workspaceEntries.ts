@@ -54,7 +54,7 @@ function basenameOf(input: string): string {
 }
 
 function normalizeQuery(input: string): string {
-  return input.trim().replace(/^[@./]+/, "").toLowerCase();
+  return input.trim().replace(/^@?(\.\/)?/, "").toLowerCase();
 }
 
 function scoreEntry(entry: ProjectEntry, query: string): number {
