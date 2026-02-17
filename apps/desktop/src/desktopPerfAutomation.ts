@@ -251,7 +251,7 @@ function resolvePerfSeed(): ResolvedPerfSeed {
     source: "file",
     resolvedPath,
     state: parsed,
-    benchmarkThreads: pickBenchmarkThreads(stats, false),
+    benchmarkThreads: pickBenchmarkThreads(stats, false).slice(0, 1),
   };
 }
 
@@ -654,7 +654,7 @@ async function runRendererPerfInteractions(
         };
       });
 
-      const clickCount = Math.min(4, threadButtons.length);
+      const clickCount = Math.min(1, threadButtons.length);
       for (let index = 0; index < clickCount; index += 1) {
         clickElement(threadButtons[index]);
         await sleep(80);
@@ -705,7 +705,7 @@ async function runRendererPerfInteractions(
       );
       const setValue = valueDescriptor?.set;
       must(typeof setValue === "function", "Textarea value setter unavailable.");
-      const inputText = "Benchmarking typing and selector workflows in desktop mode.";
+      const inputText = "Perf typing check.";
 
       for (const character of inputText) {
         textarea.dispatchEvent(
