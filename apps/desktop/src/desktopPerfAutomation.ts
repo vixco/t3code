@@ -899,15 +899,21 @@ async function runTerminalPerfInteractions(
   for (let splitIndex = 0; splitIndex < 2; splitIndex += 1) {
     await focusActiveTerminalInput(window);
     sendShortcutKey(window.webContents, "D", modifier);
-    await waitForRendererCondition(
-      window,
-      `document.querySelectorAll(".thread-terminal-drawer .xterm-helper-textarea").length >= ${
-        splitIndex + 2
-      }`,
-      "Terminal split did not appear.",
-      15_000,
-    );
-    splitCount += 1;
+    try {
+      await waitForRendererCondition(
+        window,
+        `document.querySelectorAll(".thread-terminal-drawer .xterm-helper-textarea").length >= ${
+          splitIndex + 2
+        }`,
+        "Terminal split did not appear.",
+        15_000,
+      );
+      splitCount += 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[desktop-perf] terminal split attempt ${splitIndex + 1} failed: ${message}`);
+      break;
+    }
   }
 
   const commandMarker = `perfterm${Date.now().toString(36)}`;
