@@ -161,6 +161,15 @@ describe("resolveBenchmarkFollowUpPassCount", () => {
     ).toBe(0);
   });
 
+  it("caps explicit overrides to avoid runaway workload", () => {
+    expect(
+      resolveBenchmarkFollowUpPassCount({
+        T3CODE_DESKTOP_PERF_BENCHMARK_FOLLOW_UP_PASSES: "99",
+        CI: "false",
+      }),
+    ).toBe(5);
+  });
+
   it("ignores malformed overrides and falls back to CI default", () => {
     expect(
       resolveBenchmarkFollowUpPassCount({

@@ -15,6 +15,7 @@ type PerfBenchmarkEnv = {
 
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
 const FALSE_VALUES = new Set(["0", "false", "no", "off"]);
+const MAX_BENCHMARK_FOLLOW_UP_PASSES = 5;
 
 function parseBooleanLike(value: string | undefined): boolean | null {
   const normalized = value?.trim().toLowerCase();
@@ -54,7 +55,8 @@ export function shouldRunOptionalRendererPerfInteractions(env: OptionalRendererT
 export function resolveBenchmarkFollowUpPassCount(env: PerfBenchmarkEnv): number {
   const raw = env.T3CODE_DESKTOP_PERF_BENCHMARK_FOLLOW_UP_PASSES?.trim();
   if (raw && /^\d+$/.test(raw)) {
-    return Number.parseInt(raw, 10);
+    const parsed = Number.parseInt(raw, 10);
+    return Math.min(parsed, MAX_BENCHMARK_FOLLOW_UP_PASSES);
   }
   return isCiEnvironment(env.CI) ? 0 : 1;
 }
