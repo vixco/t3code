@@ -101,6 +101,8 @@ const initialState: AppState = {
 function readPersistedState(): AppState {
   if (typeof window === "undefined") return initialState;
 
+  const perfDebugEnabled = window.localStorage.getItem("t3code:perf-debug") === "1";
+
   try {
     const rawCurrent = window.localStorage.getItem(PERSISTED_STATE_KEY);
     const legacyValues = LEGACY_PERSISTED_STATE_KEYS.map((key) => window.localStorage.getItem(key));
@@ -109,7 +111,21 @@ function readPersistedState(): AppState {
     if (!raw) return initialState;
     const rawCodethingV1 = window.localStorage.getItem("codething:renderer-state:v1");
     const hydrated = hydratePersistedState(raw, !rawCurrent && raw === rawCodethingV1);
-    if (!hydrated) return initialState;
+    if (!hydrated) {
+      if (perfDebugEnabled) {
+        console.info("[perf-debug] hydratePersistedState returned null", {
+          rawLength: raw.length,
+          hasCurrent: rawCurrent !== null,
+        });
+      }
+      return initialState;
+    }
+    if (perfDebugEnabled) {
+      console.info("[perf-debug] hydrated persisted state", {
+        projects: hydrated.projects.length,
+        threads: hydrated.threads.length,
+      });
+    }
 
     const threads = hydrated.threads.map((thread) => normalizeThreadTerminals(thread));
     const activeThreadId = threads.some((thread) => thread.id === hydrated.activeThreadId)
@@ -118,6 +134,9 @@ function readPersistedState(): AppState {
 
     return { ...hydrated, threads, activeThreadId, diffOpen: false };
   } catch {
+    if (perfDebugEnabled) {
+      console.info("[perf-debug] readPersistedState threw; falling back to initial state");
+    }
     return initialState;
   }
 }
@@ -126,6 +145,14 @@ function persistState(state: AppState): void {
   if (typeof window === "undefined") return;
 
   try {
+    const perfDebugEnabled = window.localStorage.getItem("t3code:perf-debug") === "1";
+    if (perfDebugEnabled) {
+      console.info("[perf-debug] persistState", {
+        projects: state.projects.length,
+        threads: state.threads.length,
+        activeThreadId: state.activeThreadId,
+      });
+    }
     window.localStorage.setItem(PERSISTED_STATE_KEY, JSON.stringify(toPersistedState(state)));
     for (const legacyKey of LEGACY_PERSISTED_STATE_KEYS) {
       window.localStorage.removeItem(legacyKey);
