@@ -113,6 +113,15 @@ export function buildPromptInput(text: string, taggedPaths: string[]): string {
   return `${trimmedPrompt}\n\n${tagBlock}`;
 }
 
+export function extractTaggedPaths(text: string): { cleanText: string; paths: string[] } {
+  const paths: string[] = [];
+  const cleanText = text.replace(/@(\S+)/g, (_match, path: string) => {
+    paths.push(path);
+    return "";
+  });
+  return { cleanText: cleanText.replace(/\s{2,}/g, " ").trim(), paths };
+}
+
 export function buildUserVisiblePrompt(text: string, taggedPaths: string[]): string {
   const trimmedPrompt = text.trim();
   const normalizedPaths = dedupePaths(taggedPaths);

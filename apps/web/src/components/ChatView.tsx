@@ -33,7 +33,10 @@ import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
 import { isElectron } from "../env";
 import { buildBootstrapInput } from "../historyBootstrap";
 import {
+  buildPromptInput,
+  buildUserVisiblePrompt,
   detectComposerTrigger,
+  extractTaggedPaths,
   replaceTextRange,
 } from "../composer-logic";
 import {
@@ -908,6 +911,9 @@ export default function ChatView() {
     const trimmed = prompt.trim();
     if (!trimmed && composerImages.length === 0) return;
     if (!activeProject) return;
+    const { cleanText, paths: taggedPaths } = extractTaggedPaths(trimmed);
+    const userVisibleText = buildUserVisiblePrompt(cleanText, taggedPaths);
+    const modelText = buildPromptInput(cleanText, taggedPaths);
     const composerImagesSnapshot = [...composerImages];
 
     // On first message: lock in branch + create worktree if needed.
@@ -970,7 +976,7 @@ export default function ChatView() {
       type: "PUSH_USER_MESSAGE",
       threadId: activeThread.id,
       id: crypto.randomUUID(),
-      text: trimmed,
+      text: userVisibleText,
       ...(messageAttachments.length > 0 ? { attachments: messageAttachments } : {}),
     });
     const previousMessages = activeThread.messages;
@@ -998,14 +1004,14 @@ export default function ChatView() {
       const shouldBootstrap =
         previousMessages.length > 0 &&
         (sessionInfo.continuityState === "new" || sessionInfo.continuityState === "fallback_new");
-      const latestPromptForBootstrap = trimmed || IMAGE_ONLY_BOOTSTRAP_PROMPT;
+      const latestPromptForBootstrap = modelText || IMAGE_ONLY_BOOTSTRAP_PROMPT;
       const input = shouldBootstrap
         ? buildBootstrapInput(
             previousMessages,
             latestPromptForBootstrap,
             PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
           ).text
-        : trimmed || undefined;
+        : modelText || undefined;
       await api.providers.sendTurn({
         sessionId: sessionInfo.sessionId,
         ...(input ? { input } : {}),
@@ -1247,7 +1253,7 @@ export default function ChatView() {
             <div className="relative px-4 pt-4 pb-2">
               {composerMenuOpen && (
                 <div className="absolute inset-x-0 bottom-full z-20 mb-2 px-1">
-                  <Command>
+                  <Command autoHighlight={false}>
                     <div
                       ref={composerMenuRef}
                       className="overflow-hidden rounded-xl border border-border/80 bg-popover/96 shadow-lg/8 backdrop-blur-xs"
