@@ -20,6 +20,7 @@ type BenchmarkSweepToggleEnv = {
 
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
 const FALSE_VALUES = new Set(["0", "false", "no", "off"]);
+// Avoid pathological workload from misconfigured env overrides in CI.
 const MAX_BENCHMARK_FOLLOW_UP_PASSES = 5;
 
 function parseBooleanLike(value: string | undefined): boolean | null {
@@ -59,10 +60,20 @@ export function shouldRunOptionalRendererPerfInteractions(env: OptionalRendererT
   return resolveBooleanToggle(env.T3CODE_DESKTOP_PERF_RUN_OPTIONAL_RENDERER, env.CI);
 }
 
+/**
+ * Controls high-variance benchmark thread switching loops.
+ * Defaults off in CI, on locally, with explicit env override support.
+ */
 export function shouldRunBenchmarkThreadSweep(env: BenchmarkSweepToggleEnv): boolean {
   return resolveBooleanToggle(env.T3CODE_DESKTOP_PERF_RUN_BENCHMARK_SWEEP, env.CI);
 }
 
+/**
+ * Resolves number of follow-up benchmark passes.
+ * - explicit non-negative integer env override wins
+ * - value is capped for safety
+ * - otherwise defaults to 0 in CI and 1 locally
+ */
 export function resolveBenchmarkFollowUpPassCount(env: PerfBenchmarkEnv): number {
   const raw = env.T3CODE_DESKTOP_PERF_BENCHMARK_FOLLOW_UP_PASSES?.trim();
   if (raw && /^\d+$/.test(raw)) {
