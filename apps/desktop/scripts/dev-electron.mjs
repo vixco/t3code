@@ -25,13 +25,15 @@ async function canConnect(host, probePort, timeoutMs = 1_000) {
   });
 }
 
+const f = (path) => path.join(import.meta.dirname, "..", path);
+
 function waitForDesktopBundles(timeoutMs) {
   const FRESHNESS_GRACE_MS = 10_000;
   const startedAt = Date.now();
   const bundleFiles = [
-    { path: "dist-electron/main.mjs", requireFresh: true },
-    { path: "dist-electron/preload.cjs", requireFresh: true },
-    { path: "../server/dist/index.mjs", requireFresh: false },
+    { path: f("dist-electron/main.mjs"), requireFresh: true },
+    { path: f("dist-electron/preload.cjs"), requireFresh: true },
+    { path: f("../server/dist/index.mjs"), requireFresh: false },
   ];
 
   return new Promise((resolve, reject) => {
