@@ -14,6 +14,7 @@ const RUN_TERMINAL_INTERACTIONS = shouldRunTerminalPerfInteractions({
   T3CODE_DESKTOP_PERF_RUN_TERMINAL: process.env.T3CODE_DESKTOP_PERF_RUN_TERMINAL,
   CI: process.env.CI,
 });
+const BENCHMARK_FOLLOW_UP_PASS_COUNT = process.env.CI === "true" ? 0 : 1;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -595,7 +596,7 @@ async function runRendererPerfInteractions(
       for (const threadId of benchmarkThreadIds) {
         followUpSamplesByThreadId.set(threadId, []);
       }
-      const followUpPassCount = 1;
+      const followUpPassCount = ${BENCHMARK_FOLLOW_UP_PASS_COUNT};
       for (let passIndex = 0; passIndex < followUpPassCount; passIndex += 1) {
         for (const threadId of benchmarkThreadIds) {
           await ensureThreadSwitchTarget(threadId);
@@ -612,13 +613,15 @@ async function runRendererPerfInteractions(
       const largeThreadRenderStats = benchmarkThreadIds.map((threadId) => {
         const first = firstPassByThreadId.get(threadId);
         const followUpSamples = followUpSamplesByThreadId.get(threadId);
+        const messageCount = first?.messageCount ?? 0;
+        const firstRenderMs = first?.renderMs ?? 0;
         const followUpValues =
-          Array.isArray(followUpSamples) && followUpSamples.length > 0 ? followUpSamples : [0];
+          Array.isArray(followUpSamples) && followUpSamples.length > 0
+            ? followUpSamples
+            : [firstRenderMs];
         const followUpMinMs = Number(Math.min(...followUpValues).toFixed(2));
         const followUpMaxMs = Number(Math.max(...followUpValues).toFixed(2));
         const followUpRenderMs = median(followUpValues);
-        const messageCount = first?.messageCount ?? 0;
-        const firstRenderMs = first?.renderMs ?? 0;
         const deltaMs = Number((followUpRenderMs - firstRenderMs).toFixed(2));
         const deltaPct =
           firstRenderMs > 0 ? Number((((followUpRenderMs - firstRenderMs) / firstRenderMs) * 100).toFixed(1)) : 0;
@@ -629,7 +632,7 @@ async function runRendererPerfInteractions(
           followUpRenderMs,
           followUpMinMs,
           followUpMaxMs,
-          followUpSampleCount: followUpValues.length,
+          followUpSampleCount: Array.isArray(followUpSamples) ? followUpSamples.length : 0,
           deltaMs,
           deltaPct,
         };
