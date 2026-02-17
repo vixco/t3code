@@ -145,6 +145,7 @@ describe("resolveBenchmarkFollowUpPassCount", () => {
   it("defaults to 0 in CI", () => {
     expect(resolveBenchmarkFollowUpPassCount({ CI: "true" })).toBe(0);
     expect(resolveBenchmarkFollowUpPassCount({ CI: "on" })).toBe(0);
+    expect(resolveBenchmarkFollowUpPassCount({ CI: " yes " })).toBe(0);
   });
 
   it("accepts explicit non-negative integer overrides", () => {
@@ -163,6 +164,18 @@ describe("resolveBenchmarkFollowUpPassCount", () => {
   });
 
   it("caps explicit overrides to avoid runaway workload", () => {
+    expect(
+      resolveBenchmarkFollowUpPassCount({
+        T3CODE_DESKTOP_PERF_BENCHMARK_FOLLOW_UP_PASSES: "5",
+        CI: "false",
+      }),
+    ).toBe(5);
+    expect(
+      resolveBenchmarkFollowUpPassCount({
+        T3CODE_DESKTOP_PERF_BENCHMARK_FOLLOW_UP_PASSES: "6",
+        CI: "false",
+      }),
+    ).toBe(5);
     expect(
       resolveBenchmarkFollowUpPassCount({
         T3CODE_DESKTOP_PERF_BENCHMARK_FOLLOW_UP_PASSES: "99",
