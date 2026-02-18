@@ -5,7 +5,7 @@ import ChatView from "../components/ChatView";
 import { useStore } from "../store";
 
 function ChatThreadRouteView() {
-  const { state } = useStore();
+  const { state, dispatch } = useStore();
   const navigate = useNavigate();
   const { threadId } = Route.useParams();
   const threadExists = threadId ? state.threads.some((thread) => thread.id === threadId) : false;
@@ -24,7 +24,9 @@ function ChatThreadRouteView() {
       void navigate({ to: "/", replace: true });
       return;
     }
-  }, [navigate, state.threadsHydrated, threadExists, threadId]);
+
+    dispatch({ type: "VISIT_THREAD", threadId });
+  }, [dispatch, navigate, state.threadsHydrated, threadExists, threadId]);
 
   if (!threadId || !state.threadsHydrated || !threadExists) {
     return null;

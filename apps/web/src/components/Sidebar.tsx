@@ -310,18 +310,18 @@ export default function Sidebar() {
 
       const shouldNavigateToFallback = routeThreadId === threadId;
       const fallbackThreadId = state.threads.find((entry) => entry.id !== threadId)?.id ?? null;
-      dispatch({ type: "DELETE_THREAD", threadId });
       if (shouldNavigateToFallback) {
         if (fallbackThreadId) {
-          void navigate({
+          await navigate({
             to: "/$threadId",
             params: { threadId: fallbackThreadId },
             replace: true,
           });
         } else {
-          void navigate({ to: "/", replace: true });
+          await navigate({ to: "/", replace: true });
         }
       }
+      dispatch({ type: "DELETE_THREAD", threadId });
 
       if (!shouldDeleteWorktree || !orphanedWorktreePath || !threadProject) {
         return;

@@ -67,7 +67,8 @@ type Action =
       worktreePath: string | null;
     }
   | { type: "SET_RUNTIME_MODE"; mode: RuntimeMode }
-  | { type: "DELETE_THREAD"; threadId: string };
+  | { type: "DELETE_THREAD"; threadId: string }
+  | { type: "VISIT_THREAD"; threadId: string };
 
 // ── State ────────────────────────────────────────────────────────────
 
@@ -847,6 +848,15 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         runtimeMode: action.mode,
+      };
+
+    case "VISIT_THREAD":
+      return {
+        ...state,
+        threads: updateThread(state.threads, action.threadId, (t) => ({
+          ...t,
+          lastVisitedAt: new Date().toISOString(),
+        })),
       };
 
     case "DELETE_THREAD":

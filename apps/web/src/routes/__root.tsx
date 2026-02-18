@@ -8,6 +8,7 @@ import { useNativeApi } from "../hooks/useNativeApi";
 import { invalidateGitQueries } from "../lib/gitReactQuery";
 import { DEFAULT_MODEL } from "../model-logic";
 import { useStore } from "../store";
+import { createThread } from "../threadFactory";
 import { onServerWelcome } from "../wsNativeApi";
 
 export const Route = createRootRouteWithContext<{
@@ -50,6 +51,8 @@ function EventRouter() {
     strict: false,
     select: (params) => params.threadId,
   });
+  const activeThreadIdRef = useRef(activeThreadId);
+  activeThreadIdRef.current = activeThreadId;
 
   useEffect(() => {
     if (!api) return;
@@ -57,15 +60,14 @@ function EventRouter() {
       if (event.method === "turn/completed") {
         void invalidateGitQueries(queryClient);
       }
-      if (!activeThreadId) return;
       dispatch({
         type: "APPLY_EVENT",
         event,
         activeAssistantItemRef,
-        activeThreadId,
+        activeThreadId: activeThreadIdRef.current,
       });
     });
-  }, [activeThreadId, api, dispatch, queryClient]);
+  }, [api, dispatch, queryClient]);
 
   useEffect(() => {
     if (!api) return;
@@ -114,6 +116,10 @@ function AutoProjectBootstrap() {
           expanded: true,
           scripts: [],
         },
+      });
+      dispatch({
+        type: "ADD_THREAD",
+        thread: createThread(projectId),
       });
       dispatch({ type: "SET_THREADS_HYDRATED", hydrated: true });
     });
