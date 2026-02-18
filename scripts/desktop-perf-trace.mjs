@@ -5,6 +5,7 @@ import path from "node:path";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const marker = "<!-- desktop-perf-trace-summary -->";
+const defaultSeedRelativePath = "apps/desktop/scripts/perf-seed.json";
 const defaultPerfProjects = [
   {
     id: "perf-project-1",
@@ -277,7 +278,40 @@ function summarizeTrace(tracePath) {
 
 const pad = (value, width) => String(value).padEnd(width, " ");
 
-function createMarkdownSummary({ tracePath, donePayload, summary, thresholds }) {
+function evaluateThresholds(summary, thresholds) {
+  const checks = [
+    {
+      label: "keypress avg",
+      actual: summary.keypress.avgMs,
+      threshold: thresholds.maxKeypressAvgMs,
+      ok: summary.keypress.avgMs <= thresholds.maxKeypressAvgMs,
+    },
+    {
+      label: "keypress max",
+      actual: summary.keypress.maxMs,
+      threshold: thresholds.maxKeypressMaxMs,
+      ok: summary.keypress.maxMs <= thresholds.maxKeypressMaxMs,
+    },
+    {
+      label: "long EventDispatch spikes",
+      actual: summary.longDispatchCount,
+      threshold: thresholds.maxLongDispatchCount,
+      ok: summary.longDispatchCount <= thresholds.maxLongDispatchCount,
+    },
+  ];
+
+  const failures = checks
+    .filter((check) => !check.ok)
+    .map((check) => `${check.label} ${check.actual} exceeds ${check.threshold}`);
+
+  return {
+    checks,
+    failures,
+    passed: failures.length === 0,
+  };
+}
+
+function createMarkdownSummary({ tracePath, donePayload, summary, thresholds, thresholdCheck }) {
   const THREAD_COL_WIDTH = 8;
   const TITLE_COL_WIDTH = 15;
   const largeThreadRenderStats = Array.isArray(donePayload.interactions?.largeThreadRenderStats)
@@ -312,31 +346,55 @@ function createMarkdownSummary({ tracePath, donePayload, summary, thresholds }) 
         : "n/a";
     return `| ${pad(threadShort, THREAD_COL_WIDTH)} | ${pad(titleShort, TITLE_COL_WIDTH)} | ${stat.messageCount} | ${firstRenderMs} | ${followUpRenderMs} | ${followUpRange} | ${deltaMs} | ${deltaPct}% |`;
   };
+  const benchmarkThreadIds = Array.isArray(donePayload.interactions?.benchmarkThreadIds)
+    ? donePayload.interactions.benchmarkThreadIds
+    : [];
   const seedSource =
     donePayload.seed?.source === "file"
       ? `file (\`${donePayload.seed?.path ?? "unknown"}\`)`
       : (donePayload.seed?.source ?? "generated");
+  const topDurationHead = summary.topDurationEvents.slice(0, 3);
+  const topDurationSummary =
+    topDurationHead.length === 0
+      ? "none"
+      : topDurationHead.map((entry) => `${entry.name} (${entry.totalMs}ms total)`).join(", ");
+  const actionLines = thresholdCheck.passed
+    ? [
+        "- Action: no threshold regressions detected in this run.",
+        "- Follow-up: keep watching top duration events for drift in future traces.",
+      ]
+    : [
+        "- Action: threshold regression detected; profile and optimize the failing path(s) before merge.",
+        ...thresholdCheck.failures.map((failure) => `- Failing metric: ${failure}`),
+      ];
   const lines = [
     marker,
     "## Desktop Dev Perf Trace",
+    "",
+    `- Status: ${thresholdCheck.passed ? "PASS" : "FAIL"}`,
+    `- Thresholds: keypress avg ${summary.keypress.avgMs}/${thresholds.maxKeypressAvgMs}ms, keypress max ${summary.keypress.maxMs}/${thresholds.maxKeypressMaxMs}ms, long dispatch spikes ${summary.longDispatchCount}/${thresholds.maxLongDispatchCount}`,
+    `- Coverage: seed=${seedSource}; projects=${donePayload.seed?.projectCount ?? "n/a"}; threads=${donePayload.seed?.threadCount ?? "n/a"}; benchmark threads exercised=${benchmarkThreadIds.length}`,
+    `- Interaction volume: thread clicks=${donePayload.interactions?.threadClicks ?? "n/a"}, typed chars=${donePayload.interactions?.typedChars ?? "n/a"}`,
+    `- Top hotspots: ${topDurationSummary}`,
+    "",
+    ...actionLines,
+    "",
+    "<details>",
+    "<summary>Detailed trace metrics and diagnostics</summary>",
+    "",
+    "### Run Metadata",
     "",
     `- Command: \`bun dev:desktop\``,
     `- Trace: \`${tracePath}\``,
     `- Started: ${donePayload.startedAt ?? "n/a"}`,
     `- Completed: ${donePayload.completedAt ?? "n/a"}`,
     `- Duration: ${donePayload.durationMs ?? "n/a"} ms`,
-    `- Seed source: ${seedSource}`,
     "",
     "### Interaction Run",
     "",
     `- Thread clicks: ${donePayload.interactions?.threadClicks ?? "n/a"}`,
     `- Typed chars: ${donePayload.interactions?.typedChars ?? "n/a"}`,
-    `- Benchmark thread ids exercised: ${
-      Array.isArray(donePayload.interactions?.benchmarkThreadIds) &&
-      donePayload.interactions.benchmarkThreadIds.length > 0
-        ? donePayload.interactions.benchmarkThreadIds.join(", ")
-        : "none"
-    }`,
+    `- Benchmark thread ids exercised: ${benchmarkThreadIds.length > 0 ? benchmarkThreadIds.join(", ") : "none"}`,
     `- Model selected: ${donePayload.interactions?.selectedModel ?? "n/a"}`,
     `- Terminal opened by shortcut: ${donePayload.interactions?.terminal?.openedByShortcut ?? "n/a"}`,
     `- Terminal shortcut modifier: ${donePayload.interactions?.terminal?.modifierUsed ?? "n/a"}`,
@@ -380,15 +438,10 @@ function createMarkdownSummary({ tracePath, donePayload, summary, thresholds }) 
     "",
     "### Threshold Check",
     "",
-    `- keypress avg <= ${thresholds.maxKeypressAvgMs}ms: ${
-      summary.keypress.avgMs <= thresholds.maxKeypressAvgMs ? "pass" : "fail"
-    }`,
-    `- keypress max <= ${thresholds.maxKeypressMaxMs}ms: ${
-      summary.keypress.maxMs <= thresholds.maxKeypressMaxMs ? "pass" : "fail"
-    }`,
-    `- long dispatch spikes <= ${thresholds.maxLongDispatchCount}: ${
-      summary.longDispatchCount <= thresholds.maxLongDispatchCount ? "pass" : "fail"
-    }`,
+    ...thresholdCheck.checks.map(
+      (check) =>
+        `- ${check.label} <= ${check.threshold}: ${check.ok ? "pass" : `fail (actual ${check.actual})`}`,
+    ),
     "",
   ];
 
@@ -410,7 +463,7 @@ function createMarkdownSummary({ tracePath, donePayload, summary, thresholds }) 
       `- ${entry.name}: total=${entry.totalMs}ms, avg=${entry.avgMs}ms, max=${entry.maxMs}ms, count=${entry.count}`,
     );
   }
-  lines.push("");
+  lines.push("", "</details>", "");
 
   return lines.join("\n");
 }
@@ -554,14 +607,13 @@ function prepareDesktopPerfState(stateDir, perfProjects = defaultPerfProjects) {
 function resolveSeedPath(seedPathArg) {
   const candidateArg = seedPathArg ?? process.env.T3CODE_DESKTOP_PERF_SEED_PATH ?? "";
   if (!candidateArg || candidateArg.trim().length === 0) {
-    const defaultCandidates = ["scripts/perf-seed.json", "apps/desktop/scripts/perf-seed.json"];
-    for (const candidate of defaultCandidates) {
-      const resolved = path.resolve(repoRoot, candidate);
-      if (fs.existsSync(resolved)) {
-        return resolved;
-      }
+    const resolvedDefault = path.resolve(repoRoot, defaultSeedRelativePath);
+    if (!fs.existsSync(resolvedDefault)) {
+      throw new Error(
+        `Default desktop perf seed file is required but missing: ${resolvedDefault}. Pass --seed to override.`,
+      );
     }
-    return null;
+    return resolvedDefault;
   }
 
   const resolved = path.isAbsolute(candidateArg)
@@ -730,6 +782,10 @@ async function main() {
       T3CODE_DESKTOP_PERF_TRACE_OUT: tracePath,
       T3CODE_DESKTOP_PERF_DONE_OUT: donePath,
       ...(runtimeSeedPath ? { T3CODE_DESKTOP_PERF_SEED_PATH: runtimeSeedPath } : {}),
+      T3CODE_DESKTOP_PERF_RUN_BENCHMARK_SWEEP:
+        process.env.T3CODE_DESKTOP_PERF_RUN_BENCHMARK_SWEEP ?? "1",
+      T3CODE_DESKTOP_PERF_BENCHMARK_FOLLOW_UP_PASSES:
+        process.env.T3CODE_DESKTOP_PERF_BENCHMARK_FOLLOW_UP_PASSES ?? "1",
       T3CODE_DEV_INSTANCE: `desktop-perf-${timestamp}`,
       T3CODE_LOG_WS_EVENTS: "0",
       T3CODE_STATE_DIR: stateDir,
@@ -794,6 +850,11 @@ async function main() {
   }
 
   const summary = summarizeTrace(tracePath);
+  const thresholdCheck = evaluateThresholds(summary, {
+    maxKeypressAvgMs,
+    maxKeypressMaxMs,
+    maxLongDispatchCount,
+  });
   const markdown = createMarkdownSummary({
     tracePath,
     donePayload,
@@ -803,35 +864,19 @@ async function main() {
       maxKeypressMaxMs,
       maxLongDispatchCount,
     },
+    thresholdCheck,
   });
   fs.writeFileSync(summaryPath, markdown);
 
   console.log(`\nPerf summary written to ${summaryPath}\n`);
   console.log(markdown);
 
-  const thresholdFailures = [];
-  if (summary.keypress.avgMs > maxKeypressAvgMs) {
-    thresholdFailures.push(
-      `keypress avg ${summary.keypress.avgMs}ms exceeds ${maxKeypressAvgMs}ms`,
-    );
-  }
-  if (summary.keypress.maxMs > maxKeypressMaxMs) {
-    thresholdFailures.push(
-      `keypress max ${summary.keypress.maxMs}ms exceeds ${maxKeypressMaxMs}ms`,
-    );
-  }
-  if (summary.longDispatchCount > maxLongDispatchCount) {
-    thresholdFailures.push(
-      `long EventDispatch count ${summary.longDispatchCount} exceeds ${maxLongDispatchCount}`,
-    );
-  }
-
   if (args.postPr) {
     postSummaryToPr(summaryPath);
   }
 
-  if (thresholdFailures.length > 0) {
-    throw new Error(`Performance thresholds failed:\n- ${thresholdFailures.join("\n- ")}`);
+  if (!thresholdCheck.passed) {
+    throw new Error(`Performance thresholds failed:\n- ${thresholdCheck.failures.join("\n- ")}`);
   }
 }
 

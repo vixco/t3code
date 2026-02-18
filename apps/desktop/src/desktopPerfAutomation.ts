@@ -165,6 +165,8 @@ interface ResolvedPerfSeed {
   source: string;
   resolvedPath: string | null;
   state: unknown;
+  projectCount: number;
+  threadCount: number;
   benchmarkThreads: PerfThreadStat[];
 }
 
@@ -237,6 +239,8 @@ function resolvePerfSeed(): ResolvedPerfSeed {
       source: "generated",
       resolvedPath: null,
       state: generated,
+      projectCount: generated.projects.length,
+      threadCount: generated.threads.length,
       benchmarkThreads: pickBenchmarkThreads(stats, false),
     };
   }
@@ -274,7 +278,9 @@ function resolvePerfSeed(): ResolvedPerfSeed {
     source: "file",
     resolvedPath,
     state: parsed,
-    benchmarkThreads: pickBenchmarkThreads(stats, false).slice(0, 1),
+    projectCount: parsed.projects.length,
+    threadCount: parsed.threads.length,
+    benchmarkThreads: pickBenchmarkThreads(stats, false),
   };
 }
 
@@ -1172,6 +1178,9 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
             seed: {
               source: seed.source,
               path: seed.resolvedPath,
+              projectCount: seed.projectCount,
+              threadCount: seed.threadCount,
+              benchmarkThreadCount: seed.benchmarkThreads.length,
             },
             config: {
               runTerminalInteractions: RUN_TERMINAL_INTERACTIONS,
@@ -1220,6 +1229,9 @@ export async function runDesktopPerfAutomation(window: BrowserWindow): Promise<v
                 : {
                     source: seed.source,
                     path: seed.resolvedPath,
+                    projectCount: seed.projectCount,
+                    threadCount: seed.threadCount,
+                    benchmarkThreadCount: seed.benchmarkThreads.length,
                   },
             config: {
               runTerminalInteractions: RUN_TERMINAL_INTERACTIONS,
