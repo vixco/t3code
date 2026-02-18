@@ -1246,12 +1246,12 @@ export default function ChatView() {
       const next = replaceTextRange(promptRef.current, rangeStart, rangeEnd, replacement);
       promptRef.current = next.text;
       setPrompt(next.text);
+      setComposerCursor(next.cursor);
       window.requestAnimationFrame(() => {
         const textarea = textareaRef.current;
         if (!textarea) return;
         textarea.focus();
         textarea.setSelectionRange(next.cursor, next.cursor);
-        setComposerCursor(next.cursor);
       });
     },
     [],
