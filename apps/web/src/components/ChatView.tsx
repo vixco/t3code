@@ -721,8 +721,9 @@ export default function ChatView() {
           threadId: activeThreadId,
           terminalId: targetTerminalId,
           cwd: targetCwd,
-          cols: SCRIPT_TERMINAL_COLS,
-          rows: SCRIPT_TERMINAL_ROWS,
+          ...(shouldCreateNewTerminal
+            ? { cols: SCRIPT_TERMINAL_COLS, rows: SCRIPT_TERMINAL_ROWS }
+            : {}),
         });
         await api.terminal.write({
           threadId: activeThreadId,

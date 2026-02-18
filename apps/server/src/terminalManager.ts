@@ -301,8 +301,8 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
           exitCode: null,
           exitSignal: null,
           updatedAt: new Date().toISOString(),
-          cols: input.cols,
-          rows: input.rows,
+          cols: input.cols ?? 80,
+          rows: input.rows ?? 24,
           process: null,
           unsubscribeData: null,
           unsubscribeExit: null,
@@ -328,10 +328,12 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
         return this.snapshot(existing);
       }
 
-      if (existing.cols !== input.cols || existing.rows !== input.rows) {
-        existing.cols = input.cols;
-        existing.rows = input.rows;
-        existing.process.resize(input.cols, input.rows);
+      const effectiveCols = input.cols ?? existing.cols;
+      const effectiveRows = input.rows ?? existing.rows;
+      if (existing.cols !== effectiveCols || existing.rows !== effectiveRows) {
+        existing.cols = effectiveCols;
+        existing.rows = effectiveRows;
+        existing.process.resize(effectiveCols, effectiveRows);
         existing.updatedAt = new Date().toISOString();
       }
 
@@ -398,8 +400,8 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
           exitCode: null,
           exitSignal: null,
           updatedAt: new Date().toISOString(),
-          cols: input.cols,
-          rows: input.rows,
+          cols: input.cols ?? 80,
+          rows: input.rows ?? 24,
           process: null,
           unsubscribeData: null,
           unsubscribeExit: null,
@@ -469,8 +471,8 @@ export class TerminalManager extends EventEmitter<TerminalManagerEvents> {
 
     session.status = "starting";
     session.cwd = input.cwd;
-    session.cols = input.cols;
-    session.rows = input.rows;
+    session.cols = input.cols ?? session.cols;
+    session.rows = input.rows ?? session.rows;
     session.exitCode = null;
     session.exitSignal = null;
     session.hasRunningSubprocess = false;
