@@ -7,5 +7,6 @@ export * from "./model";
 export * from "./ws";
 export * from "./keybindings";
 export * from "./server";
+export * from "./rendererState";
 export * from "./project";
 export * from "./git";

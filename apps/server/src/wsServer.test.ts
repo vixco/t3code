@@ -249,6 +249,7 @@ describe("WebSocket Server", () => {
     return createServer({
       port: 0,
       cwd: options.cwd ?? "/test/project",
+      stateDir,
       ...(options.devUrl ? { devUrl: options.devUrl } : {}),
       ...(options.authToken ? { authToken: options.authToken } : {}),
       projectRegistry: new ProjectRegistry(stateDir),
@@ -339,6 +340,71 @@ describe("WebSocket Server", () => {
     expect(response.result).toEqual({
       cwd: "/my/workspace",
       keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+    });
+  });
+
+  it("reads and writes renderer state over websocket", async () => {
+    const stateDir = makeTempDir("t3code-ws-renderer-state-");
+    server = createTestServer({ cwd: "/my/workspace", stateDir });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const empty = await sendRequest(ws, WS_METHODS.serverGetRendererState);
+    expect(empty.error).toBeUndefined();
+    expect(empty.result).toBeNull();
+
+    const setResponse = await sendRequest(ws, WS_METHODS.serverSetRendererState, {
+      stateJson: '{"version":8,"projects":[],"threads":[],"activeThreadId":null,"runtimeMode":"full-access"}',
+    });
+    expect(setResponse.error).toBeUndefined();
+
+    const loaded = await sendRequest(ws, WS_METHODS.serverGetRendererState);
+    expect(loaded.error).toBeUndefined();
+    expect(loaded.result).toMatchObject({
+      stateJson:
+        '{"version":8,"projects":[],"threads":[],"activeThreadId":null,"runtimeMode":"full-access"}',
+      updatedAt: expect.any(String),
+    });
+  });
+
+  it("persists renderer state across server restarts", async () => {
+    const stateDir = makeTempDir("t3code-ws-renderer-state-restart-");
+    server = createTestServer({ cwd: "/workspace", stateDir });
+    await server.start();
+    const firstAddr = server.httpServer.address();
+    const firstPort = typeof firstAddr === "object" && firstAddr !== null ? firstAddr.port : 0;
+
+    const firstWs = await connectWs(firstPort);
+    connections.push(firstWs);
+    await waitForMessage(firstWs);
+    const setResponse = await sendRequest(firstWs, WS_METHODS.serverSetRendererState, {
+      stateJson:
+        '{"version":8,"projects":[{"id":"project-1","name":"project","cwd":"/workspace","model":"gpt-5.3-codex","expanded":true}],"threads":[],"activeThreadId":null,"runtimeMode":"full-access"}',
+    });
+    expect(setResponse.error).toBeUndefined();
+
+    await server.stop();
+    server = createTestServer({ cwd: "/workspace", stateDir });
+    await server.start();
+    const secondAddr = server.httpServer.address();
+    const secondPort =
+      typeof secondAddr === "object" && secondAddr !== null ? secondAddr.port : 0;
+
+    const secondWs = await connectWs(secondPort);
+    connections.push(secondWs);
+    await waitForMessage(secondWs);
+
+    const loaded = await sendRequest(secondWs, WS_METHODS.serverGetRendererState);
+    expect(loaded.error).toBeUndefined();
+    expect(loaded.result).toMatchObject({
+      stateJson:
+        '{"version":8,"projects":[{"id":"project-1","name":"project","cwd":"/workspace","model":"gpt-5.3-codex","expanded":true}],"threads":[],"activeThreadId":null,"runtimeMode":"full-access"}',
+      updatedAt: expect.any(String),
     });
   });
 

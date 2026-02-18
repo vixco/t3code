@@ -32,6 +32,7 @@ import type {
   ProjectRemoveInput,
 } from "./project";
 import type { ServerConfig } from "./server";
+import type { RendererStateSetInput, RendererStateSnapshot } from "./rendererState";
 import type {
   TerminalClearInput,
   TerminalCloseInput,
@@ -116,5 +117,7 @@ export interface NativeApi {
   };
   server: {
     getConfig: () => Promise<ServerConfig>;
+    getRendererState: () => Promise<RendererStateSnapshot | null>;
+    setRendererState: (input: RendererStateSetInput) => Promise<void>;
   };
 }

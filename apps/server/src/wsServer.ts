@@ -32,6 +32,7 @@ import {
 } from "./git";
 import { TerminalManager } from "./terminalManager";
 import { loadResolvedKeybindingsConfig } from "./keybindings";
+import { RendererStateStore } from "./rendererStateStore";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -52,12 +53,14 @@ export interface ServerOptions {
   port: number;
   host?: string | undefined;
   cwd: string;
+  stateDir?: string | undefined;
   staticDir?: string | undefined;
   devUrl?: string | undefined;
   logWebSocketEvents?: boolean | undefined;
   projectRegistry?: ProjectRegistry | undefined;
   gitManager?: GitManager | undefined;
   terminalManager?: TerminalManager | undefined;
+  rendererStateStore?: RendererStateStore | undefined;
   authToken?: string | undefined;
 }
 
@@ -74,18 +77,21 @@ export function createServer(options: ServerOptions) {
     port,
     host,
     cwd,
+    stateDir,
     staticDir,
     devUrl,
     logWebSocketEvents: explicitLogWsEvents,
     projectRegistry: providedRegistry,
     gitManager: providedGitManager,
     terminalManager: providedTerminalManager,
+    rendererStateStore: providedRendererStateStore,
     authToken,
   } = options;
   const providerManager = new ProviderManager();
   const terminalManager = providedTerminalManager ?? new TerminalManager();
-  const projectRegistry =
-    providedRegistry ?? new ProjectRegistry(path.join(os.homedir(), ".t3", "userdata"));
+  const resolvedStateDir = stateDir ?? path.join(os.homedir(), ".t3", "userdata");
+  const projectRegistry = providedRegistry ?? new ProjectRegistry(resolvedStateDir);
+  const rendererStateStore = providedRendererStateStore ?? new RendererStateStore(resolvedStateDir);
   const gitManager = providedGitManager ?? new GitManager();
   const clients = new Set<WebSocket>();
   const logger = createLogger("ws");
@@ -417,6 +423,13 @@ export function createServer(options: ServerOptions) {
           keybindings: keybindingsConfig,
         };
 
+      case WS_METHODS.serverGetRendererState:
+        return rendererStateStore.get();
+
+      case WS_METHODS.serverSetRendererState:
+        await rendererStateStore.set(request.params as never);
+        return undefined;
+
       default:
         throw new Error(`Unknown method: ${request.method}`);
     }
@@ -446,6 +459,7 @@ export function createServer(options: ServerOptions) {
     providerManager.stopAll();
     providerManager.dispose();
     terminalManager.dispose();
+    await rendererStateStore.close();
 
     for (const client of clients) {
       client.close();

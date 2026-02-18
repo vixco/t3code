@@ -141,6 +141,8 @@ export function createWsNativeApi(): NativeApi {
     },
     server: {
       getConfig: () => transport.request(WS_METHODS.serverGetConfig),
+      getRendererState: () => transport.request(WS_METHODS.serverGetRendererState),
+      setRendererState: (input) => transport.request(WS_METHODS.serverSetRendererState, input),
     },
   };
 

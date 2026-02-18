@@ -40,6 +40,8 @@ export const WS_METHODS = {
 
   // Server meta
   serverGetConfig: "server.getConfig",
+  serverGetRendererState: "server.getRendererState",
+  serverSetRendererState: "server.setRendererState",
 } as const;
 
 // ── Push Event Channels ──────────────────────────────────────────────

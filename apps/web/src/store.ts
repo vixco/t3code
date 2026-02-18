@@ -5,13 +5,19 @@ import {
   createElement,
   useContext,
   useEffect,
+  useRef,
   useReducer,
+  useState,
 } from "react";
 
 import type { ProviderEvent, ProviderSession, TerminalEvent } from "@t3tools/contracts";
 import { resolveModelSlug } from "./model-logic";
-import { hydratePersistedState, toPersistedState } from "./persistenceSchema";
-import { applyEventToMessages, asObject, asString, evolveSession } from "./session-logic";
+import {
+  type PersistedStoreSnapshot,
+  hydratePersistedState,
+  toPersistedState,
+} from "./persistenceSchema";
+import { applyEventToMessages, asObject, asString, evolveSession, readNativeApi } from "./session-logic";
 import {
   type ChatAttachment,
   DEFAULT_THREAD_TERMINAL_ID,
@@ -25,6 +31,7 @@ import {
 // ── Actions ──────────────────────────────────────────────────────────
 
 type Action =
+  | { type: "HYDRATE_PERSISTED_STATE"; snapshot: PersistedStoreSnapshot }
   | { type: "ADD_PROJECT"; project: Project }
   | { type: "SYNC_PROJECTS"; projects: Project[] }
   | { type: "TOGGLE_PROJECT"; projectId: string }
@@ -75,8 +82,9 @@ export interface AppState {
   diffOpen: boolean;
 }
 
-const PERSISTED_STATE_KEY = "t3code:renderer-state:v8";
+const LEGACY_PERSISTED_STATE_PRIMARY_KEY = "t3code:renderer-state:v8";
 const LEGACY_PERSISTED_STATE_KEYS = [
+  LEGACY_PERSISTED_STATE_PRIMARY_KEY,
   "t3code:renderer-state:v7",
   "t3code:renderer-state:v6",
   "t3code:renderer-state:v5",
@@ -98,35 +106,30 @@ const initialState: AppState = {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function readPersistedState(): AppState {
-  if (typeof window === "undefined") return initialState;
+function readLegacyPersistedStateFromLocalStorage(): PersistedStoreSnapshot | null {
+  if (typeof window === "undefined") return null;
 
   try {
-    const rawCurrent = window.localStorage.getItem(PERSISTED_STATE_KEY);
+    const rawCurrent = window.localStorage.getItem(LEGACY_PERSISTED_STATE_PRIMARY_KEY);
     const legacyValues = LEGACY_PERSISTED_STATE_KEYS.map((key) => window.localStorage.getItem(key));
     const rawLegacy = legacyValues.find((value) => value !== null) ?? null;
     const raw = rawCurrent ?? rawLegacy;
-    if (!raw) return initialState;
+    if (!raw) return null;
     const rawCodethingV1 = window.localStorage.getItem("codething:renderer-state:v1");
-    const hydrated = hydratePersistedState(raw, !rawCurrent && raw === rawCodethingV1);
-    if (!hydrated) return initialState;
-
-    return { ...hydrated, diffOpen: false };
+    return hydratePersistedState(raw, !rawCurrent && raw === rawCodethingV1);
   } catch {
-    return initialState;
+    return null;
   }
 }
 
-function persistState(state: AppState): void {
+function clearLegacyPersistedStateFromLocalStorage(): void {
   if (typeof window === "undefined") return;
-
   try {
-    window.localStorage.setItem(PERSISTED_STATE_KEY, JSON.stringify(toPersistedState(state)));
     for (const legacyKey of LEGACY_PERSISTED_STATE_KEYS) {
       window.localStorage.removeItem(legacyKey);
     }
   } catch {
-    // Ignore quota/storage errors to avoid breaking chat UX.
+    // Ignore storage errors.
   }
 }
 
@@ -410,6 +413,16 @@ function updateTurnFields(thread: Thread, event: ProviderEvent): Partial<Thread>
 
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
+    case "HYDRATE_PERSISTED_STATE":
+      return {
+        ...state,
+        projects: action.snapshot.projects,
+        threads: action.snapshot.threads,
+        activeThreadId: action.snapshot.activeThreadId,
+        runtimeMode: action.snapshot.runtimeMode,
+        diffOpen: false,
+      };
+
     case "ADD_PROJECT":
       if (state.projects.some((project) => project.cwd === action.project.cwd)) {
         return state;
@@ -843,11 +856,88 @@ const StoreContext = createContext<{
 }>({ state: initialState, dispatch: () => {} });
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined, readPersistedState);
+  const [state, dispatch] = useReducer(reducer, initialState);
+  const [persistenceReady, setPersistenceReady] = useState(false);
+  const bootstrapStartedRef = useRef(false);
+  const lastPersistedStateJsonRef = useRef<string | null>(null);
 
   useEffect(() => {
-    persistState(state);
-  }, [state]);
+    if (bootstrapStartedRef.current) return;
+    bootstrapStartedRef.current = true;
+
+    let disposed = false;
+    const api = readNativeApi();
+    if (!api) {
+      setPersistenceReady(true);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const serverSnapshot = await api.server.getRendererState();
+        if (disposed) return;
+
+        const hydratedFromServer = serverSnapshot
+          ? hydratePersistedState(serverSnapshot.stateJson, false)
+          : null;
+        if (hydratedFromServer) {
+          lastPersistedStateJsonRef.current = serverSnapshot?.stateJson ?? null;
+          dispatch({ type: "HYDRATE_PERSISTED_STATE", snapshot: hydratedFromServer });
+          clearLegacyPersistedStateFromLocalStorage();
+          return;
+        }
+
+        const hydratedLegacy = readLegacyPersistedStateFromLocalStorage();
+        if (!hydratedLegacy) return;
+        const migratedStateJson = JSON.stringify(toPersistedState(hydratedLegacy));
+        dispatch({ type: "HYDRATE_PERSISTED_STATE", snapshot: hydratedLegacy });
+        try {
+          await api.server.setRendererState({ stateJson: migratedStateJson });
+          if (!disposed) {
+            lastPersistedStateJsonRef.current = migratedStateJson;
+            clearLegacyPersistedStateFromLocalStorage();
+          }
+        } catch {
+          // Keep running with hydrated legacy state. Persist effect will retry.
+        }
+      } catch {
+        if (disposed) return;
+        const hydratedLegacy = readLegacyPersistedStateFromLocalStorage();
+        if (hydratedLegacy) {
+          dispatch({ type: "HYDRATE_PERSISTED_STATE", snapshot: hydratedLegacy });
+        }
+      } finally {
+        if (!disposed) {
+          setPersistenceReady(true);
+        }
+      }
+    })();
+
+    return () => {
+      disposed = true;
+    };
+  }, [dispatch]);
+
+  useEffect(() => {
+    if (!persistenceReady) return;
+    const api = readNativeApi();
+    if (!api) return;
+
+    const stateJson = JSON.stringify(toPersistedState(state));
+    if (lastPersistedStateJsonRef.current === stateJson) return;
+    const persistTimer = window.setTimeout(() => {
+      void api.server
+        .setRendererState({ stateJson })
+        .then(() => {
+          lastPersistedStateJsonRef.current = stateJson;
+        })
+        .catch(() => undefined);
+    }, 150);
+
+    return () => {
+      window.clearTimeout(persistTimer);
+    };
+  }, [persistenceReady, state]);
 
   return createElement(StoreContext.Provider, { value: { state, dispatch } }, children);
 }
