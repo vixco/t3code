@@ -343,6 +343,12 @@ function loadCustomKeybindingsConfig(
       return [];
     }
     if (options?.throwOnUnreadableConfig) {
+      if (
+        error instanceof Error &&
+        error.message.startsWith("Unable to parse keybindings config at ")
+      ) {
+        throw error;
+      }
       throw new Error(
         `Unable to parse keybindings config at ${configPath}: ${
           error instanceof Error ? error.message : String(error)
