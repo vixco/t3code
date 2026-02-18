@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 
 import ChatView from "../components/ChatView";
 import { useStore } from "../store";
@@ -10,7 +10,7 @@ function ChatThreadRouteView() {
   const { threadId } = Route.useParams();
   const threadExists = threadId ? state.threads.some((thread) => thread.id === threadId) : false;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!threadId) {
       void navigate({ to: "/", replace: true });
       return;
