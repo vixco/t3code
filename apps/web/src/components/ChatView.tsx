@@ -960,9 +960,14 @@ export default function ChatView() {
     }
     checkpointHydrationSessionRequestRef.current.add(requestKey);
     setThreadError(activeThreadId, null);
-    void ensureSession().finally(() => {
-      checkpointHydrationSessionRequestRef.current.delete(requestKey);
-    });
+    void ensureSession().then(
+      () => {
+        checkpointHydrationSessionRequestRef.current.delete(requestKey);
+      },
+      () => {
+        // Keep the ref key so the effect does not retry indefinitely on failure.
+      },
+    );
   }, [
     activeThreadId,
     activeThreadRuntimeId,

@@ -330,12 +330,6 @@ export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
         }
       }
 
-      const requestedRollbackTurns = currentTurnCount - input.turnCount;
-      const afterSnapshot =
-        requestedRollbackTurns > 0
-          ? await this.codex.rollbackThread(input.sessionId, requestedRollbackTurns)
-          : beforeSnapshot;
-
       if (checkpointCwd) {
         const restored = await this.filesystemCheckpointStore.restoreCheckpoint({
           cwd: checkpointCwd,
@@ -347,6 +341,15 @@ export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
             `Filesystem checkpoint is unavailable for turn ${input.turnCount} in thread ${beforeSnapshot.threadId}.`,
           );
         }
+      }
+
+      const requestedRollbackTurns = currentTurnCount - input.turnCount;
+      const afterSnapshot =
+        requestedRollbackTurns > 0
+          ? await this.codex.rollbackThread(input.sessionId, requestedRollbackTurns)
+          : beforeSnapshot;
+
+      if (checkpointCwd) {
         await this.filesystemCheckpointStore.pruneAfterTurn({
           cwd: checkpointCwd,
           threadId: afterSnapshot.threadId,
