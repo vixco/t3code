@@ -6,7 +6,6 @@ import {
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
-  type ProviderCheckpoint,
   type ResolvedKeybindingsConfig,
   type ProviderApprovalDecision,
   type ProviderSendTurnAttachmentInput,
@@ -41,10 +40,12 @@ import {
   resolveModelSlug,
 } from "../model-logic";
 import {
+  countDiffStat,
   derivePendingApprovals,
   derivePhase,
   deriveTurnDiffSummaries,
   deriveTimelineEntries,
+  inferCheckpointTurnCountByTurnId,
   type TurnDiffSummary,
   type PendingApproval,
   deriveWorkLogEntries,
@@ -72,6 +73,7 @@ import { Alert, AlertAction, AlertDescription, AlertTitle } from "./ui/alert";
 import {
   ChevronDownIcon,
   CircleAlertIcon,
+  DiffIcon,
   FolderClosedIcon,
   InfoIcon,
   LockIcon,
@@ -154,9 +156,7 @@ export default function ChatView() {
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isLoadingCheckpoints, setIsLoadingCheckpoints] = useState(false);
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
-  const [checkpoints, setCheckpoints] = useState<ProviderCheckpoint[]>([]);
   const [selectedEffort, setSelectedEffort] = useState(DEFAULT_REASONING);
   const [envMode, setEnvMode] = useState<"local" | "worktree">("local");
   const [isSwitchingRuntimeMode, setIsSwitchingRuntimeMode] = useState(false);
@@ -171,10 +171,13 @@ export default function ChatView() {
   const composerImagesRef = useRef<ComposerImageAttachment[]>([]);
   const dragDepthRef = useRef(0);
   const terminalOpenByThreadRef = useRef<Record<string, boolean>>({});
+  const checkpointDiffRequestsRef = useRef(new Set<string>());
+  const checkpointHydrationSessionRequestRef = useRef(new Set<string>());
 
   const activeThread = state.threads.find((t) => t.id === state.activeThreadId);
   const activeThreadId = activeThread?.id ?? null;
   const activeSessionId = activeThread?.session?.sessionId;
+  const activeThreadRuntimeId = activeThread?.codexThreadId ?? activeThread?.session?.threadId ?? null;
   const activeProject = state.projects.find((p) => p.id === activeThread?.projectId);
   const selectedModel = resolveModelSlug(
     activeThread?.model ?? activeProject?.model ?? DEFAULT_MODEL,
@@ -209,8 +212,11 @@ export default function ChatView() {
     [activeThread?.messages, workLogEntries],
   );
   const turnDiffSummaries = useMemo(
-    () => deriveTurnDiffSummaries(activeThread?.events ?? []),
-    [activeThread?.events],
+    () =>
+      activeThread?.turnDiffSummaries.length
+        ? activeThread.turnDiffSummaries
+        : deriveTurnDiffSummaries(activeThread?.events ?? []),
+    [activeThread?.events, activeThread?.turnDiffSummaries],
   );
   const turnDiffSummaryByAssistantMessageId = useMemo(() => {
     const byMessageId = new Map<string, TurnDiffSummary>();
@@ -220,6 +226,134 @@ export default function ChatView() {
     }
     return byMessageId;
   }, [turnDiffSummaries]);
+  const inferredCheckpointTurnCountByTurnId = useMemo(
+    () => inferCheckpointTurnCountByTurnId(turnDiffSummaries),
+    [turnDiffSummaries],
+  );
+  const revertTurnCountByUserMessageId = useMemo(() => {
+    const byUserMessageId = new Map<string, number>();
+    for (let index = 0; index < timelineEntries.length; index += 1) {
+      const entry = timelineEntries[index];
+      if (!entry || entry.kind !== "message" || entry.message.role !== "user") {
+        continue;
+      }
+
+      for (let nextIndex = index + 1; nextIndex < timelineEntries.length; nextIndex += 1) {
+        const nextEntry = timelineEntries[nextIndex];
+        if (!nextEntry || nextEntry.kind !== "message") {
+          continue;
+        }
+        if (nextEntry.message.role === "user") {
+          break;
+        }
+        const summary = turnDiffSummaryByAssistantMessageId.get(nextEntry.message.id);
+        if (!summary) {
+          continue;
+        }
+        const turnCount =
+          summary.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[summary.turnId];
+        if (typeof turnCount !== "number") {
+          break;
+        }
+        byUserMessageId.set(entry.message.id, Math.max(0, turnCount - 1));
+        break;
+      }
+    }
+
+    return byUserMessageId;
+  }, [inferredCheckpointTurnCountByTurnId, timelineEntries, turnDiffSummaryByAssistantMessageId]);
+
+  useEffect(() => {
+    if (!activeThreadId || turnDiffSummaries.length === 0) {
+      return;
+    }
+
+    const inferredMissingTurnCounts = turnDiffSummaries.reduce<Record<string, number>>(
+      (acc, summary) => {
+        if (typeof summary.checkpointTurnCount === "number") {
+          return acc;
+        }
+        const inferredTurnCount = inferredCheckpointTurnCountByTurnId[summary.turnId];
+        if (typeof inferredTurnCount !== "number") {
+          return acc;
+        }
+        acc[summary.turnId] = inferredTurnCount;
+        return acc;
+      },
+      {},
+    );
+    if (Object.keys(inferredMissingTurnCounts).length === 0) {
+      return;
+    }
+
+    dispatch({
+      type: "SET_THREAD_TURN_CHECKPOINT_COUNTS",
+      threadId: activeThreadId,
+      checkpointTurnCountByTurnId: inferredMissingTurnCounts,
+    });
+  }, [activeThreadId, dispatch, inferredCheckpointTurnCountByTurnId, turnDiffSummaries]);
+
+  useEffect(() => {
+    if (!api || !activeThreadId || !activeSessionId || turnDiffSummaries.length === 0) {
+      return;
+    }
+
+    const turnSummariesNeedingDiff = turnDiffSummaries.filter(
+      (summary) => !summary.checkpointDiffLoaded && inferredCheckpointTurnCountByTurnId[summary.turnId],
+    );
+    const requestedSummaries = turnSummariesNeedingDiff.filter((summary) => {
+      const requestKey = `${activeThreadId}:${summary.turnId}`;
+      if (checkpointDiffRequestsRef.current.has(requestKey)) {
+        return false;
+      }
+      checkpointDiffRequestsRef.current.add(requestKey);
+      return true;
+    });
+    if (requestedSummaries.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    void Promise.all(
+      requestedSummaries.map(async (summary) => {
+        const turnCount = inferredCheckpointTurnCountByTurnId[summary.turnId] ?? 0;
+        const result = await api.providers.getCheckpointDiff({
+          sessionId: activeSessionId,
+          fromTurnCount: Math.max(0, turnCount - 1),
+          toTurnCount: turnCount,
+        });
+        return [summary.turnId, result.diff] as const;
+      }),
+    )
+      .then((entries) => {
+        if (cancelled) return;
+        dispatch({
+          type: "SET_THREAD_TURN_CHECKPOINT_DIFFS",
+          threadId: activeThreadId,
+          checkpointDiffByTurnId: Object.fromEntries(entries),
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+      })
+      .finally(() => {
+        for (const summary of requestedSummaries) {
+          checkpointDiffRequestsRef.current.delete(`${activeThreadId}:${summary.turnId}`);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeSessionId,
+    activeThreadId,
+    api,
+    dispatch,
+    inferredCheckpointTurnCountByTurnId,
+    turnDiffSummaries,
+  ]);
+
   const completionSummary = useMemo(() => {
     if (!activeThread?.latestTurnStartedAt) return null;
     if (!activeThread.latestTurnCompletedAt) return null;
@@ -275,16 +409,9 @@ export default function ChatView() {
     completionSummary,
     timelineEntries,
   ]);
-  const runtimeSessionConfig =
-    state.runtimeMode === "full-access"
-      ? ({
-          approvalPolicy: "never",
-          sandboxMode: "danger-full-access",
-        } as const)
-      : ({
-          approvalPolicy: "on-request",
-          sandboxMode: "workspace-write",
-        } as const);
+  const runtimeApprovalPolicy = state.runtimeMode === "full-access" ? "never" : "on-request";
+  const runtimeSandboxMode =
+    state.runtimeMode === "full-access" ? "danger-full-access" : "workspace-write";
   const gitCwd = activeThread?.worktreePath ?? activeProject?.cwd ?? null;
   const branchesQuery = useQuery(gitBranchesQueryOptions(api, gitCwd));
   const keybindingsQuery = useQuery({
@@ -312,12 +439,6 @@ export default function ChatView() {
     (activeThread.messages.length > 0 ||
       (activeThread.session !== null && activeThread.session.status !== "closed")),
   );
-  const canCheckpoint =
-    Boolean(api && activeThread && (activeThread.codexThreadId ?? activeThread.session?.threadId)) &&
-    phase !== "running" &&
-    !isSending &&
-    !isConnecting &&
-    !isRevertingCheckpoint;
 
   const revokePreviewUrls = useCallback((images: Array<{ previewUrl?: string }>) => {
     for (const image of images) {
@@ -461,8 +582,6 @@ export default function ChatView() {
   }, [activeThread?.id]);
 
   useEffect(() => {
-    setCheckpoints([]);
-    setIsLoadingCheckpoints(false);
     setIsRevertingCheckpoint(false);
   }, [activeThread?.id]);
 
@@ -628,14 +747,17 @@ export default function ChatView() {
     toggleTerminalVisibility,
   ]);
 
-  const setThreadError = (threadId: string | null, error: string | null) => {
-    if (!threadId) return;
-    dispatch({
-      type: "SET_ERROR",
-      threadId,
-      error,
-    });
-  };
+  const setThreadError = useCallback(
+    (threadId: string | null, error: string | null) => {
+      if (!threadId) return;
+      dispatch({
+        type: "SET_ERROR",
+        threadId,
+        error,
+      });
+    },
+    [dispatch],
+  );
 
   const addComposerImages = (files: File[]) => {
     if (!activeThreadId || files.length === 0) return;
@@ -740,134 +862,169 @@ export default function ChatView() {
     focusComposer();
   };
 
-  const ensureSession = async (cwdOverride?: string): Promise<EnsuredSessionInfo | null> => {
-    if (!api || !activeThread || !activeProject) return null;
-    if (activeThread.session && activeThread.session.status !== "closed") {
-      const sessionThreadId = activeThread.session.threadId ?? null;
-      const continuityState: SessionContinuityState =
-        activeThread.codexThreadId === null
-          ? "new"
-          : sessionThreadId === activeThread.codexThreadId
-            ? "resumed"
-            : "fallback_new";
-      return {
-        sessionId: activeThread.session.sessionId,
-        resolvedThreadId: sessionThreadId,
-        continuityState,
-      } satisfies EnsuredSessionInfo;
-    }
-
-    const priorCodexThreadId = activeThread.codexThreadId;
-    setIsConnecting(true);
-    try {
-      const session = await api.providers.startSession({
-        provider: "codex",
-        cwd: cwdOverride ?? activeThread.worktreePath ?? activeProject.cwd,
-        model: selectedModel || undefined,
-        resumeThreadId: priorCodexThreadId ?? undefined,
-        approvalPolicy: runtimeSessionConfig.approvalPolicy,
-        sandboxMode: runtimeSessionConfig.sandboxMode,
-      });
-      dispatch({
-        type: "UPDATE_SESSION",
-        threadId: activeThread.id,
-        session,
-      });
-      const resolvedThreadId = session.threadId ?? null;
-      const continuityState: SessionContinuityState =
-        priorCodexThreadId === null
-          ? "new"
-          : resolvedThreadId === priorCodexThreadId
-            ? "resumed"
-            : "fallback_new";
-      return {
-        sessionId: session.sessionId,
-        resolvedThreadId,
-        continuityState,
-      };
-    } catch (err) {
-      dispatch({
-        type: "SET_ERROR",
-        threadId: activeThread.id,
-        error: err instanceof Error ? err.message : "Failed to connect.",
-      });
-      return null;
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  const loadCheckpoints = async (): Promise<ProviderCheckpoint[] | null> => {
-    if (!api || !activeThread) return null;
-    if (phase === "running" || isSending || isConnecting || isRevertingCheckpoint) {
-      return null;
-    }
-    const hasThreadIdentity = Boolean(activeThread.codexThreadId ?? activeThread.session?.threadId);
-    if (!hasThreadIdentity) {
-      setCheckpoints([]);
-      return [];
-    }
-
-    setIsLoadingCheckpoints(true);
-    setThreadError(activeThread.id, null);
-    try {
-      const sessionInfo = await ensureSession();
-      if (!sessionInfo) {
-        return null;
+  const ensureSession = useCallback(
+    async (cwdOverride?: string): Promise<EnsuredSessionInfo | null> => {
+      if (!api || !activeThread || !activeProject) return null;
+      if (activeThread.session && activeThread.session.status !== "closed") {
+        const sessionThreadId = activeThread.session.threadId ?? null;
+        const continuityState: SessionContinuityState =
+          activeThread.codexThreadId === null
+            ? "new"
+            : sessionThreadId === activeThread.codexThreadId
+              ? "resumed"
+              : "fallback_new";
+        return {
+          sessionId: activeThread.session.sessionId,
+          resolvedThreadId: sessionThreadId,
+          continuityState,
+        } satisfies EnsuredSessionInfo;
       }
-      const result = await api.providers.listCheckpoints({
-        sessionId: sessionInfo.sessionId,
-      });
-      setCheckpoints(result.checkpoints);
-      return result.checkpoints;
-    } catch (err) {
-      setThreadError(
-        activeThread.id,
-        err instanceof Error ? err.message : "Failed to load checkpoints.",
-      );
-      return null;
-    } finally {
-      setIsLoadingCheckpoints(false);
-    }
-  };
 
-  const onRevertToCheckpoint = async (checkpoint: ProviderCheckpoint) => {
-    if (!api || !activeThread || checkpoint.isCurrent || isRevertingCheckpoint) {
+      const priorCodexThreadId = activeThread.codexThreadId;
+      setIsConnecting(true);
+      try {
+        const session = await api.providers.startSession({
+          provider: "codex",
+          cwd: cwdOverride ?? activeThread.worktreePath ?? activeProject.cwd,
+          model: selectedModel || undefined,
+          resumeThreadId: priorCodexThreadId ?? undefined,
+          approvalPolicy: runtimeApprovalPolicy,
+          sandboxMode: runtimeSandboxMode,
+        });
+        dispatch({
+          type: "UPDATE_SESSION",
+          threadId: activeThread.id,
+          session,
+        });
+        const resolvedThreadId = session.threadId ?? null;
+        const continuityState: SessionContinuityState =
+          priorCodexThreadId === null
+            ? "new"
+            : resolvedThreadId === priorCodexThreadId
+              ? "resumed"
+              : "fallback_new";
+        return {
+          sessionId: session.sessionId,
+          resolvedThreadId,
+          continuityState,
+        };
+      } catch (err) {
+        dispatch({
+          type: "SET_ERROR",
+          threadId: activeThread.id,
+          error: err instanceof Error ? err.message : "Failed to connect.",
+        });
+        return null;
+      } finally {
+        setIsConnecting(false);
+      }
+    },
+    [activeProject, activeThread, api, dispatch, runtimeApprovalPolicy, runtimeSandboxMode, selectedModel],
+  );
+
+  useEffect(() => {
+    if (!api || !activeThreadId || activeSessionId) return;
+    if (phase === "running" || isSending || isConnecting || isRevertingCheckpoint) return;
+    const hasThreadIdentity = Boolean(activeThreadRuntimeId);
+    if (!hasThreadIdentity) return;
+    const selectedDiffTurnId =
+      state.diffOpen && state.diffThreadId === activeThreadId ? state.diffTurnId : null;
+    const selectedDiffTurn =
+      turnDiffSummaries.find((summary) => summary.turnId === selectedDiffTurnId) ?? turnDiffSummaries[0];
+    const selectedTurnMissingPatchBody = Boolean(
+      selectedDiffTurn &&
+        !selectedDiffTurn.unifiedDiff &&
+        selectedDiffTurn.files.every((file) => !file.diff),
+    );
+    const hasPendingDiffHydration =
+      turnDiffSummaries.some((summary) => !summary.checkpointDiffLoaded) || selectedTurnMissingPatchBody;
+    if (!hasPendingDiffHydration) return;
+
+    const requestKey = `${activeThreadId}:${activeThreadRuntimeId ?? "none"}`;
+    if (checkpointHydrationSessionRequestRef.current.has(requestKey)) {
       return;
     }
-    if (phase === "running" || isSending || isConnecting) {
-      setThreadError(activeThread.id, "Interrupt the current turn before reverting checkpoints.");
-      return;
-    }
+    checkpointHydrationSessionRequestRef.current.add(requestKey);
+    setThreadError(activeThreadId, null);
+    void ensureSession().finally(() => {
+      checkpointHydrationSessionRequestRef.current.delete(requestKey);
+    });
+  }, [
+    activeThreadId,
+    activeThreadRuntimeId,
+    activeSessionId,
+    api,
+    ensureSession,
+    isConnecting,
+    isRevertingCheckpoint,
+    isSending,
+    phase,
+    setThreadError,
+    state.diffOpen,
+    state.diffThreadId,
+    state.diffTurnId,
+    turnDiffSummaries,
+  ]);
 
-    setIsRevertingCheckpoint(true);
-    setThreadError(activeThread.id, null);
-    try {
-      const sessionInfo = await ensureSession();
-      if (!sessionInfo) {
+  const onRevertToTurnCount = useCallback(
+    async (turnCount: number) => {
+      if (!api || !activeThread || isRevertingCheckpoint) {
         return;
       }
-      const result = await api.providers.revertToCheckpoint({
-        sessionId: sessionInfo.sessionId,
-        turnCount: checkpoint.turnCount,
-      });
-      dispatch({
-        type: "REVERT_TO_CHECKPOINT",
-        threadId: activeThread.id,
-        sessionId: sessionInfo.sessionId,
-        threadRuntimeId: result.threadId,
-        messageCount: result.messageCount,
-      });
-      setCheckpoints(result.checkpoints);
-    } catch (err) {
-      setThreadError(
-        activeThread.id,
-        err instanceof Error ? err.message : "Failed to revert checkpoint.",
-      );
-    } finally {
-      setIsRevertingCheckpoint(false);
-    }
-  };
+      if (phase === "running" || isSending || isConnecting) {
+        setThreadError(activeThread.id, "Interrupt the current turn before reverting checkpoints.");
+        return;
+      }
+
+      setIsRevertingCheckpoint(true);
+      setThreadError(activeThread.id, null);
+      try {
+        const sessionInfo = await ensureSession();
+        if (!sessionInfo) {
+          return;
+        }
+        const result = await api.providers.revertToCheckpoint({
+          sessionId: sessionInfo.sessionId,
+          turnCount,
+        });
+        dispatch({
+          type: "REVERT_TO_CHECKPOINT",
+          threadId: activeThread.id,
+          sessionId: sessionInfo.sessionId,
+          threadRuntimeId: result.threadId,
+          turnCount: result.turnCount,
+          messageCount: result.messageCount,
+        });
+        dispatch({
+          type: "SET_THREAD_TURN_CHECKPOINT_COUNTS",
+          threadId: activeThread.id,
+          checkpointTurnCountByTurnId: Object.fromEntries(
+            result.checkpoints
+              .filter((entry) => entry.turnCount > 0)
+              .map((entry) => [entry.id, entry.turnCount] as const),
+          ),
+        });
+      } catch (err) {
+        setThreadError(
+          activeThread.id,
+          err instanceof Error ? err.message : "Failed to revert thread state.",
+        );
+      } finally {
+        setIsRevertingCheckpoint(false);
+      }
+    },
+    [
+      activeThread,
+      api,
+      dispatch,
+      ensureSession,
+      isConnecting,
+      isRevertingCheckpoint,
+      isSending,
+      phase,
+      setThreadError,
+    ],
+  );
 
   const onSend = async (e: FormEvent) => {
     e.preventDefault();
@@ -1070,8 +1227,7 @@ export default function ChatView() {
       return;
     }
 
-    const latestSummary = turnDiffSummaries[0];
-    if (!activeThread || !latestSummary) {
+    if (!activeThread) {
       dispatch({ type: "TOGGLE_DIFF" });
       return;
     }
@@ -1079,10 +1235,8 @@ export default function ChatView() {
     dispatch({
       type: "OPEN_DIFF",
       threadId: activeThread.id,
-      turnId: latestSummary.turnId,
-      ...(latestSummary.files[0]?.path ? { filePath: latestSummary.files[0].path } : {}),
     });
-  }, [activeThread, dispatch, state.diffOpen, turnDiffSummaries]);
+  }, [activeThread, dispatch, state.diffOpen]);
   const onOpenTurnDiff = useCallback(
     (turnId: string, filePath?: string) => {
       if (!activeThread) return;
@@ -1094,6 +1248,16 @@ export default function ChatView() {
       });
     },
     [activeThread, dispatch],
+  );
+  const onRevertUserMessage = useCallback(
+    (messageId: string) => {
+      const targetTurnCount = revertTurnCountByUserMessageId.get(messageId);
+      if (typeof targetTurnCount !== "number") {
+        return;
+      }
+      void onRevertToTurnCount(targetTurnCount);
+    },
+    [onRevertToTurnCount, revertTurnCountByUserMessageId],
   );
 
   // Empty state: no active thread
@@ -1115,7 +1279,7 @@ export default function ChatView() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-background">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       {/* Top bar */}
       <header
         className={`flex items-center justify-between border-b border-border px-5 ${isElectron ? "drag-region h-[52px]" : "py-3"}`}
@@ -1128,14 +1292,6 @@ export default function ChatView() {
           gitCwd={gitCwd}
           diffOpen={state.diffOpen}
           onToggleDiff={onToggleDiff}
-          checkpoints={checkpoints}
-          canCheckpoint={canCheckpoint}
-          isLoadingCheckpoints={isLoadingCheckpoints}
-          isRevertingCheckpoint={isRevertingCheckpoint}
-          onOpenCheckpoints={() => {
-            void loadCheckpoints();
-          }}
-          onRevertToCheckpoint={onRevertToCheckpoint}
         />
       </header>
 
@@ -1165,6 +1321,9 @@ export default function ChatView() {
           expandedWorkGroups={expandedWorkGroups}
           onToggleWorkGroup={onToggleWorkGroup}
           onOpenTurnDiff={onOpenTurnDiff}
+          revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
+          onRevertUserMessage={onRevertUserMessage}
+          isRevertingCheckpoint={isRevertingCheckpoint}
           onImageExpand={onExpandTimelineImage}
           messagesEndRef={messagesEndRef}
         />
@@ -1431,12 +1590,6 @@ interface ChatHeaderProps {
   gitCwd: string | null;
   diffOpen: boolean;
   onToggleDiff: () => void;
-  checkpoints: ProviderCheckpoint[];
-  canCheckpoint: boolean;
-  isLoadingCheckpoints: boolean;
-  isRevertingCheckpoint: boolean;
-  onOpenCheckpoints: () => void;
-  onRevertToCheckpoint: (checkpoint: ProviderCheckpoint) => void;
 }
 
 const ChatHeader = memo(function ChatHeader({
@@ -1447,12 +1600,6 @@ const ChatHeader = memo(function ChatHeader({
   gitCwd,
   diffOpen,
   onToggleDiff,
-  checkpoints,
-  canCheckpoint,
-  isLoadingCheckpoints,
-  isRevertingCheckpoint,
-  onOpenCheckpoints,
-  onRevertToCheckpoint,
 }: ChatHeaderProps) {
   return (
     <>
@@ -1463,56 +1610,14 @@ const ChatHeader = memo(function ChatHeader({
       <div className="flex items-center gap-3">
         {activeProjectName && <OpenInPicker keybindings={keybindings} />}
         {activeProjectName && <GitActionsControl api={api} gitCwd={gitCwd} />}
-        <Menu>
-          <MenuTrigger
-            render={
-              <Button
-                size="xs"
-                variant="ghost"
-                className="text-muted-foreground/70 hover:text-foreground/80"
-                disabled={!canCheckpoint || isRevertingCheckpoint}
-                onClick={onOpenCheckpoints}
-              >
-                {isRevertingCheckpoint
-                  ? "Reverting..."
-                  : isLoadingCheckpoints
-                    ? "Loading..."
-                    : "Checkpoints"}
-              </Button>
-            }
-          />
-          <MenuPopup align="end" className="w-72">
-            {!canCheckpoint ? (
-              <MenuItem disabled>Send at least one message to create checkpoints.</MenuItem>
-            ) : checkpoints.length === 0 ? (
-              <MenuItem disabled>
-                {isLoadingCheckpoints ? "Loading checkpoints..." : "No checkpoints available."}
-              </MenuItem>
-            ) : (
-              checkpoints.map((checkpoint) => (
-                <MenuItem
-                  key={checkpoint.id}
-                  disabled={checkpoint.isCurrent || isRevertingCheckpoint}
-                  onClick={() => onRevertToCheckpoint(checkpoint)}
-                >
-                  {checkpoint.label}
-                  {checkpoint.preview ? `: ${checkpoint.preview}` : ""}
-                  {checkpoint.isCurrent ? " (Current)" : ""}
-                </MenuItem>
-              ))
-            )}
-          </MenuPopup>
-        </Menu>
         <Button
-          size="xs"
-          variant="ghost"
-          className={cn(
-            "text-muted-foreground/70 hover:text-foreground/80",
-            diffOpen && "bg-accent text-accent-foreground",
-          )}
+          aria-label="Toggle diff panel"
+          size="icon-xs"
+          variant="outline"
+          className={cn(diffOpen && "bg-accent text-accent-foreground")}
           onClick={onToggleDiff}
         >
-          Diff
+          <DiffIcon />
         </Button>
       </div>
     </>
@@ -1617,6 +1722,9 @@ interface MessagesTimelineProps {
   expandedWorkGroups: Record<string, boolean>;
   onToggleWorkGroup: (groupId: string) => void;
   onOpenTurnDiff: (turnId: string, filePath?: string) => void;
+  revertTurnCountByUserMessageId: Map<string, number>;
+  onRevertUserMessage: (messageId: string) => void;
+  isRevertingCheckpoint: boolean;
   onImageExpand: (image: ExpandedImagePreview) => void;
   messagesEndRef: RefObject<HTMLDivElement | null>;
 }
@@ -1633,6 +1741,9 @@ const MessagesTimeline = memo(function MessagesTimeline({
   expandedWorkGroups,
   onToggleWorkGroup,
   onOpenTurnDiff,
+  revertTurnCountByUserMessageId,
+  onRevertUserMessage,
+  isRevertingCheckpoint,
   onImageExpand,
   messagesEndRef,
 }: MessagesTimelineProps) {
@@ -1731,6 +1842,7 @@ const MessagesTimeline = memo(function MessagesTimeline({
 
         if (timelineEntry.message.role === "user") {
           const userImages = timelineEntry.message.attachments ?? [];
+          const canRevertAgentWork = revertTurnCountByUserMessageId.has(timelineEntry.message.id);
           return (
             <Fragment key={timelineEntry.id}>
               <div className="flex justify-end">
@@ -1765,9 +1877,22 @@ const MessagesTimeline = memo(function MessagesTimeline({
                       {timelineEntry.message.text}
                     </pre>
                   )}
-                  <p className="mt-1.5 text-right text-[10px] text-muted-foreground/30">
-                    {formatTimestamp(timelineEntry.message.createdAt)}
-                  </p>
+                  <div className="mt-1.5 flex items-center justify-end gap-2">
+                    {canRevertAgentWork && (
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        disabled={isRevertingCheckpoint || isWorking}
+                        onClick={() => onRevertUserMessage(timelineEntry.message.id)}
+                      >
+                        {isRevertingCheckpoint ? "Reverting..." : "Revert agent work"}
+                      </Button>
+                    )}
+                    <p className="text-right text-[10px] text-muted-foreground/30">
+                      {formatTimestamp(timelineEntry.message.createdAt)}
+                    </p>
+                  </div>
                 </div>
               </div>
             </Fragment>
@@ -1795,11 +1920,45 @@ const MessagesTimeline = memo(function MessagesTimeline({
               {(() => {
                 const turnSummary = turnDiffSummaryByAssistantMessageId.get(timelineEntry.message.id);
                 if (!turnSummary) return null;
+                const isCheckpointDiffLoading =
+                  !turnSummary.checkpointDiffLoaded && turnSummary.files.length === 0;
+                const summaryStat = turnSummary.unifiedDiff
+                  ? countDiffStat(turnSummary.unifiedDiff)
+                  : turnSummary.files.reduce(
+                      (acc, file) => {
+                        const next =
+                          typeof file.additions === "number" && typeof file.deletions === "number"
+                            ? { additions: file.additions, deletions: file.deletions }
+                            : file.diff
+                              ? countDiffStat(file.diff)
+                              : null;
+                        if (!next) {
+                          return acc;
+                        }
+                        return {
+                          additions: acc.additions + next.additions,
+                          deletions: acc.deletions + next.deletions,
+                        };
+                      },
+                      { additions: 0, deletions: 0 },
+                    );
+                const changedFileCountLabel = isCheckpointDiffLoading
+                  ? "..."
+                  : String(turnSummary.files.length);
                 return (
                   <div className="mt-2 rounded-lg border border-border/80 bg-card/45 p-2.5">
                     <div className="mb-1.5 flex items-center justify-between gap-2">
                       <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
-                        Changed files ({turnSummary.files.length})
+                        <span>Changed files ({changedFileCountLabel})</span>
+                        {!isCheckpointDiffLoading &&
+                          (summaryStat.additions > 0 || summaryStat.deletions > 0) && (
+                            <>
+                              <span className="mx-1">•</span>
+                              <span className="text-success">+{summaryStat.additions}</span>
+                              <span className="mx-0.5 text-muted-foreground/70">/</span>
+                              <span className="text-destructive">-{summaryStat.deletions}</span>
+                            </>
+                          )}
                       </p>
                       <Button
                         type="button"
@@ -1810,18 +1969,48 @@ const MessagesTimeline = memo(function MessagesTimeline({
                         View diff
                       </Button>
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {turnSummary.files.map((file) => (
-                        <button
-                          key={`${turnSummary.turnId}:${file.path}`}
-                          type="button"
-                          className="rounded-md border border-border/70 bg-background/70 px-2 py-1 font-mono text-[11px] text-muted-foreground/80 transition-colors hover:border-border hover:text-foreground/90"
-                          onClick={() => onOpenTurnDiff(turnSummary.turnId, file.path)}
-                        >
-                          {file.path}
-                        </button>
-                      ))}
-                    </div>
+                    {isCheckpointDiffLoading && (
+                      <p className="mb-1.5 text-[11px] text-muted-foreground/70">
+                        Loading checkpoint diff...
+                      </p>
+                    )}
+                    {turnSummary.files.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {turnSummary.files.map((file) => (
+                          <button
+                            key={`${turnSummary.turnId}:${file.path}`}
+                            type="button"
+                            className="rounded-md border border-border/70 bg-background/70 px-2 py-1 font-mono text-[11px] text-muted-foreground/80 transition-colors hover:border-border hover:text-foreground/90"
+                            onClick={() => onOpenTurnDiff(turnSummary.turnId, file.path)}
+                          >
+                            {(() => {
+                              const stat =
+                                typeof file.additions === "number" &&
+                                typeof file.deletions === "number"
+                                  ? { additions: file.additions, deletions: file.deletions }
+                                  : file.diff
+                                    ? countDiffStat(file.diff)
+                                    : null;
+                              if (!stat) {
+                                return file.path;
+                              }
+                              return (
+                                <>
+                                  <span>{file.path}</span>
+                                  <span className="ml-1 text-muted-foreground/70">(</span>
+                                  <span className="text-success">+{stat.additions}</span>
+                                  <span className="mx-0.5 text-muted-foreground/70">/</span>
+                                  <span className="text-destructive">-{stat.deletions}</span>
+                                  <span className="text-muted-foreground/70">)</span>
+                                </>
+                              );
+                            })()}
+                          </button>
+                        ))}
+                      </div>
+                    ) : !isCheckpointDiffLoading ? (
+                      <p className="text-[11px] text-muted-foreground/70">No changed files.</p>
+                    ) : null}
                   </div>
                 );
               })()}
