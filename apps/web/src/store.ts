@@ -858,13 +858,9 @@ const StoreContext = createContext<{
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [persistenceReady, setPersistenceReady] = useState(false);
-  const bootstrapStartedRef = useRef(false);
   const lastPersistedStateJsonRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (bootstrapStartedRef.current) return;
-    bootstrapStartedRef.current = true;
-
     let disposed = false;
     const api = readNativeApi();
     if (!api) {
