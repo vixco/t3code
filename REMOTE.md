@@ -38,6 +38,36 @@ ssh -L 3773:127.0.0.1:3773 <user>@<remote-host>
 
 Then connect clients to `ws://127.0.0.1:3773` with the same token.
 
+### 1b) Private Tunnel With Tailscale (no public exposure)
+This keeps your T3 server private to your tailnet and avoids opening router/firewall ports to the public internet.
+
+1. Install and log in to Tailscale on both machines.
+2. Verify the two machines can reach each other over tailnet:
+```bash
+tailscale status
+```
+3. On the remote machine, run T3 loopback-only:
+```bash
+T3CODE_HOST=127.0.0.1 T3CODE_PORT=3773 T3CODE_AUTH_TOKEN=<token> bun run start
+```
+4. From your client machine, create an SSH local-forward over Tailscale:
+```bash
+ssh -N -L 3773:127.0.0.1:3773 <user>@<remote-tailnet-name-or-100.x.y.z>
+```
+
+Now your local machine has a private tunnel at `127.0.0.1:3773` to the remote T3 server.
+
+Use clients exactly like local:
+- Web: `http://localhost:<web-port>/?t3WsUrl=ws://127.0.0.1:3773&t3Token=<token>`
+- Desktop:
+```bash
+T3CODE_REMOTE_WS_URL=ws://127.0.0.1:3773 T3CODE_REMOTE_WS_TOKEN=<token> bun run start:desktop
+```
+
+Notes:
+- If you use Tailscale SSH, the same `ssh -L` pattern works.
+- This model does not expose T3 to the public internet; access is limited by your tailnet + SSH auth + T3 token.
+
 ### 2) Direct Authenticated WS
 Run remote server network-bound:
 ```bash
@@ -62,6 +92,7 @@ https://api.example.com/?t3Token=secret
 Notes:
 - If `t3WsUrl` is `http://` or `https://`, it is normalized to `ws://` or `wss://`.
 - If no URL is provided, web falls back to same-origin WS using page protocol.
+- To avoid putting tokens in request logs/history, prefer fragment form (supported): `#t3WsUrl=...&t3Token=...`
 
 ### Desktop App
 Set remote mode env vars before launch:
