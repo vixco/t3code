@@ -88,6 +88,7 @@ import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "./ui/menu"
 import { CursorIcon, Icon } from "./Icons";
 import { cn, isMacPlatform, isWindowsPlatform } from "~/lib/utils";
 import { Badge } from "./ui/badge";
+import { Toggle } from "./ui/toggle";
 
 function formatMessageMeta(createdAt: string, duration: string | null): string {
   if (!duration) return formatTimestamp(createdAt);
@@ -177,7 +178,8 @@ export default function ChatView() {
   const activeThread = state.threads.find((t) => t.id === state.activeThreadId);
   const activeThreadId = activeThread?.id ?? null;
   const activeSessionId = activeThread?.session?.sessionId;
-  const activeThreadRuntimeId = activeThread?.codexThreadId ?? activeThread?.session?.threadId ?? null;
+  const activeThreadRuntimeId =
+    activeThread?.codexThreadId ?? activeThread?.session?.threadId ?? null;
   const activeProject = state.projects.find((p) => p.id === activeThread?.projectId);
   const selectedModel = resolveModelSlug(
     activeThread?.model ?? activeProject?.model ?? DEFAULT_MODEL,
@@ -299,7 +301,8 @@ export default function ChatView() {
     }
 
     const turnSummariesNeedingDiff = turnDiffSummaries.filter(
-      (summary) => !summary.checkpointDiffLoaded && inferredCheckpointTurnCountByTurnId[summary.turnId],
+      (summary) =>
+        !summary.checkpointDiffLoaded && inferredCheckpointTurnCountByTurnId[summary.turnId],
     );
     const requestedSummaries = turnSummariesNeedingDiff.filter((summary) => {
       const requestKey = `${activeThreadId}:${summary.turnId}`;
@@ -919,7 +922,15 @@ export default function ChatView() {
         setIsConnecting(false);
       }
     },
-    [activeProject, activeThread, api, dispatch, runtimeApprovalPolicy, runtimeSandboxMode, selectedModel],
+    [
+      activeProject,
+      activeThread,
+      api,
+      dispatch,
+      runtimeApprovalPolicy,
+      runtimeSandboxMode,
+      selectedModel,
+    ],
   );
 
   useEffect(() => {
@@ -930,14 +941,16 @@ export default function ChatView() {
     const selectedDiffTurnId =
       state.diffOpen && state.diffThreadId === activeThreadId ? state.diffTurnId : null;
     const selectedDiffTurn =
-      turnDiffSummaries.find((summary) => summary.turnId === selectedDiffTurnId) ?? turnDiffSummaries[0];
+      turnDiffSummaries.find((summary) => summary.turnId === selectedDiffTurnId) ??
+      turnDiffSummaries[0];
     const selectedTurnMissingPatchBody = Boolean(
       selectedDiffTurn &&
-        !selectedDiffTurn.unifiedDiff &&
-        selectedDiffTurn.files.every((file) => !file.diff),
+      !selectedDiffTurn.unifiedDiff &&
+      selectedDiffTurn.files.every((file) => !file.diff),
     );
     const hasPendingDiffHydration =
-      turnDiffSummaries.some((summary) => !summary.checkpointDiffLoaded) || selectedTurnMissingPatchBody;
+      turnDiffSummaries.some((summary) => !summary.checkpointDiffLoaded) ||
+      selectedTurnMissingPatchBody;
     if (!hasPendingDiffHydration) return;
 
     const requestKey = `${activeThreadId}:${activeThreadRuntimeId ?? "none"}`;
@@ -1610,15 +1623,15 @@ const ChatHeader = memo(function ChatHeader({
       <div className="flex items-center gap-3">
         {activeProjectName && <OpenInPicker keybindings={keybindings} />}
         {activeProjectName && <GitActionsControl api={api} gitCwd={gitCwd} />}
-        <Button
+        <Toggle
+          pressed={diffOpen}
+          onPressedChange={onToggleDiff}
           aria-label="Toggle diff panel"
-          size="icon-xs"
           variant="outline"
-          className={cn(diffOpen && "bg-accent text-accent-foreground")}
-          onClick={onToggleDiff}
+          size="xs"
         >
-          <DiffIcon />
-        </Button>
+          <DiffIcon className="size-3" />
+        </Toggle>
       </div>
     </>
   );
@@ -1750,7 +1763,9 @@ const MessagesTimeline = memo(function MessagesTimeline({
   if (!hasMessages && !isWorking) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground/30">Send a message to start the conversation.</p>
+        <p className="text-sm text-muted-foreground/30">
+          Send a message to start the conversation.
+        </p>
       </div>
     );
   }
@@ -1918,7 +1933,9 @@ const MessagesTimeline = memo(function MessagesTimeline({
                 }
               />
               {(() => {
-                const turnSummary = turnDiffSummaryByAssistantMessageId.get(timelineEntry.message.id);
+                const turnSummary = turnDiffSummaryByAssistantMessageId.get(
+                  timelineEntry.message.id,
+                );
                 if (!turnSummary) return null;
                 const isCheckpointDiffLoading =
                   !turnSummary.checkpointDiffLoaded && turnSummary.files.length === 0;
@@ -1964,7 +1981,9 @@ const MessagesTimeline = memo(function MessagesTimeline({
                         type="button"
                         size="xs"
                         variant="outline"
-                        onClick={() => onOpenTurnDiff(turnSummary.turnId, turnSummary.files[0]?.path)}
+                        onClick={() =>
+                          onOpenTurnDiff(turnSummary.turnId, turnSummary.files[0]?.path)
+                        }
                       >
                         View diff
                       </Button>
