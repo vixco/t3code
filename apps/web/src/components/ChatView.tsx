@@ -307,7 +307,9 @@ const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
     <Command
       mode="none"
       onItemHighlighted={(highlightedValue) => {
-        props.onHighlightedItemChange(typeof highlightedValue === "string" ? highlightedValue : null);
+        props.onHighlightedItemChange(
+          typeof highlightedValue === "string" ? highlightedValue : null,
+        );
       }}
     >
       <div className="relative overflow-hidden rounded-xl border border-border/80 bg-popover/96 shadow-lg/8 backdrop-blur-xs">
@@ -831,9 +833,7 @@ export default function ChatView() {
       }
       const targetCwd = options?.cwd ?? gitCwd ?? activeProject.cwd;
       const baseTerminalId =
-        activeThread.activeTerminalId ||
-        activeThread.terminalIds[0] ||
-        DEFAULT_THREAD_TERMINAL_ID;
+        activeThread.activeTerminalId || activeThread.terminalIds[0] || DEFAULT_THREAD_TERMINAL_ID;
       const isBaseTerminalBusy = activeThread.runningTerminalIds.includes(baseTerminalId);
       const wantsNewTerminal = Boolean(options?.preferNewTerminal) || isBaseTerminalBusy;
       const shouldCreateNewTerminal =
@@ -1487,8 +1487,10 @@ export default function ChatView() {
     const selectedDiffTurnId =
       state.diffOpen && state.diffThreadId === activeThreadId ? state.diffTurnId : null;
     const selectedDiffTurn =
-      turnDiffSummaries.find((summary) => summary.turnId === selectedDiffTurnId) ??
-      turnDiffSummaries[0];
+      selectedDiffTurnId === null
+        ? undefined
+        : (turnDiffSummaries.find((summary) => summary.turnId === selectedDiffTurnId) ??
+          turnDiffSummaries[0]);
     const selectedTurnMissingPatchBody = Boolean(
       selectedDiffTurn &&
       !selectedDiffTurn.unifiedDiff &&
