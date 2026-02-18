@@ -56,7 +56,11 @@ function shellEscapePosix(value: string): string {
 }
 
 function shellEscapeWindowsSetValue(value: string): string {
-  return value.replace(/\^/g, "^^").replace(/%/g, "%%").replace(/"/g, '""');
+  // Only escape ^ and " for interactive cmd.exe `set "K=V"` commands.
+  // Do NOT escape % → %% here: that substitution only works in batch files.
+  // In an interactive cmd.exe session (which is what terminal.write targets),
+  // %% stays as literal %% and corrupts the value.
+  return value.replace(/\^/g, "^^").replace(/"/g, '""');
 }
 
 export function injectEnvIntoShellCommand(
@@ -94,7 +98,9 @@ interface ProjectScriptRuntimeEnvInput {
   extraEnv?: Record<string, string>;
 }
 
-export function projectScriptRuntimeEnv(input: ProjectScriptRuntimeEnvInput): Record<string, string> {
+export function projectScriptRuntimeEnv(
+  input: ProjectScriptRuntimeEnvInput,
+): Record<string, string> {
   const env: Record<string, string> = {
     T3CODE_PROJECT_ROOT: input.project.cwd,
     T3CODE_PROJECT_ID: input.project.id,

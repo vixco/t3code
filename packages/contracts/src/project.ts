@@ -95,3 +95,40 @@ export type ProjectEntry = z.infer<typeof projectEntrySchema>;
 export type ProjectSearchEntriesResult = z.infer<typeof projectSearchEntriesResultSchema>;
 export type ProjectUpdateScriptsInput = z.input<typeof projectUpdateScriptsInputSchema>;
 export type ProjectUpdateScriptsResult = z.infer<typeof projectUpdateScriptsResultSchema>;
+
+/**
+ * Deduplicate scripts by ID (first occurrence wins), trim string fields,
+ * and enforce at most one script with `runOnWorktreeCreate: true`.
+ */
+export function normalizeProjectScripts(scripts: readonly ProjectScript[]): ProjectScript[] {
+  const seenIds = new Set<string>();
+  const deduped: ProjectScript[] = [];
+  for (const script of scripts) {
+    const id = script.id.trim();
+    if (id.length === 0 || seenIds.has(id)) continue;
+    seenIds.add(id);
+    deduped.push({
+      id,
+      name: script.name.trim(),
+      command: script.command.trim(),
+      icon: script.icon,
+      runOnWorktreeCreate: script.runOnWorktreeCreate,
+    });
+  }
+
+  let setupAssigned = false;
+  const normalized: ProjectScript[] = [];
+  for (const script of deduped) {
+    if (!script.runOnWorktreeCreate) {
+      normalized.push(script);
+      continue;
+    }
+    if (!setupAssigned) {
+      setupAssigned = true;
+      normalized.push(script);
+      continue;
+    }
+    normalized.push({ ...script, runOnWorktreeCreate: false });
+  }
+  return normalized;
+}

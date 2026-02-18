@@ -300,7 +300,9 @@ const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
     <Command
       mode="none"
       onItemHighlighted={(highlightedValue) => {
-        props.onHighlightedItemChange(typeof highlightedValue === "string" ? highlightedValue : null);
+        props.onHighlightedItemChange(
+          typeof highlightedValue === "string" ? highlightedValue : null,
+        );
       }}
     >
       <div className="relative overflow-hidden rounded-xl border border-border/80 bg-popover/96 shadow-lg/8 backdrop-blur-xs">
@@ -670,9 +672,7 @@ export default function ChatView() {
       });
       const targetCwd = options?.cwd ?? gitCwd ?? activeProject.cwd;
       const baseTerminalId =
-        activeThread.activeTerminalId ||
-        activeThread.terminalIds[0] ||
-        DEFAULT_THREAD_TERMINAL_ID;
+        activeThread.activeTerminalId || activeThread.terminalIds[0] || DEFAULT_THREAD_TERMINAL_ID;
       const isBaseTerminalBusy = activeThread.runningTerminalIds.includes(baseTerminalId);
       const wantsNewTerminal = Boolean(options?.preferNewTerminal) || isBaseTerminalBusy;
       const shouldCreateNewTerminal =
@@ -739,6 +739,63 @@ export default function ChatView() {
     },
     [activeProject, activeThread, activeThreadId, api, dispatch, gitCwd],
   );
+  const persistProjectScripts = useCallback(
+    async (
+      project: { id: string; cwd: string; scripts: ProjectScript[] },
+      nextScripts: ProjectScript[],
+      keybinding: string | null,
+      keybindingCommand: string,
+    ) => {
+      if (!isElectron || !api) return;
+      let scriptsPersisted = false;
+      try {
+        const updated = await api.projects.updateScripts({
+          id: project.id,
+          scripts: nextScripts,
+        });
+        scriptsPersisted = true;
+
+        if (keybinding) {
+          const keybindingUpdate = await api.server.upsertKeybinding({
+            key: keybinding,
+            command: keybindingCommand,
+          });
+          queryClient.setQueryData(
+            serverQueryKeys.config(),
+            (current: { cwd: string; keybindings: ResolvedKeybindingsConfig } | undefined) =>
+              current
+                ? { ...current, keybindings: keybindingUpdate.keybindings }
+                : {
+                    cwd: project.cwd,
+                    keybindings: keybindingUpdate.keybindings,
+                  },
+          );
+        }
+
+        dispatch({
+          type: "SET_PROJECT_SCRIPTS",
+          projectId: updated.project.id,
+          scripts: updated.project.scripts,
+        });
+      } catch (error) {
+        if (scriptsPersisted) {
+          await api.projects
+            .updateScripts({
+              id: project.id,
+              scripts: project.scripts,
+            })
+            .catch(() => undefined);
+        }
+        dispatch({
+          type: "SET_PROJECT_SCRIPTS",
+          projectId: project.id,
+          scripts: project.scripts,
+        });
+        throw error;
+      }
+    },
+    [api, dispatch, queryClient],
+  );
   const saveProjectScript = useCallback(
     async (input: NewProjectScriptInput) => {
       if (!activeProject) return;
@@ -768,55 +825,14 @@ export default function ChatView() {
         scripts: nextScripts,
       });
 
-      if (!isElectron || !api) return;
-      let scriptsPersisted = false;
-      try {
-        const updated = await api.projects.updateScripts({
-          id: activeProject.id,
-          scripts: nextScripts,
-        });
-        scriptsPersisted = true;
-
-        if (input.keybinding) {
-          const keybindingUpdate = await api.server.upsertKeybinding({
-            key: input.keybinding,
-            command: commandForProjectScript(nextId),
-          });
-          queryClient.setQueryData(
-            serverQueryKeys.config(),
-            (current: { cwd: string; keybindings: ResolvedKeybindingsConfig } | undefined) =>
-              current
-                ? { ...current, keybindings: keybindingUpdate.keybindings }
-                : {
-                    cwd: activeProject.cwd,
-                    keybindings: keybindingUpdate.keybindings,
-                  },
-          );
-        }
-
-        dispatch({
-          type: "SET_PROJECT_SCRIPTS",
-          projectId: updated.project.id,
-          scripts: updated.project.scripts,
-        });
-      } catch (error) {
-        if (scriptsPersisted) {
-          await api.projects
-            .updateScripts({
-              id: activeProject.id,
-              scripts: activeProject.scripts,
-            })
-            .catch(() => undefined);
-        }
-        dispatch({
-          type: "SET_PROJECT_SCRIPTS",
-          projectId: activeProject.id,
-          scripts: activeProject.scripts,
-        });
-        throw error;
-      }
+      await persistProjectScripts(
+        activeProject,
+        nextScripts,
+        input.keybinding,
+        commandForProjectScript(nextId),
+      );
     },
-    [activeProject, api, dispatch, queryClient],
+    [activeProject, dispatch, persistProjectScripts],
   );
   const updateProjectScript = useCallback(
     async (scriptId: string, input: NewProjectScriptInput) => {
@@ -847,55 +863,14 @@ export default function ChatView() {
         scripts: nextScripts,
       });
 
-      if (!isElectron || !api) return;
-      let scriptsPersisted = false;
-      try {
-        const updated = await api.projects.updateScripts({
-          id: activeProject.id,
-          scripts: nextScripts,
-        });
-        scriptsPersisted = true;
-
-        if (input.keybinding) {
-          const keybindingUpdate = await api.server.upsertKeybinding({
-            key: input.keybinding,
-            command: commandForProjectScript(scriptId),
-          });
-          queryClient.setQueryData(
-            serverQueryKeys.config(),
-            (current: { cwd: string; keybindings: ResolvedKeybindingsConfig } | undefined) =>
-              current
-                ? { ...current, keybindings: keybindingUpdate.keybindings }
-                : {
-                    cwd: activeProject.cwd,
-                    keybindings: keybindingUpdate.keybindings,
-                  },
-          );
-        }
-
-        dispatch({
-          type: "SET_PROJECT_SCRIPTS",
-          projectId: updated.project.id,
-          scripts: updated.project.scripts,
-        });
-      } catch (error) {
-        if (scriptsPersisted) {
-          await api.projects
-            .updateScripts({
-              id: activeProject.id,
-              scripts: activeProject.scripts,
-            })
-            .catch(() => undefined);
-        }
-        dispatch({
-          type: "SET_PROJECT_SCRIPTS",
-          projectId: activeProject.id,
-          scripts: activeProject.scripts,
-        });
-        throw error;
-      }
+      await persistProjectScripts(
+        activeProject,
+        nextScripts,
+        input.keybinding,
+        commandForProjectScript(scriptId),
+      );
     },
-    [activeProject, api, dispatch, queryClient],
+    [activeProject, dispatch, persistProjectScripts],
   );
 
   const handleRuntimeModeChange = async (mode: "approval-required" | "full-access") => {

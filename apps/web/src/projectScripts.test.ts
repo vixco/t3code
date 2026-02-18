@@ -25,12 +25,20 @@ describe("projectScripts helpers", () => {
   });
 
   it("injects environment variables for posix shells", () => {
-    const command = injectEnvIntoShellCommand("bun install", { T3CODE_PROJECT_ROOT: "/tmp/project" }, "MacIntel");
+    const command = injectEnvIntoShellCommand(
+      "bun install",
+      { T3CODE_PROJECT_ROOT: "/tmp/project" },
+      "MacIntel",
+    );
     expect(command).toBe("env T3CODE_PROJECT_ROOT='/tmp/project' bun install");
   });
 
   it("injects environment variables for windows shells", () => {
-    const command = injectEnvIntoShellCommand("bun install", { T3CODE_PROJECT_ROOT: "C:\\\\repo path" }, "Win32");
+    const command = injectEnvIntoShellCommand(
+      "bun install",
+      { T3CODE_PROJECT_ROOT: "C:\\\\repo path" },
+      "Win32",
+    );
     expect(command).toBe('set "T3CODE_PROJECT_ROOT=C:\\\\repo path" && bun install');
   });
 
@@ -40,7 +48,7 @@ describe("projectScripts helpers", () => {
       { T3CODE_PROJECT_ROOT: '%USERPROFILE%^"repo"' },
       "Win32",
     );
-    expect(command).toBe('set "T3CODE_PROJECT_ROOT=%%USERPROFILE%%^^""repo""" && bun install');
+    expect(command).toBe('set "T3CODE_PROJECT_ROOT=%USERPROFILE%^^""repo""" && bun install');
   });
 
   it("resolves primary and setup scripts", () => {
