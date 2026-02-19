@@ -13,6 +13,7 @@ import { useMediaQuery } from "./hooks/useMediaQuery";
 import { AnchoredToastProvider, ToastProvider } from "./components/ui/toast";
 import { Sheet, SheetPopup } from "./components/ui/sheet";
 import { invalidateGitQueries } from "./lib/gitReactQuery";
+import { providerQueryKeys } from "./lib/providerReactQuery";
 
 const DiffPanel = lazy(() => import("./components/DiffPanel"));
 const DiffWorkerPoolProvider = lazy(() =>
@@ -64,6 +65,9 @@ function EventRouter() {
     return api.providers.onEvent((event) => {
       if (event.method === "turn/completed") {
         void invalidateGitQueries(queryClient);
+      }
+      if (event.method === "checkpoint/captured") {
+        void queryClient.invalidateQueries({ queryKey: providerQueryKeys.all });
       }
       dispatch({
         type: "APPLY_EVENT",
