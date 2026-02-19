@@ -8,15 +8,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { ChevronLeftIcon, ChevronRightIcon, Columns2Icon, Rows3Icon } from "lucide-react";
-import {
-  type ReactNode,
-  type WheelEvent as ReactWheelEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { checkpointDiffQueryOptions } from "~/lib/providerReactQuery";
 import { cn } from "~/lib/utils";
 import { isElectron } from "../env";
@@ -92,7 +84,8 @@ interface DiffPanelProps {
 
 export function DiffWorkerPoolProvider({ children }: { children?: ReactNode }) {
   const workerPoolSize = useMemo(() => {
-    const cores = typeof navigator === "undefined" ? 4 : Math.max(1, navigator.hardwareConcurrency || 4);
+    const cores =
+      typeof navigator === "undefined" ? 4 : Math.max(1, navigator.hardwareConcurrency || 4);
     return Math.max(2, Math.min(6, Math.floor(cores / 2)));
   }, []);
 
@@ -265,7 +258,7 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
     if (!element) return;
     element.scrollBy({ left: offset, behavior: "smooth" });
   }, []);
-  const onTurnStripWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
+  const onTurnStripWheel = useCallback((event: WheelEvent) => {
     const element = turnStripRef.current;
     if (!element) return;
     if (element.scrollWidth <= element.clientWidth + 1) return;
@@ -282,15 +275,17 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
     updateTurnStripScrollState();
     const onScroll = () => updateTurnStripScrollState();
     element.addEventListener("scroll", onScroll, { passive: true });
+    element.addEventListener("wheel", onTurnStripWheel, { passive: false });
 
     const resizeObserver = new ResizeObserver(() => updateTurnStripScrollState());
     resizeObserver.observe(element);
 
     return () => {
       element.removeEventListener("scroll", onScroll);
+      element.removeEventListener("wheel", onTurnStripWheel);
       resizeObserver.disconnect();
     };
-  }, [updateTurnStripScrollState]);
+  }, [updateTurnStripScrollState, onTurnStripWheel]);
 
   useEffect(() => {
     updateTurnStripScrollState();
@@ -359,7 +354,6 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
           <div
             ref={turnStripRef}
             className="turn-chip-strip flex gap-1 overflow-x-auto px-8 py-0.5"
-            onWheel={onTurnStripWheel}
           >
             <button
               type="button"
