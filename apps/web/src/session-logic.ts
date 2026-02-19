@@ -673,9 +673,9 @@ export function deriveTurnDiffSummaries(events: ProviderEvent[]): TurnDiffSummar
     }
 
     if (event.method === "turn/diff/updated" && !summary.hasTurnDiffUpdate) {
-      summary.hasTurnDiffUpdate = true;
       const diff = normalizeDetail(asString(asObject(event.payload)?.diff));
       if (diff) {
+        summary.hasTurnDiffUpdate = true;
         for (const file of deriveTurnDiffFilesFromUnifiedDiff(diff)) {
           mergeTurnDiffFileChange(summary.filesByPath, file);
         }
