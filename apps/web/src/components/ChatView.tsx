@@ -402,6 +402,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   >(() => readLastInvokedScriptByProjectFromStorage());
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
+  const pendingAutoScrollFrameRef = useRef<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerCommandInputRef = useRef<HTMLInputElement>(null);
   const composerImagesRef = useRef<ComposerImageAttachment[]>([]);
@@ -1102,6 +1103,14 @@ export default function ChatView({ threadId }: ChatViewProps) {
     scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior });
     shouldAutoScrollRef.current = true;
   }, []);
+  const requestAutoTailToBottom = useCallback(() => {
+    if (pendingAutoScrollFrameRef.current !== null) return;
+    pendingAutoScrollFrameRef.current = window.requestAnimationFrame(() => {
+      pendingAutoScrollFrameRef.current = null;
+      if (!shouldAutoScrollRef.current) return;
+      scrollMessagesToBottom();
+    });
+  }, [scrollMessagesToBottom]);
   const onMessagesScroll = useCallback(() => {
     const scrollContainer = messagesScrollRef.current;
     if (!scrollContainer) return;
@@ -1113,8 +1122,16 @@ export default function ChatView({ threadId }: ChatViewProps) {
   }, [activeThread?.id, scrollMessagesToBottom]);
   useLayoutEffect(() => {
     if (!shouldAutoScrollRef.current) return;
-    scrollMessagesToBottom();
-  }, [activeThread?.messages, workLogCount, scrollMessagesToBottom]);
+    requestAutoTailToBottom();
+  }, [activeThread?.messages, workLogCount, requestAutoTailToBottom]);
+  useEffect(
+    () => () => {
+      if (pendingAutoScrollFrameRef.current === null) return;
+      window.cancelAnimationFrame(pendingAutoScrollFrameRef.current);
+      pendingAutoScrollFrameRef.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     setExpandedWorkGroups({});
