@@ -61,7 +61,7 @@ import {
   formatElapsed,
   formatTimestamp,
 } from "../session-logic";
-import { isScrollContainerNearBottom } from "../chat-scroll";
+import { isScrollContainerAtBottom } from "../chat-scroll";
 import { useStore } from "../store";
 import { truncateTitle } from "../truncateTitle";
 import {
@@ -1094,8 +1094,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
   }, [lastInvokedScriptByProjectId]);
 
-  // Auto-scroll on new messages
-  const messageCount = activeThread?.messages.length ?? 0;
+  // Auto-tail while the user stays at the bottom.
   const workLogCount = workLogEntries.length;
   const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const scrollContainer = messagesScrollRef.current;
@@ -1106,21 +1105,16 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const onMessagesScroll = useCallback(() => {
     const scrollContainer = messagesScrollRef.current;
     if (!scrollContainer) return;
-    shouldAutoScrollRef.current = isScrollContainerNearBottom(scrollContainer);
+    shouldAutoScrollRef.current = isScrollContainerAtBottom(scrollContainer);
   }, []);
   useLayoutEffect(() => {
     if (!activeThread?.id) return;
     scrollMessagesToBottom();
   }, [activeThread?.id, scrollMessagesToBottom]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!shouldAutoScrollRef.current) return;
-    scrollMessagesToBottom("smooth");
-  }, [messageCount, scrollMessagesToBottom]);
-  useEffect(() => {
-    if (phase !== "running") return;
-    if (!shouldAutoScrollRef.current) return;
-    scrollMessagesToBottom("smooth");
-  }, [phase, workLogCount, scrollMessagesToBottom]);
+    scrollMessagesToBottom();
+  }, [activeThread?.messages, workLogCount, scrollMessagesToBottom]);
 
   useEffect(() => {
     setExpandedWorkGroups({});
