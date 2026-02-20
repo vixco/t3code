@@ -339,21 +339,20 @@ export function createServer(options: ServerOptions) {
       case WS_METHODS.providersGetCheckpointDiff:
         return providerManager.getCheckpointDiff(request.params as never);
 
-      case WS_METHODS.providersRevertToCheckpoint:
-        {
-          const params = request.params as {
-            sessionId: string;
-            turnCount: number;
-          };
-          const result = await providerManager.revertToCheckpoint(params as never);
-          persistenceService.applyCheckpointRevert({
-            sessionId: params.sessionId,
-            runtimeThreadId: result.threadId,
-            turnCount: result.turnCount,
-            messageCount: result.messageCount,
-          });
-          return result;
-        }
+      case WS_METHODS.providersRevertToCheckpoint: {
+        const params = request.params as {
+          sessionId: string;
+          turnCount: number;
+        };
+        const result = await providerManager.revertToCheckpoint(params as never);
+        persistenceService.applyCheckpointRevert({
+          sessionId: params.sessionId,
+          runtimeThreadId: result.threadId,
+          turnCount: result.turnCount,
+          messageCount: result.messageCount,
+        });
+        return result;
+      }
 
       case WS_METHODS.stateBootstrap:
         return persistenceService.loadSnapshot();
@@ -377,6 +376,10 @@ export function createServer(options: ServerOptions) {
         return persistenceService.createThread(request.params as never);
 
       case WS_METHODS.threadsUpdate:
+        throw new Error(
+          `Method ${WS_METHODS.threadsUpdate} is not implemented. Use a specific update method instead.`,
+        );
+
       case WS_METHODS.threadsUpdateTerminalState:
         return persistenceService.updateThreadTerminalState(request.params as never);
 

@@ -241,7 +241,38 @@ export default function Sidebar() {
             scripts: [],
           };
           dispatch({ type: "ADD_PROJECT", project });
-          handleNewThread(project.id);
+
+          const threadId = crypto.randomUUID();
+          const now = new Date().toISOString();
+          dispatch({
+            type: "ADD_THREAD",
+            thread: {
+              id: threadId,
+              codexThreadId: null,
+              projectId: project.id,
+              title: "New thread",
+              model: DEFAULT_MODEL,
+              terminalOpen: false,
+              terminalHeight: 300,
+              terminalIds: [],
+              runningTerminalIds: [],
+              activeTerminalId: "",
+              terminalGroups: [],
+              activeTerminalGroupId: "",
+              session: null,
+              messages: [],
+              events: [],
+              error: null,
+              createdAt: now,
+              branch: null,
+              worktreePath: null,
+              turnDiffSummaries: [],
+            },
+          });
+          void navigate({
+            to: "/$threadId",
+            params: { threadId },
+          });
           return;
         }
 
@@ -278,6 +309,7 @@ export default function Sidebar() {
       focusMostRecentThreadForProject,
       handleNewThread,
       isAddingProject,
+      navigate,
       state.projects,
     ],
   );
