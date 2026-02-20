@@ -1,10 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { NativeApi, StateEvent } from "@t3tools/contracts";
-import {
-  createStateSource,
-  mapSyncEngineModeToStateSourceMode,
-  resolveStateSourceMode,
-} from "./stateSource";
+import { createStateSource } from "./stateSource";
 
 function makeApi(): NativeApi {
   const onStateEvent = vi.fn<(callback: (event: StateEvent) => void) => () => void>((callback) => {
@@ -169,7 +165,6 @@ describe("createStateSource", () => {
   it("delegates bootstrap/catchUp/onEvent to api.state", async () => {
     const api = makeApi();
     const source = createStateSource(api);
-    expect(source.mode).toBe("legacy-api");
 
     await expect(source.bootstrap()).resolves.toEqual({
       projects: [],
@@ -199,37 +194,5 @@ describe("createStateSource", () => {
     expect(api.state.bootstrap).toHaveBeenCalledTimes(1);
     expect(api.state.catchUp).toHaveBeenCalledWith({ afterSeq: 1 });
     expect(api.state.onEvent).toHaveBeenCalledTimes(1);
-  });
-
-  it("supports explicit read-pilot mode selection", async () => {
-    const api = makeApi();
-    const source = createStateSource(api, { mode: "livestore-read-pilot" });
-    expect(source.mode).toBe("livestore-read-pilot");
-    await source.bootstrap();
-    expect(api.state.bootstrap).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("resolveStateSourceMode", () => {
-  it("defaults to legacy-api for missing/unknown values", () => {
-    expect(resolveStateSourceMode(undefined)).toBe("legacy-api");
-    expect(resolveStateSourceMode("unknown")).toBe("legacy-api");
-  });
-
-  it("accepts livestore-read-pilot value", () => {
-    expect(resolveStateSourceMode("livestore-read-pilot")).toBe("livestore-read-pilot");
-  });
-});
-
-describe("mapSyncEngineModeToStateSourceMode", () => {
-  it("maps read-pilot server mode to read-pilot state source", () => {
-    expect(mapSyncEngineModeToStateSourceMode("livestore-read-pilot")).toBe("livestore-read-pilot");
-    expect(mapSyncEngineModeToStateSourceMode("livestore")).toBe("livestore-read-pilot");
-  });
-
-  it("maps legacy/shadow/undefined server modes to legacy-api source", () => {
-    expect(mapSyncEngineModeToStateSourceMode("legacy")).toBe("legacy-api");
-    expect(mapSyncEngineModeToStateSourceMode("shadow")).toBe("legacy-api");
-    expect(mapSyncEngineModeToStateSourceMode(undefined)).toBe("legacy-api");
   });
 });

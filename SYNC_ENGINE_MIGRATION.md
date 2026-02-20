@@ -37,10 +37,7 @@ Optional safety gate:
   - In shadow mode, compares `state.listMessages` mirror output against delegate output.
 - `T3CODE_LIVESTORE_DISABLE_READ_FALLBACK=1`
   - In read-pilot mode, disables delegate read fallback for strict mirror-read canary validation.
-- `VITE_T3CODE_STATE_SOURCE_MODE=legacy-api|livestore-read-pilot`
-  - Client-side state-source mode seam.
-  - If unset, web derives mode from `server.getConfig().syncEngineMode` (`livestore-read-pilot`/`livestore` -> read-pilot source).
-  - Current implementation is protocol-compatible in both modes.
+- Web clients consume the server-authoritative `api.state.*` stream directly; server mode now controls fallback behavior.
 
 ## Suggested rollout sequence
 
