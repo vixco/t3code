@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 import type { StateEvent } from "@t3tools/contracts";
+import { diffStateSnapshots } from "./livestore/parity";
+import { LiveStoreStateMirror } from "./livestore/liveStoreEngine";
 import { PersistenceService } from "./persistenceService";
 import { LegacyStateSyncEngine } from "./stateSyncEngineLegacy";
 import type { StateEventMirror } from "./stateSyncEngineShadow";
@@ -15,6 +17,21 @@ function makeTempDir(prefix: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
+}
+
+async function waitForParity(
+  getExpected: () => ReturnType<LegacyStateSyncEngine["loadSnapshot"]>,
+  getMirrored: () => ReturnType<LiveStoreStateMirror["debugReadSnapshot"]>,
+): Promise<void> {
+  const maxAttempts = 30;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (diffStateSnapshots(getExpected(), getMirrored()).length === 0) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  }
+
+  expect(diffStateSnapshots(getExpected(), getMirrored())).toEqual([]);
 }
 
 class CapturingMirror implements StateEventMirror {
@@ -122,6 +139,41 @@ describe("ShadowStateSyncEngine", () => {
       expect(mirror.events).toHaveLength(0);
       expect(mirror.disposeCalls).toBe(1);
     } finally {
+      service.close();
+    }
+  });
+
+  it("keeps LiveStore mirror snapshot in parity with delegate writes", async () => {
+    const stateDir = makeTempDir("t3code-shadow-parity-state-");
+    const projectDir = makeTempDir("t3code-shadow-parity-project-");
+    const service = new PersistenceService({
+      dbPath: path.join(stateDir, "state.sqlite"),
+    });
+    const legacy = new LegacyStateSyncEngine({ persistenceService: service });
+    const mirror = new LiveStoreStateMirror({ storeId: "shadow-parity-engine-test" });
+    const shadow = new ShadowStateSyncEngine({
+      delegate: legacy,
+      mirror,
+    });
+
+    try {
+      const project = shadow.addProject({ cwd: projectDir }).project;
+      const thread = shadow.createThread({
+        projectId: project.id,
+        title: "Parity thread",
+      }).thread;
+      service.bindSessionToThread("parity-session", thread.id, "runtime-thread-parity");
+      service.persistUserMessageForTurn({
+        sessionId: "parity-session",
+        clientMessageId: "parity-message-1",
+        clientMessageText: "hello parity",
+        input: "hello parity",
+        attachments: [],
+      });
+
+      await waitForParity(() => legacy.loadSnapshot(), () => mirror.debugReadSnapshot());
+    } finally {
+      shadow.close();
       service.close();
     }
   });
