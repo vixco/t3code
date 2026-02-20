@@ -32,7 +32,7 @@ interface StateSyncEngineShadowEvents {
 }
 
 export interface StateEventMirror {
-  mirrorStateEvent(event: StateEvent): Promise<void>;
+  mirrorStateEvent(event: StateEvent): Promise<void | boolean>;
   debugReadSnapshot?(): StateBootstrapResult;
   debugCatchUp?(afterSeq: number): StateCatchUpResult;
   debugListMessages?(raw: StateListMessagesInput): StateListMessagesResult;

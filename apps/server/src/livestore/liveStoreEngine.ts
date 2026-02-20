@@ -66,17 +66,17 @@ export class LiveStoreStateMirror implements StateEventMirror {
     this.storeId = options.storeId ?? "t3-shadow-sync";
   }
 
-  async mirrorStateEvent(event: StateEvent): Promise<void> {
+  async mirrorStateEvent(event: StateEvent): Promise<boolean> {
     if (!this.enabled || this.disposed) {
-      return;
+      return false;
     }
     if (event.seq <= this.lastMirroredSeq) {
-      return;
+      return true;
     }
 
     const store = await this.getStore();
     if (!store) {
-      return;
+      return false;
     }
 
     try {
@@ -91,12 +91,14 @@ export class LiveStoreStateMirror implements StateEventMirror {
       );
       this.applyProjection(event);
       this.lastMirroredSeq = event.seq;
+      return true;
     } catch (error) {
       this.logger.warn("failed to commit mirrored state event", {
         error,
         seq: event.seq,
         eventType: event.eventType,
       });
+      return false;
     }
   }
 

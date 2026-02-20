@@ -112,4 +112,33 @@ describe("bootstrapMirrorFromCatchUp", () => {
       }),
     ).rejects.toThrow(/failed to bootstrap livestore mirror/i);
   });
+
+  it("treats mirrorStateEvent false return as a bootstrap failure", async () => {
+    const source = {
+      catchUp: vi.fn().mockReturnValue({
+        events: [
+          {
+            seq: 1,
+            entityId: "project-1",
+            eventType: "project.upsert",
+            payload: { id: "project-1", name: "Demo", path: "/demo" },
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        lastStateSeq: 1,
+      }),
+    };
+
+    const result = await bootstrapMirrorFromCatchUp({
+      source,
+      mirror: { mirrorStateEvent: vi.fn().mockResolvedValue(false) },
+      logger: createLogger("mirror-bootstrap-test"),
+    });
+
+    expect(result).toEqual({
+      mirroredCount: 0,
+      lastStateSeq: 1,
+      complete: false,
+    });
+  });
 });

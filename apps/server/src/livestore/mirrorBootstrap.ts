@@ -5,7 +5,7 @@ interface CatchUpSource {
 }
 
 interface MirrorSink {
-  mirrorStateEvent(event: StateEvent): void | Promise<void>;
+  mirrorStateEvent(event: StateEvent): void | boolean | Promise<void | boolean>;
 }
 
 interface LoggerLike {
@@ -29,7 +29,10 @@ export async function bootstrapMirrorFromCatchUp(options: {
   let mirroredCount = 0;
   for (const event of catchUpResult.events) {
     try {
-      await mirror.mirrorStateEvent(event);
+      const mirrorResult = await mirror.mirrorStateEvent(event);
+      if (mirrorResult === false) {
+        throw new Error("mirrorStateEvent returned false");
+      }
       mirroredCount += 1;
     } catch (error) {
       if (failOnError) {
