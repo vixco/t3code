@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
+import * as Effect from "effect/Effect";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { parsePatchFiles } from "@pierre/diffs";
 import {
@@ -65,6 +67,12 @@ import {
 } from "@t3tools/contracts";
 
 import { StateDb } from "./stateDb";
+import {
+  appendStateEvent as appendStateEventEffect,
+  listStateEventsAfterSeq as listStateEventsAfterSeqEffect,
+  readLastStateSeq as readLastStateSeqEffect,
+} from "./persistence/stateEventsRepo";
+import type { EffectSqliteDatabaseAdapter } from "./sqliteAdapter";
 
 const METADATA_KEY_PROJECTS_JSON_IMPORTED = "migration.projects_json_imported";
 const METADATA_KEY_APP_SETTINGS = "app.settings.v1";
@@ -746,25 +754,31 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
 
   catchUp(raw: StateCatchUpInput): StateCatchUpResult {
     const input = stateCatchUpInputSchema.parse(raw);
-    const rows = this.db
-      .prepare(
-        "SELECT seq, event_type, entity_id, payload_json, created_at FROM state_events WHERE seq > ? ORDER BY seq ASC;",
-      )
-      .all(input.afterSeq) as unknown as StateEventRow[];
+    const events = this.runWithEffectSql(
+      listStateEventsAfterSeqEffect(input.afterSeq),
+      () => {
+        const rows = this.db
+          .prepare(
+            "SELECT seq, event_type, entity_id, payload_json, created_at FROM state_events WHERE seq > ? ORDER BY seq ASC;",
+          )
+          .all(input.afterSeq) as unknown as StateEventRow[];
 
-    const events: StateEvent[] = [];
-    for (const row of rows) {
-      const payload = this.tryParseJson(row.payload_json);
-      events.push(
-        stateEventSchema.parse({
-          seq: row.seq,
-          eventType: row.event_type,
-          entityId: row.entity_id,
-          payload,
-          createdAt: row.created_at,
-        }),
-      );
-    }
+        const fallbackEvents: StateEvent[] = [];
+        for (const row of rows) {
+          const payload = this.tryParseJson(row.payload_json);
+          fallbackEvents.push(
+            stateEventSchema.parse({
+              seq: row.seq,
+              eventType: row.event_type,
+              entityId: row.entity_id,
+              payload,
+              createdAt: row.created_at,
+            }),
+          );
+        }
+        return fallbackEvents;
+      },
+    );
 
     return stateCatchUpResultSchema.parse({
       events,
@@ -1354,10 +1368,12 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
   }
 
   private readLastStateSeq(): number {
-    const row = this.db
-      .prepare("SELECT COALESCE(MAX(seq), 0) AS seq FROM state_events;")
-      .get() as { seq: number } | undefined;
-    return row?.seq ?? 0;
+    return this.runWithEffectSql(readLastStateSeqEffect, () => {
+      const row = this.db
+        .prepare("SELECT COALESCE(MAX(seq), 0) AS seq FROM state_events;")
+        .get() as { seq: number } | undefined;
+      return row?.seq ?? 0;
+    });
   }
 
   private withTransaction<T>(fn: (pendingEvents: StateEvent[]) => T): T {
@@ -1375,28 +1391,37 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
 
   private appendStateEvent(
     pendingEvents: StateEvent[],
-    eventType: string,
+    eventType: StateEvent["eventType"],
     entityId: string,
-    payload: unknown,
+    payload: StateEvent["payload"],
     createdAt: string,
   ): void {
-    const result = this.db
-      .prepare(
-        "INSERT INTO state_events (event_type, entity_id, payload_json, created_at) VALUES (?, ?, ?, ?);",
-      )
-      .run(eventType, entityId, JSON.stringify(payload), createdAt) as {
-      lastInsertRowid?: number | bigint;
-    };
-    const seq = toSafeInteger(result.lastInsertRowid, 0);
-    pendingEvents.push(
-      stateEventSchema.parse({
-        seq,
+    const nextEvent = this.runWithEffectSql(
+      appendStateEventEffect({
         eventType,
         entityId,
         payload,
         createdAt,
       }),
+      () => {
+        const result = this.db
+          .prepare(
+            "INSERT INTO state_events (event_type, entity_id, payload_json, created_at) VALUES (?, ?, ?, ?);",
+          )
+          .run(eventType, entityId, JSON.stringify(payload), createdAt) as {
+          lastInsertRowid?: number | bigint;
+        };
+        const seq = toSafeInteger(result.lastInsertRowid, 0);
+        return stateEventSchema.parse({
+          seq,
+          eventType,
+          entityId,
+          payload,
+          createdAt,
+        });
+      },
     );
+    pendingEvents.push(nextEvent);
   }
 
   private upsertProjectDocument(project: StateProject): void {
@@ -1833,4 +1858,18 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
     }
     this.stateDb.transaction(write);
   }
+
+  private runWithEffectSql<A>(
+    effect: Effect.Effect<A, unknown, SqlClient.SqlClient>,
+    fallback: () => A,
+  ): A {
+    if (isEffectSqliteDatabase(this.db)) {
+      return this.db.runWithSqlClient(effect);
+    }
+    return fallback();
+  }
+}
+
+function isEffectSqliteDatabase(db: StateDb["db"]): db is EffectSqliteDatabaseAdapter {
+  return "runWithSqlClient" in db && typeof db.runWithSqlClient === "function";
 }
