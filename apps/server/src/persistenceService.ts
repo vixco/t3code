@@ -5,13 +5,10 @@ import path from "node:path";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import { parsePatchFiles } from "@pierre/diffs";
 import {
   DEFAULT_MODEL,
   type AppSettings,
   type AppSettingsUpdateInput,
-  appSettingsSchema,
-  appSettingsUpdateInputSchema,
   type ProjectAddInput,
   type ProjectAddResult,
   type ProjectListResult,
@@ -46,12 +43,9 @@ import {
   projectRemoveInputSchema,
   projectScriptsSchema,
   projectUpdateScriptsInputSchema,
-  stateBootstrapResultSchema,
   stateCatchUpInputSchema,
-  stateCatchUpResultSchema,
   stateEventSchema,
   stateListMessagesInputSchema,
-  stateListMessagesResultSchema,
   stateMessageSchema,
   stateProjectSchema,
   stateThreadSchema,
@@ -100,12 +94,36 @@ import {
   readMetadataValue as readMetadataValueEffect,
   writeMetadataValue as writeMetadataValueEffect,
 } from "./persistence/metadataRepo";
+import {
+  buildUpdatedAppSettings,
+  resolveAppSettings,
+} from "./persistence/domain/appSettings";
+import { buildUserTurnMessage, messageDocId } from "./persistence/domain/messages";
+import {
+  inferProjectName,
+  isDirectory,
+  normalizeCwd,
+} from "./persistence/domain/projects";
+import {
+  asObject,
+  asString,
+  normalizeProviderItemType,
+  parseAssistantItemId,
+  parseThreadIdFromEventPayload,
+  parseTurnIdFromEvent,
+} from "./persistence/domain/providerProjection";
+import {
+  buildStateBootstrapResult,
+  buildStateCatchUpResult,
+  buildStateListMessagesResult,
+} from "./persistence/domain/stateSync";
+import { fallbackGroupId, normalizeTerminalIds, normalizeThread } from "./persistence/domain/threads";
+import { mergeTurnSummaryFiles, summarizeUnifiedDiff } from "./persistence/domain/turnSummaries";
 import { openSqliteDatabase, type EffectSqliteDatabaseAdapter, type SqliteDatabase } from "./sqliteAdapter";
 import { runStateMigrations } from "./stateMigrations";
 
 const METADATA_KEY_PROJECTS_JSON_IMPORTED = "migration.projects_json_imported";
 const METADATA_KEY_APP_SETTINGS = "app.settings.v1";
-const MAX_TERMINAL_COUNT = 4;
 const DEFAULT_TERMINAL_ID = "default";
 const DEFAULT_TERMINAL_HEIGHT = 280;
 
@@ -160,182 +178,6 @@ function toSafeInteger(value: unknown, fallback = 0): number {
   return fallback;
 }
 
-function normalizeCwd(rawCwd: string): string {
-  const resolved = path.resolve(rawCwd.trim());
-  const normalized = path.normalize(resolved);
-  if (process.platform === "win32") {
-    return normalized.toLowerCase();
-  }
-  return normalized;
-}
-
-function isDirectory(cwd: string): boolean {
-  try {
-    return fs.statSync(cwd).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-function inferProjectName(cwd: string): string {
-  const name = path.basename(cwd);
-  return name.length > 0 ? name : "project";
-}
-
-function asObject(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  return value as Record<string, unknown>;
-}
-
-function asString(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function normalizeProviderItemType(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  const normalized = value.trim();
-  if (normalized.length === 0) return undefined;
-  return normalized.replace(/[_\-\s]+/g, "").toLowerCase();
-}
-
-function parseThreadIdFromEventPayload(payload: unknown): string | null {
-  const record = asObject(payload);
-  const threadId = asString(record?.threadId) ?? asString(record?.thread_id);
-  if (threadId) return threadId;
-  const thread = asObject(record?.thread);
-  return asString(thread?.id) ?? null;
-}
-
-function parseTurnIdFromEvent(event: ProviderEvent): string | null {
-  if (event.turnId) return event.turnId;
-  const payload = asObject(event.payload);
-  const turn = asObject(payload?.turn);
-  return asString(turn?.id) ?? null;
-}
-
-function parseAssistantItemId(event: ProviderEvent): string | null {
-  const payload = asObject(event.payload);
-  const item = asObject(payload?.item);
-  const itemType = asString(item?.type);
-  if (itemType !== "agentMessage") return null;
-  return asString(item?.id) ?? event.itemId ?? null;
-}
-
-function normalizeTerminalIds(ids: readonly string[]): string[] {
-  const normalized = [
-    ...new Set(ids.map((id) => id.trim()).filter((id) => id.length > 0)),
-  ].slice(0, MAX_TERMINAL_COUNT);
-  if (normalized.length > 0) {
-    return normalized;
-  }
-  return [DEFAULT_TERMINAL_ID];
-}
-
-function normalizeRunningTerminalIds(
-  runningTerminalIds: readonly string[],
-  terminalIds: readonly string[],
-): string[] {
-  if (runningTerminalIds.length === 0) {
-    return [];
-  }
-
-  const validTerminalIds = new Set(terminalIds);
-  return [...new Set(runningTerminalIds)]
-    .map((id) => id.trim())
-    .filter((id) => id.length > 0 && validTerminalIds.has(id))
-    .slice(0, MAX_TERMINAL_COUNT);
-}
-
-function fallbackGroupId(terminalId: string): string {
-  return `group-${terminalId}`;
-}
-
-function assignUniqueGroupId(groupId: string, usedGroupIds: Set<string>): string {
-  if (!usedGroupIds.has(groupId)) {
-    usedGroupIds.add(groupId);
-    return groupId;
-  }
-
-  let suffix = 2;
-  while (usedGroupIds.has(`${groupId}-${suffix}`)) {
-    suffix += 1;
-  }
-  const uniqueGroupId = `${groupId}-${suffix}`;
-  usedGroupIds.add(uniqueGroupId);
-  return uniqueGroupId;
-}
-
-function normalizeTerminalGroups(
-  groups: StateThread["terminalGroups"],
-  terminalIds: readonly string[],
-): StateThread["terminalGroups"] {
-  const validTerminalIds = new Set(terminalIds);
-  const assignedTerminalIds = new Set<string>();
-  const usedGroupIds = new Set<string>();
-  const normalizedGroups: StateThread["terminalGroups"] = [];
-
-  for (const group of groups) {
-    const groupTerminalIds = [
-      ...new Set(group.terminalIds.map((id) => id.trim()).filter((id) => id.length > 0)),
-    ].filter((terminalId) => {
-      if (!validTerminalIds.has(terminalId)) return false;
-      if (assignedTerminalIds.has(terminalId)) return false;
-      return true;
-    });
-    if (groupTerminalIds.length === 0) continue;
-    for (const terminalId of groupTerminalIds) {
-      assignedTerminalIds.add(terminalId);
-    }
-    const baseGroupId =
-      group.id.trim().length > 0
-        ? group.id.trim()
-        : fallbackGroupId(groupTerminalIds[0] ?? DEFAULT_TERMINAL_ID);
-    normalizedGroups.push({
-      id: assignUniqueGroupId(baseGroupId, usedGroupIds),
-      terminalIds: groupTerminalIds,
-    });
-  }
-
-  for (const terminalId of terminalIds) {
-    if (assignedTerminalIds.has(terminalId)) continue;
-    normalizedGroups.push({
-      id: assignUniqueGroupId(fallbackGroupId(terminalId), usedGroupIds),
-      terminalIds: [terminalId],
-    });
-  }
-
-  if (normalizedGroups.length > 0) {
-    return normalizedGroups;
-  }
-
-  return [{ id: fallbackGroupId(DEFAULT_TERMINAL_ID), terminalIds: [DEFAULT_TERMINAL_ID] }];
-}
-
-function normalizeThread(thread: StateThread): StateThread {
-  const terminalIds = normalizeTerminalIds(thread.terminalIds);
-  const runningTerminalIds = normalizeRunningTerminalIds(thread.runningTerminalIds, terminalIds);
-  const activeTerminalId = terminalIds.includes(thread.activeTerminalId)
-    ? thread.activeTerminalId
-    : (terminalIds[0] ?? DEFAULT_TERMINAL_ID);
-  const terminalGroups = normalizeTerminalGroups(thread.terminalGroups, terminalIds);
-  const activeGroupId =
-    terminalGroups.find((group) => group.id === thread.activeTerminalGroupId)?.id ??
-    terminalGroups.find((group) => group.terminalIds.includes(activeTerminalId))?.id ??
-    terminalGroups[0]?.id ??
-    fallbackGroupId(activeTerminalId);
-
-  return {
-    ...thread,
-    terminalIds,
-    runningTerminalIds,
-    activeTerminalId,
-    terminalGroups,
-    activeTerminalGroupId: activeGroupId,
-  };
-}
-
 function projectDocId(projectId: string): string {
   return `project:${projectId}`;
 }
@@ -344,125 +186,8 @@ function threadDocId(threadId: string): string {
   return `thread:${threadId}`;
 }
 
-function messageDocId(threadId: string, messageId: string): string {
-  return `message:${threadId}:${messageId}`;
-}
-
 function turnSummaryDocId(threadId: string, turnId: string): string {
   return `turn_summary:${threadId}:${turnId}`;
-}
-
-function parsePathFromDiff(diff: string): string | null {
-  const normalized = diff.replace(/\r\n/g, "\n");
-  const bPath = normalized.match(/^\+\+\+ b\/(.+)$/m);
-  if (bPath?.[1]) return bPath[1];
-  const gitHeader = normalized.match(/^diff --git a\/(.+) b\/\1$/m);
-  if (gitHeader?.[1]) return gitHeader[1];
-  const direct = normalized.match(/^\+\+\+ (.+)$/m);
-  if (!direct?.[1] || direct[1] === "/dev/null") {
-    return null;
-  }
-  return direct[1];
-}
-
-function splitUnifiedDiffByFile(diff: string): Map<string, string> {
-  const normalized = diff.replace(/\r\n/g, "\n");
-  const byPath = new Map<string, string>();
-  const headerMatches = [...normalized.matchAll(/^diff --git .+$/gm)];
-
-  if (headerMatches.length === 0) {
-    const pathFromDiff = parsePathFromDiff(normalized);
-    if (pathFromDiff) {
-      byPath.set(pathFromDiff, normalized.trim());
-    }
-    return byPath;
-  }
-
-  for (let index = 0; index < headerMatches.length; index += 1) {
-    const match = headerMatches[index];
-    if (!match) continue;
-    const start = match.index ?? 0;
-    const end = headerMatches[index + 1]?.index ?? normalized.length;
-    const segment = normalized.slice(start, end).trim();
-    const pathFromDiff = parsePathFromDiff(segment);
-    if (!pathFromDiff || segment.length === 0) continue;
-    byPath.set(pathFromDiff, segment);
-  }
-
-  return byPath;
-}
-
-function countDiffStat(patch: string): { additions: number; deletions: number } {
-  let additions = 0;
-  let deletions = 0;
-  for (const line of patch.replace(/\r\n/g, "\n").split("\n")) {
-    if (line.startsWith("+++ ") || line.startsWith("--- ")) continue;
-    if (line.startsWith("+")) {
-      additions += 1;
-      continue;
-    }
-    if (line.startsWith("-")) {
-      deletions += 1;
-    }
-  }
-  return { additions, deletions };
-}
-
-function summarizeUnifiedDiff(diff: string): StateTurnDiffFileChange[] {
-  try {
-    const parsedPatches = parsePatchFiles(diff, "state-turn-summary", false);
-    const files: StateTurnDiffFileChange[] = [];
-    for (const patch of parsedPatches) {
-      for (const file of patch.files) {
-        const additions = file.hunks.reduce((sum, hunk) => sum + hunk.additionLines, 0);
-        const deletions = file.hunks.reduce((sum, hunk) => sum + hunk.deletionLines, 0);
-        files.push({
-          path: file.name,
-          kind: file.type,
-          additions,
-          deletions,
-        });
-      }
-    }
-    if (files.length > 0) {
-      return files.toSorted((a, b) => a.path.localeCompare(b.path));
-    }
-  } catch {
-    // Fallback below.
-  }
-
-  const fileDiffsByPath = splitUnifiedDiffByFile(diff);
-  const fallback: StateTurnDiffFileChange[] = [];
-  for (const [filePath, fileDiff] of fileDiffsByPath) {
-    const stat = countDiffStat(fileDiff);
-    fallback.push({
-      path: filePath,
-      additions: stat.additions,
-      deletions: stat.deletions,
-    });
-  }
-  return fallback.toSorted((a, b) => a.path.localeCompare(b.path));
-}
-
-function mergeTurnSummaryFiles(
-  existing: StateTurnDiffFileChange[],
-  incoming: StateTurnDiffFileChange[],
-): StateTurnDiffFileChange[] {
-  const byPath = new Map(existing.map((file) => [file.path, { ...file }] as const));
-  for (const file of incoming) {
-    const previous = byPath.get(file.path);
-    if (!previous) {
-      byPath.set(file.path, { ...file });
-      continue;
-    }
-    byPath.set(file.path, {
-      ...previous,
-      ...(file.kind !== undefined ? { kind: file.kind } : {}),
-      ...(file.additions !== undefined ? { additions: file.additions } : {}),
-      ...(file.deletions !== undefined ? { deletions: file.deletions } : {}),
-    });
-  }
-  return Array.from(byPath.values()).toSorted((a, b) => a.path.localeCompare(b.path));
 }
 
 export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
@@ -495,20 +220,11 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
   }
 
   getAppSettings(): AppSettings {
-    const metadataValue = this.readMetadata(METADATA_KEY_APP_SETTINGS);
-    const parsed = appSettingsSchema.safeParse(metadataValue);
-    if (parsed.success) {
-      return parsed.data;
-    }
-    return appSettingsSchema.parse({});
+    return resolveAppSettings(this.readMetadata(METADATA_KEY_APP_SETTINGS));
   }
 
   updateAppSettings(raw: AppSettingsUpdateInput): AppSettings {
-    const patch = appSettingsUpdateInputSchema.parse(raw);
-    const next = appSettingsSchema.parse({
-      ...this.getAppSettings(),
-      ...patch,
-    });
+    const next = buildUpdatedAppSettings(this.getAppSettings(), raw);
     this.writeMetadata(METADATA_KEY_APP_SETTINGS, next);
     return next;
   }
@@ -788,7 +504,7 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
     }
 
     const lastStateSeq = this.readLastStateSeq();
-    return stateBootstrapResultSchema.parse({
+    return buildStateBootstrapResult({
       projects,
       threads,
       lastStateSeq,
@@ -823,7 +539,7 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
       },
     );
 
-    return stateCatchUpResultSchema.parse({
+    return buildStateCatchUpResult({
       events,
       lastStateSeq: this.readLastStateSeq(),
     });
@@ -861,11 +577,11 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
       }
     }
 
-    const nextOffset = input.offset + payloads.length;
-    return stateListMessagesResultSchema.parse({
+    return buildStateListMessagesResult({
       messages,
       total,
-      nextOffset: nextOffset < total ? nextOffset : null,
+      offset: input.offset,
+      pageSize: payloads.length,
     });
   }
 
@@ -900,28 +616,12 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
     }
 
     const messageId = input.clientMessageId ?? randomUUID();
-    const text = input.clientMessageText ?? input.input ?? "";
     const createdAt = nowIso();
-    const inputAttachments = input.attachments ?? [];
-    const attachments =
-      inputAttachments.length > 0
-        ? inputAttachments.map((attachment, index) => ({
-            type: "image" as const,
-            id: `${messageId}:image:${index + 1}`,
-            name: attachment.name,
-            mimeType: attachment.mimeType,
-            sizeBytes: attachment.sizeBytes,
-          }))
-        : undefined;
-    const message = stateMessageSchema.parse({
-      id: messageId,
+    const message = buildUserTurnMessage({
+      turn: input,
       threadId,
-      role: "user",
-      text,
-      ...(attachments ? { attachments } : {}),
+      messageId,
       createdAt,
-      updatedAt: createdAt,
-      streaming: false,
     });
 
     this.withTransaction((pendingEvents) => {
