@@ -19,7 +19,9 @@ Server mode is controlled by `T3CODE_SYNC_ENGINE_MODE`:
 - `T3CODE_LIVESTORE_LIST_MESSAGES_PARITY_CHECK=1`
   - In read-pilot mode, compares `state.listMessages` mirror output against delegate output.
 - `VITE_T3CODE_STATE_SOURCE_MODE=legacy-api|livestore-read-pilot`
-  - Client-side state-source mode seam. Current implementation is protocol-compatible in both modes.
+  - Client-side state-source mode seam.
+  - If unset, web derives mode from `server.getConfig().syncEngineMode`.
+  - Current implementation is protocol-compatible in both modes.
 
 ## Suggested rollout sequence
 

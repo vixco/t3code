@@ -22,6 +22,12 @@ export function resolveStateSourceMode(rawMode: string | undefined): StateSource
   return "legacy-api";
 }
 
+export function mapSyncEngineModeToStateSourceMode(
+  syncEngineMode: "legacy" | "shadow" | "livestore-read-pilot" | undefined,
+): StateSourceMode {
+  return syncEngineMode === "livestore-read-pilot" ? "livestore-read-pilot" : "legacy-api";
+}
+
 export function createStateSource(
   api: NativeApi,
   options: {

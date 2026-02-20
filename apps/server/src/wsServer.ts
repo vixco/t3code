@@ -35,6 +35,7 @@ import { searchWorkspaceEntries } from "./workspaceEntries";
 import { PersistenceService } from "./persistenceService";
 import type { StateSyncEngine } from "./stateSyncEngine";
 import { LegacyStateSyncEngine } from "./stateSyncEngineLegacy";
+import type { SyncEngineMode } from "./syncEngineMode";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -64,6 +65,7 @@ export interface ServerOptions {
   gitManager?: GitManager | undefined;
   terminalManager?: TerminalManager | undefined;
   authToken?: string | undefined;
+  syncEngineMode?: SyncEngineMode | undefined;
 }
 
 function parseBooleanEnv(value: string | undefined): boolean | undefined {
@@ -88,6 +90,7 @@ export function createServer(options: ServerOptions) {
     gitManager: providedGitManager,
     terminalManager: providedTerminalManager,
     authToken,
+    syncEngineMode = "legacy",
   } = options;
   const persistenceService =
     providedPersistenceService ??
@@ -523,6 +526,7 @@ export function createServer(options: ServerOptions) {
       case WS_METHODS.serverGetConfig:
         return {
           cwd,
+          syncEngineMode,
           keybindings: keybindingsConfig,
         };
 

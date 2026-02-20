@@ -443,6 +443,7 @@ describe("WebSocket Server", () => {
       terminalManager?: TerminalManager;
       persistenceService?: PersistenceService;
       stateSyncEngine?: StateSyncEngine;
+      syncEngineMode?: "legacy" | "shadow" | "livestore-read-pilot";
     } = {},
   ): ReturnType<typeof createServer> {
     const stateDir = options.stateDir ?? makeTempDir("t3code-ws-state-");
@@ -460,6 +461,7 @@ describe("WebSocket Server", () => {
       ...(options.authToken ? { authToken: options.authToken } : {}),
       persistenceService,
       ...(options.stateSyncEngine ? { stateSyncEngine: options.stateSyncEngine } : {}),
+      ...(options.syncEngineMode ? { syncEngineMode: options.syncEngineMode } : {}),
       ...(options.gitManager ? { gitManager: options.gitManager as never } : {}),
       ...(options.terminalManager ? { terminalManager: options.terminalManager } : {}),
     });
@@ -551,6 +553,31 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
+      syncEngineMode: "legacy",
+      keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+    });
+  });
+
+  it("includes configured sync engine mode in server.getConfig", async () => {
+    const fakeHome = makeTempDir("t3code-home-");
+    vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
+    server = createTestServer({
+      cwd: "/my/workspace",
+      syncEngineMode: "livestore-read-pilot",
+    });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      cwd: "/my/workspace",
+      syncEngineMode: "livestore-read-pilot",
       keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
     });
   });
@@ -584,6 +611,7 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
+      syncEngineMode: "legacy",
       keybindings: mergeWithDefaultsForTest([
         { key: "cmd+j", command: "terminal.toggle" },
         { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
@@ -621,6 +649,7 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
+      syncEngineMode: "legacy",
       keybindings: mergeWithDefaultsForTest([{ key: "mod+j", command: "terminal.toggle" }]),
     });
     expect(
@@ -656,6 +685,7 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
+      syncEngineMode: "legacy",
       keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
     });
     expect(
@@ -690,6 +720,7 @@ describe("WebSocket Server", () => {
     expect(firstResponse.error).toBeUndefined();
     expect(firstResponse.result).toEqual({
       cwd: "/my/workspace",
+      syncEngineMode: "legacy",
       keybindings: mergeWithDefaultsForTest([{ key: "cmd+j", command: "terminal.toggle" }]),
     });
 
@@ -750,6 +781,7 @@ describe("WebSocket Server", () => {
     expect(configResponse.error).toBeUndefined();
     expect(configResponse.result).toEqual({
       cwd: "/my/workspace",
+      syncEngineMode: "legacy",
       keybindings: mergeWithDefaultsForTest([
         { key: "mod+j", command: "terminal.toggle" },
         { key: "mod+shift+r", command: "script.run-tests.run" },
@@ -783,6 +815,7 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
+      syncEngineMode: "legacy",
       keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
     });
     expect(
@@ -814,6 +847,7 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
+      syncEngineMode: "legacy",
       keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
     });
     expect(

@@ -164,6 +164,7 @@ async function main() {
     devUrl,
     persistenceService,
     stateSyncEngine,
+    syncEngineMode,
     authToken,
   });
   await server.start();

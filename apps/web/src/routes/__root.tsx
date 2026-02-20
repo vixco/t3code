@@ -5,7 +5,7 @@ import {
   useParams,
 } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef } from "react";
-import { QueryClient, useQueryClient } from "@tanstack/react-query";
+import { QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { APP_DISPLAY_NAME } from "../branding";
 import { Button } from "../components/ui/button";
@@ -13,7 +13,12 @@ import { AnchoredToastProvider, ToastProvider } from "../components/ui/toast";
 import { isElectron } from "../env";
 import { useNativeApi } from "../hooks/useNativeApi";
 import { invalidateGitQueries } from "../lib/gitReactQuery";
-import { createStateSource, resolveStateSourceMode } from "../stateSource";
+import { serverConfigQueryOptions } from "../lib/serverReactQuery";
+import {
+  createStateSource,
+  mapSyncEngineModeToStateSourceMode,
+  resolveStateSourceMode,
+} from "../stateSource";
 import { useStore } from "../store";
 import { onServerWelcome } from "../wsNativeApi";
 
@@ -130,13 +135,14 @@ function StateSyncRouter() {
     strict: false,
     select: (params) => params.threadId,
   });
-  const stateSourceMode = useMemo(
-    () =>
-      resolveStateSourceMode(
-        (import.meta.env.VITE_T3CODE_STATE_SOURCE_MODE as string | undefined) ?? undefined,
-      ),
-    [],
-  );
+  const serverConfigQuery = useQuery(serverConfigQueryOptions(api));
+  const stateSourceMode = useMemo(() => {
+    const rawOverride = import.meta.env.VITE_T3CODE_STATE_SOURCE_MODE as string | undefined;
+    if (rawOverride && rawOverride.trim().length > 0) {
+      return resolveStateSourceMode(rawOverride);
+    }
+    return mapSyncEngineModeToStateSourceMode(serverConfigQuery.data?.syncEngineMode);
+  }, [serverConfigQuery.data?.syncEngineMode]);
   const lastStateSeqRef = useRef(0);
   const stateQueueRef = useRef(Promise.resolve());
   const stateSource = useMemo(

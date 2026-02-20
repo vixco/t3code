@@ -126,6 +126,7 @@ Web client state-source selection:
 
 - `VITE_T3CODE_STATE_SOURCE_MODE=legacy-api|livestore-read-pilot`
   - Selects the web state-source adapter mode.
+  - If unset, the web app derives mode from `server.getConfig().syncEngineMode` (`livestore-read-pilot` maps to read-pilot source; everything else maps to legacy-api).
   - Current behavior is protocol-compatible in both modes (delegates to `api.state.*`) while preserving a client-side seam for future LiveStore-native source wiring.
 
 ## Provider architecture
