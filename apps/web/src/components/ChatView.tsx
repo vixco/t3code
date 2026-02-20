@@ -1140,7 +1140,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
   }, []);
   const onMessagesWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
     if (event.deltaY < 0) {
-      shouldAutoScrollRef.current = false;
+      const el = messagesScrollRef.current;
+      if (el && el.scrollHeight > el.clientHeight) {
+        shouldAutoScrollRef.current = false;
+      }
     }
   }, []);
   useLayoutEffect(() => {
