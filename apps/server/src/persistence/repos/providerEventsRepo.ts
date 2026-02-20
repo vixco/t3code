@@ -1,5 +1,10 @@
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
+import {
+  CompletedProviderItemRowSchema,
+  ProviderEventInsertStatsSchema,
+} from "../schema";
 
 function toSafeInteger(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -10,6 +15,11 @@ function toSafeInteger(value: unknown, fallback = 0): number {
   }
   return fallback;
 }
+
+const decodeProviderEventInsertStats = Schema.decodeUnknownSync(ProviderEventInsertStatsSchema);
+const decodeCompletedProviderItemRows = Schema.decodeUnknownSync(
+  Schema.Array(CompletedProviderItemRowSchema),
+);
 
 export interface CompletedProviderItemRow {
   item_id: string | null;
@@ -70,7 +80,8 @@ export const insertProviderEvent = (input: {
         ],
       )
       .raw) as { changes?: number | bigint };
-    return toSafeInteger(rawResult.changes, 0);
+    const stats = decodeProviderEventInsertStats(rawResult);
+    return toSafeInteger(stats.changes, 0);
   });
 
 export const listCompletedItemEventsBySessionTurn = (input: {
@@ -79,7 +90,7 @@ export const listCompletedItemEventsBySessionTurn = (input: {
 }): Effect.Effect<CompletedProviderItemRow[], unknown, SqlClient.SqlClient> =>
   Effect.gen(function*() {
     const sql = yield* SqlClient.SqlClient;
-    return (yield* sql
+    const rows = (yield* sql
       .unsafe<CompletedProviderItemRow>(
         `SELECT item_id, payload_json
          FROM provider_events
@@ -88,6 +99,10 @@ export const listCompletedItemEventsBySessionTurn = (input: {
         [input.sessionId, input.turnId],
       )
       .unprepared) as CompletedProviderItemRow[];
+    return decodeCompletedProviderItemRows(rows).map((row) => ({
+      item_id: row.item_id,
+      payload_json: row.payload_json,
+    }));
   });
 
 export const listCompletedItemEventsByThreadTurn = (input: {
@@ -96,7 +111,7 @@ export const listCompletedItemEventsByThreadTurn = (input: {
 }): Effect.Effect<CompletedProviderItemRow[], unknown, SqlClient.SqlClient> =>
   Effect.gen(function*() {
     const sql = yield* SqlClient.SqlClient;
-    return (yield* sql
+    const rows = (yield* sql
       .unsafe<CompletedProviderItemRow>(
         `SELECT item_id, payload_json
          FROM provider_events
@@ -105,6 +120,10 @@ export const listCompletedItemEventsByThreadTurn = (input: {
         [input.runtimeThreadId, input.turnId],
       )
       .unprepared) as CompletedProviderItemRow[];
+    return decodeCompletedProviderItemRows(rows).map((row) => ({
+      item_id: row.item_id,
+      payload_json: row.payload_json,
+    }));
   });
 
 export const listCompletedItemEventsByTurn = (
@@ -112,7 +131,7 @@ export const listCompletedItemEventsByTurn = (
 ): Effect.Effect<CompletedProviderItemRow[], unknown, SqlClient.SqlClient> =>
   Effect.gen(function*() {
     const sql = yield* SqlClient.SqlClient;
-    return (yield* sql
+    const rows = (yield* sql
       .unsafe<CompletedProviderItemRow>(
         `SELECT item_id, payload_json
          FROM provider_events
@@ -121,4 +140,8 @@ export const listCompletedItemEventsByTurn = (
         [turnId],
       )
       .unprepared) as CompletedProviderItemRow[];
+    return decodeCompletedProviderItemRows(rows).map((row) => ({
+      item_id: row.item_id,
+      payload_json: row.payload_json,
+    }));
   });

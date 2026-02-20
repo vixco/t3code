@@ -1,6 +1,12 @@
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { stateEventSchema, type StateEvent } from "@t3tools/contracts";
+import {
+  StateEventRowSchema,
+  StateSeqRowSchema,
+  StateEventInsertStatsSchema,
+} from "../schema";
 
 interface StateEventRow {
   seq: number;
@@ -28,6 +34,10 @@ function tryParseJson(value: string): unknown {
   }
 }
 
+const decodeStateEventRows = Schema.decodeUnknownSync(Schema.Array(StateEventRowSchema));
+const decodeStateSeqRows = Schema.decodeUnknownSync(Schema.Array(StateSeqRowSchema));
+const decodeStateEventInsertStats = Schema.decodeUnknownSync(StateEventInsertStatsSchema);
+
 export const appendStateEvent = (input: {
   eventType: string;
   entityId: string;
@@ -45,9 +55,10 @@ export const appendStateEvent = (input: {
       changes?: number | bigint;
       lastInsertRowid?: number | bigint;
     };
+    const stats = decodeStateEventInsertStats(result);
 
     return stateEventSchema.parse({
-      seq: toSafeInteger(result.lastInsertRowid, 0),
+      seq: toSafeInteger(stats.lastInsertRowid, 0),
       eventType: input.eventType,
       entityId: input.entityId,
       payload: input.payload,
@@ -63,7 +74,8 @@ export const readLastStateSeq: Effect.Effect<number, unknown, SqlClient.SqlClien
         "SELECT COALESCE(MAX(seq), 0) AS seq FROM state_events;",
       )
       .unprepared) as Array<{ seq?: number | bigint }>;
-    return toSafeInteger(rows[0]?.seq, 0);
+    const parsedRows = decodeStateSeqRows(rows);
+    return toSafeInteger(parsedRows[0]?.seq, 0);
   },
 );
 
@@ -78,7 +90,7 @@ export const listStateEventsAfterSeq = (
         [afterSeq],
       )
       .unprepared) as StateEventRow[];
-    return rows.map((row) =>
+    return decodeStateEventRows(rows).map((row) =>
       stateEventSchema.parse({
         seq: row.seq,
         eventType: row.event_type,

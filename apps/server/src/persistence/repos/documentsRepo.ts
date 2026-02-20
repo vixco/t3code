@@ -1,5 +1,11 @@
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
+import {
+  DataJsonRowSchema,
+  DocumentRowSchema,
+  TotalCountRowSchema,
+} from "../schema";
 
 export interface DocumentRow {
   id: string;
@@ -34,6 +40,10 @@ function toSafeInteger(value: unknown, fallback = 0): number {
   return fallback;
 }
 
+const decodeDocumentRows = Schema.decodeUnknownSync(Schema.Array(DocumentRowSchema));
+const decodeDataJsonRows = Schema.decodeUnknownSync(Schema.Array(DataJsonRowSchema));
+const decodeTotalCountRows = Schema.decodeUnknownSync(Schema.Array(TotalCountRowSchema));
+
 export const getDocumentRowById = (
   id: string,
 ): Effect.Effect<DocumentRow | null, unknown, SqlClient.SqlClient> =>
@@ -45,7 +55,8 @@ export const getDocumentRowById = (
         [id],
       )
       .unprepared) as DocumentRow[];
-    return rows[0] ?? null;
+    const parsedRows = decodeDocumentRows(rows);
+    return parsedRows[0] ?? null;
   });
 
 export const upsertDocument = (input: {
@@ -118,7 +129,7 @@ export const listProjectPayloads = (): Effect.Effect<string[], unknown, SqlClien
         "SELECT data_json FROM documents WHERE kind = 'project' ORDER BY updated_at DESC, created_at DESC;",
       )
       .unprepared) as DataJsonRow[];
-    return rows.map((row) => row.data_json);
+    return decodeDataJsonRows(rows).map((row) => row.data_json);
   });
 
 export const listThreadPayloads = (): Effect.Effect<string[], unknown, SqlClient.SqlClient> =>
@@ -129,7 +140,7 @@ export const listThreadPayloads = (): Effect.Effect<string[], unknown, SqlClient
         "SELECT data_json FROM documents WHERE kind = 'thread' ORDER BY updated_at DESC, created_at DESC;",
       )
       .unprepared) as DataJsonRow[];
-    return rows.map((row) => row.data_json);
+    return decodeDataJsonRows(rows).map((row) => row.data_json);
   });
 
 export const listThreadPayloadsByProject = (
@@ -142,7 +153,7 @@ export const listThreadPayloadsByProject = (
         projectId,
       ])
       .unprepared) as DataJsonRow[];
-    return rows.map((row) => row.data_json);
+    return decodeDataJsonRows(rows).map((row) => row.data_json);
   });
 
 export const findThreadPayloadByRuntimeThreadId = (
@@ -156,7 +167,8 @@ export const findThreadPayloadByRuntimeThreadId = (
         [runtimeThreadId],
       )
       .unprepared) as DataJsonRow[];
-    return rows[0]?.data_json ?? null;
+    const parsedRows = decodeDataJsonRows(rows);
+    return parsedRows[0]?.data_json ?? null;
   });
 
 export const deleteDocumentsByProjectId = (
@@ -195,7 +207,7 @@ export const listMessagePayloadsForThread = (
         [threadId],
       )
       .unprepared) as Array<{ data_json: string }>;
-    return rows.map((row) => row.data_json);
+    return decodeDataJsonRows(rows).map((row) => row.data_json);
   });
 
 export const listPaginatedMessagePayloadsForThread = (input: {
@@ -211,7 +223,7 @@ export const listPaginatedMessagePayloadsForThread = (input: {
         [input.threadId, input.limit, input.offset],
       )
       .unprepared) as PaginatedMessagePayloadsRow[];
-    return rows.map((row) => row.data_json);
+    return decodeDataJsonRows(rows).map((row) => row.data_json);
   });
 
 export const countMessagesForThread = (
@@ -224,7 +236,8 @@ export const countMessagesForThread = (
         threadId,
       ])
       .unprepared) as TotalCountRow[];
-    return toSafeInteger(rows[0]?.total, 0);
+    const parsedRows = decodeTotalCountRows(rows);
+    return toSafeInteger(parsedRows[0]?.total, 0);
   });
 
 export const listMessagePayloadsForThreadDesc = (
@@ -241,7 +254,7 @@ export const listMessagePayloadsForThreadDesc = (
         [threadId],
       )
       .unprepared) as Array<{ data_json: string }>;
-    return rows.map((row) => row.data_json);
+    return decodeDataJsonRows(rows).map((row) => row.data_json);
   });
 
 export const listTurnSummaryPayloadsForThread = (
@@ -255,5 +268,5 @@ export const listTurnSummaryPayloadsForThread = (
         [threadId],
       )
       .unprepared) as Array<{ data_json: string }>;
-    return rows.map((row) => row.data_json);
+    return decodeDataJsonRows(rows).map((row) => row.data_json);
   });

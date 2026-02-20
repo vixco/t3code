@@ -11,8 +11,24 @@ export const DocumentRowSchema = Schema.Struct({
   data_json: Schema.String,
 });
 
+export const DataJsonRowSchema = Schema.Struct({
+  data_json: Schema.String,
+});
+
+const NumberOrBigIntSchema = Schema.Union([Schema.Number, Schema.BigInt]);
+
 export const ProviderEventInsertStatsSchema = Schema.Struct({
-  changes: Schema.NullOr(Schema.Number),
+  changes: Schema.optional(Schema.NullOr(NumberOrBigIntSchema)),
+});
+
+export const CompletedProviderItemRowSchema = Schema.Struct({
+  item_id: Schema.NullOr(Schema.String),
+  payload_json: Schema.NullOr(Schema.String),
+});
+
+export const StateEventInsertStatsSchema = Schema.Struct({
+  changes: Schema.optional(Schema.NullOr(NumberOrBigIntSchema)),
+  lastInsertRowid: Schema.optional(Schema.NullOr(NumberOrBigIntSchema)),
 });
 
 export const StateEventRowSchema = Schema.Struct({
@@ -21,6 +37,14 @@ export const StateEventRowSchema = Schema.Struct({
   entity_id: Schema.String,
   payload_json: Schema.String,
   created_at: Schema.String,
+});
+
+export const StateSeqRowSchema = Schema.Struct({
+  seq: Schema.optional(Schema.NullOr(NumberOrBigIntSchema)),
+});
+
+export const TotalCountRowSchema = Schema.Struct({
+  total: Schema.optional(Schema.NullOr(NumberOrBigIntSchema)),
 });
 
 export const MetadataRowSchema = Schema.Struct({

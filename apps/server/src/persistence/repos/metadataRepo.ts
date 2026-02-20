@@ -1,5 +1,7 @@
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
+import { MetadataRowSchema } from "../schema";
 
 function tryParseJson(value: string): unknown {
   try {
@@ -9,6 +11,8 @@ function tryParseJson(value: string): unknown {
   }
 }
 
+const decodeMetadataRows = Schema.decodeUnknownSync(Schema.Array(MetadataRowSchema));
+
 export const readMetadataValue = (
   key: string,
 ): Effect.Effect<unknown | null, unknown, SqlClient.SqlClient> =>
@@ -17,7 +21,7 @@ export const readMetadataValue = (
     const rows = (yield* sql
       .unsafe<{ value_json: string }>("SELECT value_json FROM metadata WHERE key = ? LIMIT 1;", [key])
       .unprepared) as Array<{ value_json: string }>;
-    const row = rows[0];
+    const row = decodeMetadataRows(rows)[0];
     if (!row) {
       return null;
     }
