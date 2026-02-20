@@ -3,6 +3,8 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Queue from "effect/Queue";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import {
@@ -189,6 +191,9 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
   private readonly db: SqliteDatabase;
   private readonly sessionThreadIds = new Map<string, string>();
   private readonly runtimeThreadIds = new Map<string, string>();
+  private readonly stateEventsQueue = Effect.runSync(Queue.unbounded<StateEvent>());
+  private readonly stateEventsBridge = Effect.runFork(this.runStateEventsBridge());
+  private closed = false;
 
   constructor(options: PersistenceServiceOptions) {
     super();
@@ -212,6 +217,20 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
   }
 
   close(): void {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    try {
+      Effect.runSync(Queue.shutdown(this.stateEventsQueue));
+    } catch {
+      // Best effort shutdown.
+    }
+    try {
+      Effect.runSync(Fiber.interrupt(this.stateEventsBridge));
+    } catch {
+      // Ignore bridge interruption failures during shutdown.
+    }
     this.db.close();
   }
 
@@ -1078,11 +1097,7 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
     const pendingEvents: StateEvent[] = [];
     const result = this.runDbTransaction(() => fn(pendingEvents));
     for (const event of pendingEvents) {
-      try {
-        this.emit("stateEvent", event);
-      } catch {
-        // Listener failures should not break already-committed writes.
-      }
+      this.publishStateEvent(event);
     }
     return result;
   }
@@ -1462,5 +1477,27 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
     effect: Effect.Effect<A, unknown, SqlClient.SqlClient>,
   ): A {
     return runWithSqlClient(this.db, effect);
+  }
+
+  private publishStateEvent(event: StateEvent): void {
+    try {
+      Effect.runSync(Queue.offer(this.stateEventsQueue, event));
+    } catch {
+      // Best-effort state event delivery; persistence writes are already committed.
+    }
+  }
+
+  private runStateEventsBridge(): Effect.Effect<void> {
+    return Effect.forever(
+      Effect.flatMap(Queue.take(this.stateEventsQueue), (event) =>
+        Effect.sync(() => {
+          try {
+            this.emit("stateEvent", event);
+          } catch {
+            // Listener failures should not break already-committed writes.
+          }
+        }),
+      ),
+    );
   }
 }
