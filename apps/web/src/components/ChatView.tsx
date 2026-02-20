@@ -1140,6 +1140,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
       if (scrolledUp) {
         shouldAutoScrollRef.current = false;
       }
+    } else if (shouldAutoScrollRef.current && !atBottom) {
+      // Catch-all for keyboard, assistive technology, or any other scroll source.
+      const scrolledUp = currentScrollTop < lastKnownScrollTopRef.current - 1;
+      if (scrolledUp) {
+        shouldAutoScrollRef.current = false;
+      }
     }
 
     lastKnownScrollTopRef.current = currentScrollTop;
