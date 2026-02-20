@@ -40,6 +40,7 @@ export interface LiveStoreReadPilotStateSyncEngineOptions {
   enableBootstrapParityCheck?: boolean;
   enableCatchUpParityCheck?: boolean;
   enableListMessagesParityCheck?: boolean;
+  disableDelegateReadFallback?: boolean;
 }
 
 export class LiveStoreReadPilotStateSyncEngine
@@ -53,6 +54,7 @@ export class LiveStoreReadPilotStateSyncEngine
   private readonly enableBootstrapParityCheck: boolean;
   private readonly enableCatchUpParityCheck: boolean;
   private readonly enableListMessagesParityCheck: boolean;
+  private readonly disableDelegateReadFallback: boolean;
   private closed = false;
   private bootstrapSource: LiveStoreReadSource = "delegate";
   private catchUpSource: LiveStoreReadSource = "delegate";
@@ -68,6 +70,7 @@ export class LiveStoreReadPilotStateSyncEngine
     this.enableBootstrapParityCheck = options.enableBootstrapParityCheck ?? false;
     this.enableCatchUpParityCheck = options.enableCatchUpParityCheck ?? false;
     this.enableListMessagesParityCheck = options.enableListMessagesParityCheck ?? false;
+    this.disableDelegateReadFallback = options.disableDelegateReadFallback ?? false;
     this.unsubscribeDelegate = this.delegate.onStateEvent((event) => {
       this.emit("stateEvent", event);
       void this.mirror.mirrorStateEvent(event).catch((error) => {
@@ -89,17 +92,29 @@ export class LiveStoreReadPilotStateSyncEngine
   loadSnapshot(): StateBootstrapResult {
     try {
       const snapshot = this.mirror.debugReadSnapshot();
-      if (snapshot.lastStateSeq > 0) {
-        if (this.enableBootstrapParityCheck) {
-          this.checkBootstrapParity(snapshot);
-        }
-        this.logReadSourceChange("state.bootstrap", this.bootstrapSource, "livestore", {
-          lastStateSeq: snapshot.lastStateSeq,
-        });
-        this.bootstrapSource = "livestore";
-        return snapshot;
+      if (this.enableBootstrapParityCheck) {
+        this.checkBootstrapParity(snapshot);
       }
+      if (snapshot.lastStateSeq === 0 && !this.disableDelegateReadFallback) {
+        const delegateSnapshot = this.delegate.loadSnapshot();
+        this.logReadSourceChange("state.bootstrap", this.bootstrapSource, "delegate", {
+          lastStateSeq: delegateSnapshot.lastStateSeq,
+        });
+        this.bootstrapSource = "delegate";
+        return delegateSnapshot;
+      }
+      this.logReadSourceChange("state.bootstrap", this.bootstrapSource, "livestore", {
+        lastStateSeq: snapshot.lastStateSeq,
+      });
+      this.bootstrapSource = "livestore";
+      return snapshot;
     } catch (error) {
+      if (this.disableDelegateReadFallback) {
+        this.logger.error("failed to read bootstrap from livestore mirror with fallback disabled", {
+          error,
+        });
+        throw error;
+      }
       this.logger.warn("failed to read bootstrap from livestore mirror; using delegate", { error });
     }
     const snapshot = this.delegate.loadSnapshot();
@@ -151,6 +166,16 @@ export class LiveStoreReadPilotStateSyncEngine
       this.listMessagesSource = "livestore";
       return result;
     } catch (error) {
+      if (this.disableDelegateReadFallback) {
+        this.logger.error(
+          "failed to list messages from livestore mirror with fallback disabled",
+          {
+            error,
+            threadId: raw.threadId,
+          },
+        );
+        throw error;
+      }
       this.logger.warn("failed to list messages from livestore mirror; using delegate", {
         error,
         threadId: raw.threadId,
@@ -212,6 +237,13 @@ export class LiveStoreReadPilotStateSyncEngine
       this.catchUpSource = "livestore";
       return result;
     } catch (error) {
+      if (this.disableDelegateReadFallback) {
+        this.logger.error("failed to catch up from livestore mirror with fallback disabled", {
+          error,
+          afterSeq,
+        });
+        throw error;
+      }
       this.logger.warn("failed to catch up from livestore mirror; using delegate", {
         error,
         afterSeq,

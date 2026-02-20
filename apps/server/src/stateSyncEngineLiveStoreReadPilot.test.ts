@@ -396,6 +396,91 @@ describe("LiveStoreReadPilotStateSyncEngine", () => {
     }
   });
 
+  it("can disable delegate read fallback for strict mirror reads", () => {
+    const delegate = new MockDelegateStateSyncEngine();
+    const mirror = makeMirrorStub({
+      snapshot: {
+        projects: [],
+        threads: [],
+        lastStateSeq: 0,
+      },
+      catchUp: {
+        events: [],
+        lastStateSeq: 0,
+      },
+      listMessages: {
+        messages: [],
+        total: 0,
+        nextOffset: null,
+      },
+    });
+    vi.mocked(mirror.debugReadSnapshot).mockImplementationOnce(() => {
+      throw new Error("strict bootstrap failure");
+    });
+    vi.mocked(mirror.debugCatchUp).mockImplementationOnce(() => {
+      throw new Error("strict catch-up failure");
+    });
+    vi.mocked(mirror.debugListMessages).mockImplementationOnce(() => {
+      throw new Error("strict list failure");
+    });
+
+    const engine = new LiveStoreReadPilotStateSyncEngine({
+      delegate,
+      mirror,
+      disableDelegateReadFallback: true,
+    });
+
+    try {
+      expect(() => engine.loadSnapshot()).toThrow(/strict bootstrap failure/);
+      expect(() => engine.catchUp({ afterSeq: 0 })).toThrow(/strict catch-up failure/);
+      expect(() => engine.listMessages({ threadId: "thread-1", offset: 0, limit: 10 })).toThrow(
+        /strict list failure/,
+      );
+      expect(delegate.loadSnapshotMock).not.toHaveBeenCalled();
+      expect(delegate.catchUpMock).not.toHaveBeenCalled();
+      expect(delegate.listMessagesMock).not.toHaveBeenCalled();
+    } finally {
+      engine.close();
+    }
+  });
+
+  it("uses mirror bootstrap even when seq is zero if fallback disabled", () => {
+    const delegate = new MockDelegateStateSyncEngine();
+    const mirror = makeMirrorStub({
+      snapshot: {
+        projects: [],
+        threads: [],
+        lastStateSeq: 0,
+      },
+      catchUp: {
+        events: [],
+        lastStateSeq: 0,
+      },
+      listMessages: {
+        messages: [],
+        total: 0,
+        nextOffset: null,
+      },
+    });
+
+    const engine = new LiveStoreReadPilotStateSyncEngine({
+      delegate,
+      mirror,
+      disableDelegateReadFallback: true,
+    });
+
+    try {
+      expect(engine.loadSnapshot()).toEqual({
+        projects: [],
+        threads: [],
+        lastStateSeq: 0,
+      });
+      expect(delegate.loadSnapshotMock).not.toHaveBeenCalled();
+    } finally {
+      engine.close();
+    }
+  });
+
   it("returns to mirror reads after transient fallback errors", () => {
     const delegate = new MockDelegateStateSyncEngine();
     const mirror = makeMirrorStub({

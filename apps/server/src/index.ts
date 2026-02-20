@@ -124,6 +124,8 @@ async function main() {
     parseBooleanEnv(process.env.T3CODE_LIVESTORE_LIST_MESSAGES_PARITY_CHECK) ?? false;
   const enableLiveStoreShadowBootstrapParityCheck =
     parseBooleanEnv(process.env.T3CODE_LIVESTORE_SHADOW_BOOTSTRAP_PARITY_CHECK) ?? false;
+  const disableLiveStoreDelegateReadFallback =
+    parseBooleanEnv(process.env.T3CODE_LIVESTORE_DISABLE_READ_FALLBACK) ?? false;
   const persistenceService = new PersistenceService({
     dbPath: stateDbPath,
     legacyProjectsJsonPath: path.join(legacyStateDir, "projects.json"),
@@ -146,6 +148,7 @@ async function main() {
             enableBootstrapParityCheck: enableLiveStoreBootstrapParityCheck,
             enableCatchUpParityCheck: enableLiveStoreCatchUpParityCheck,
             enableListMessagesParityCheck: enableLiveStoreListMessagesParityCheck,
+            disableDelegateReadFallback: disableLiveStoreDelegateReadFallback,
           })
         : legacyStateSyncEngine;
   const devUrl = process.env.VITE_DEV_SERVER_URL;
@@ -184,6 +187,7 @@ async function main() {
     liveStoreCatchUpParityCheck: enableLiveStoreCatchUpParityCheck,
     liveStoreListMessagesParityCheck: enableLiveStoreListMessagesParityCheck,
     liveStoreShadowBootstrapParityCheck: enableLiveStoreShadowBootstrapParityCheck,
+    liveStoreDisableReadFallback: disableLiveStoreDelegateReadFallback,
     authEnabled: Boolean(authToken),
   });
 
