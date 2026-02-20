@@ -77,23 +77,23 @@ import {
   readNextSortKey as readNextSortKeyEffect,
   upsertDocument as upsertDocumentEffect,
   type DocumentRow,
-} from "./persistence/documentsRepo";
+} from "./persistence/repos/documentsRepo";
 import {
   insertProviderEvent as insertProviderEventEffect,
   listCompletedItemEventsBySessionTurn as listCompletedItemEventsBySessionTurnEffect,
   listCompletedItemEventsByThreadTurn as listCompletedItemEventsByThreadTurnEffect,
   listCompletedItemEventsByTurn as listCompletedItemEventsByTurnEffect,
   type CompletedProviderItemRow,
-} from "./persistence/providerEventsRepo";
+} from "./persistence/repos/providerEventsRepo";
 import {
   appendStateEvent as appendStateEventEffect,
   listStateEventsAfterSeq as listStateEventsAfterSeqEffect,
   readLastStateSeq as readLastStateSeqEffect,
-} from "./persistence/stateEventsRepo";
+} from "./persistence/repos/stateEventsRepo";
 import {
   readMetadataValue as readMetadataValueEffect,
   writeMetadataValue as writeMetadataValueEffect,
-} from "./persistence/metadataRepo";
+} from "./persistence/repos/metadataRepo";
 import {
   buildUpdatedAppSettings,
   resolveAppSettings,
@@ -119,8 +119,12 @@ import {
 } from "./persistence/domain/stateSync";
 import { fallbackGroupId, normalizeTerminalIds, normalizeThread } from "./persistence/domain/threads";
 import { mergeTurnSummaryFiles, summarizeUnifiedDiff } from "./persistence/domain/turnSummaries";
-import { openSqliteDatabase, type EffectSqliteDatabaseAdapter, type SqliteDatabase } from "./sqliteAdapter";
-import { runStateMigrations } from "./stateMigrations";
+import { resolvePersistenceConfig } from "./persistence/config";
+import { PersistenceInitializationError } from "./persistence/errors";
+import { runPersistenceMigrations } from "./persistence/migrator";
+import { runWithSqlClient } from "./persistence/runtime";
+import { openPersistenceSqliteDatabase } from "./persistence/sqliteLayer";
+import type { SqliteDatabase } from "./sqliteAdapter";
 
 const METADATA_KEY_PROJECTS_JSON_IMPORTED = "migration.projects_json_imported";
 const METADATA_KEY_APP_SETTINGS = "app.settings.v1";
@@ -197,21 +201,22 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
 
   constructor(options: PersistenceServiceOptions) {
     super();
-    const dbPath = path.resolve(options.dbPath);
-    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-    this.db = openSqliteDatabase(dbPath);
+    const config = resolvePersistenceConfig(options);
+    this.db = openPersistenceSqliteDatabase(config.dbPath);
     try {
-      runStateMigrations(this.db);
+      runPersistenceMigrations(this.db);
     } catch (error) {
       try {
         this.db.close();
       } catch {
         // Best effort close on failed initialization.
       }
-      throw error;
+      throw new PersistenceInitializationError("Failed to initialize persistence database", {
+        cause: error,
+      });
     }
-    if (options.legacyProjectsJsonPath) {
-      this.importProjectsJsonIfNeeded(options.legacyProjectsJsonPath);
+    if (config.legacyProjectsJsonPath) {
+      this.importProjectsJsonIfNeeded(config.legacyProjectsJsonPath);
     }
   }
 
@@ -1716,13 +1721,6 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
     effect: Effect.Effect<A, unknown, SqlClient.SqlClient>,
     fallback: () => A,
   ): A {
-    if (isEffectSqliteDatabase(this.db)) {
-      return this.db.runWithSqlClient(effect);
-    }
-    return fallback();
+    return runWithSqlClient(this.db, effect, fallback);
   }
-}
-
-function isEffectSqliteDatabase(db: SqliteDatabase): db is EffectSqliteDatabaseAdapter {
-  return "runWithSqlClient" in db && typeof db.runWithSqlClient === "function";
 }
