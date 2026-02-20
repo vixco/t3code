@@ -4,7 +4,7 @@ import {
   type ErrorComponentProps,
   useParams,
 } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { QueryClient, useQueryClient } from "@tanstack/react-query";
 
 import { APP_DISPLAY_NAME } from "../branding";
@@ -13,6 +13,7 @@ import { AnchoredToastProvider, ToastProvider } from "../components/ui/toast";
 import { isElectron } from "../env";
 import { useNativeApi } from "../hooks/useNativeApi";
 import { invalidateGitQueries } from "../lib/gitReactQuery";
+import { createStateSource } from "../stateSource";
 import { useStore } from "../store";
 import { onServerWelcome } from "../wsNativeApi";
 
@@ -131,16 +132,17 @@ function StateSyncRouter() {
   });
   const lastStateSeqRef = useRef(0);
   const stateQueueRef = useRef(Promise.resolve());
+  const stateSource = useMemo(() => (api ? createStateSource(api) : null), [api]);
 
   useEffect(() => {
-    if (!api) return;
+    if (!api || !stateSource) return;
     let disposed = false;
     let retryDelayMs = 500;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     const bootstrap = async () => {
       try {
-        const snapshot = await api.state.bootstrap();
+        const snapshot = await stateSource.bootstrap();
         if (disposed) return;
         dispatch({
           type: "HYDRATE_FROM_SERVER",
@@ -165,11 +167,11 @@ function StateSyncRouter() {
         clearTimeout(retryTimer);
       }
     };
-  }, [api, dispatch]);
+  }, [api, dispatch, stateSource]);
 
   useEffect(() => {
-    if (!api) return;
-    return api.state.onEvent((event) => {
+    if (!api || !stateSource) return;
+    return stateSource.onEvent((event) => {
       stateQueueRef.current = stateQueueRef.current
         .then(async () => {
           if (event.seq <= lastStateSeqRef.current) {
@@ -177,7 +179,7 @@ function StateSyncRouter() {
           }
 
           if (event.seq > lastStateSeqRef.current + 1) {
-            const catchUp = await api.state.catchUp({ afterSeq: lastStateSeqRef.current });
+            const catchUp = await stateSource.catchUp({ afterSeq: lastStateSeqRef.current });
             for (const missingEvent of catchUp.events) {
               if (missingEvent.seq <= lastStateSeqRef.current) continue;
               dispatch({
@@ -198,7 +200,7 @@ function StateSyncRouter() {
         })
         .catch(() => undefined);
     });
-  }, [api, dispatch]);
+  }, [api, dispatch, stateSource]);
 
   useEffect(() => {
     if (!api) return;
