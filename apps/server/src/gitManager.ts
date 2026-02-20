@@ -458,6 +458,9 @@ export class GitManager {
     }
 
     const parsed = parsePullRequestList(parsedJson).toSorted((a, b) => {
+      const aOpen = a.state === "open" ? 1 : 0;
+      const bOpen = b.state === "open" ? 1 : 0;
+      if (aOpen !== bOpen) return bOpen - aOpen;
       const left = a.updatedAt ? Date.parse(a.updatedAt) : 0;
       const right = b.updatedAt ? Date.parse(b.updatedAt) : 0;
       return right - left;

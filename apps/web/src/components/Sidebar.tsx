@@ -1,10 +1,4 @@
-import {
-  GitPullRequestIcon,
-  MonitorIcon,
-  MoonIcon,
-  SunIcon,
-  TerminalIcon,
-} from "lucide-react";
+import { GitPullRequestIcon, TerminalIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
