@@ -582,6 +582,80 @@ describe("WebSocket Server", () => {
     });
   });
 
+  it("infers shadow sync engine mode in server.getConfig when mode option omitted", async () => {
+    const stateDir = makeTempDir("t3code-ws-config-shadow-infer-state-");
+    const persistenceService = new PersistenceService({
+      dbPath: path.join(stateDir, "state.sqlite"),
+    });
+    const legacy = new LegacyStateSyncEngine({ persistenceService });
+    const mirror = new LiveStoreStateMirror({ storeId: "ws-config-shadow-infer-test" });
+    const shadow = new ShadowStateSyncEngine({
+      delegate: legacy,
+      mirror,
+    });
+
+    try {
+      server = createTestServer({
+        cwd: "/my/workspace",
+        stateSyncEngine: shadow,
+      });
+      await server.start();
+      const addr = server.httpServer.address();
+      const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+      const ws = await connectWs(port);
+      connections.push(ws);
+      await waitForMessage(ws);
+
+      const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
+      expect(response.error).toBeUndefined();
+      expect(response.result).toEqual({
+        cwd: "/my/workspace",
+        syncEngineMode: "shadow",
+        keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+      });
+    } finally {
+      shadow.close();
+    }
+  });
+
+  it("infers read-pilot sync engine mode in server.getConfig when mode option omitted", async () => {
+    const stateDir = makeTempDir("t3code-ws-config-readpilot-infer-state-");
+    const persistenceService = new PersistenceService({
+      dbPath: path.join(stateDir, "state.sqlite"),
+    });
+    const legacy = new LegacyStateSyncEngine({ persistenceService });
+    const mirror = new LiveStoreStateMirror({ storeId: "ws-config-readpilot-infer-test" });
+    const readPilot = new LiveStoreReadPilotStateSyncEngine({
+      delegate: legacy,
+      mirror,
+    });
+
+    try {
+      server = createTestServer({
+        cwd: "/my/workspace",
+        stateSyncEngine: readPilot,
+      });
+      await server.start();
+      const addr = server.httpServer.address();
+      const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+      const ws = await connectWs(port);
+      connections.push(ws);
+      await waitForMessage(ws);
+
+      const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
+      expect(response.error).toBeUndefined();
+      expect(response.result).toEqual({
+        cwd: "/my/workspace",
+        syncEngineMode: "livestore-read-pilot",
+        keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+      });
+    } finally {
+      readPilot.close();
+    }
+  });
+
   it("reads keybindings from ~/.t3/keybindings.json", async () => {
     const fakeHome = makeTempDir("t3code-home-");
     const configDir = path.join(fakeHome, ".t3");

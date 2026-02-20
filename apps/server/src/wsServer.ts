@@ -35,6 +35,8 @@ import { searchWorkspaceEntries } from "./workspaceEntries";
 import { PersistenceService } from "./persistenceService";
 import type { StateSyncEngine } from "./stateSyncEngine";
 import { LegacyStateSyncEngine } from "./stateSyncEngineLegacy";
+import { LiveStoreReadPilotStateSyncEngine } from "./stateSyncEngineLiveStoreReadPilot";
+import { ShadowStateSyncEngine } from "./stateSyncEngineShadow";
 import type { SyncEngineMode } from "./syncEngineMode";
 
 const MIME_TYPES: Record<string, string> = {
@@ -90,7 +92,7 @@ export function createServer(options: ServerOptions) {
     gitManager: providedGitManager,
     terminalManager: providedTerminalManager,
     authToken,
-    syncEngineMode = "legacy",
+    syncEngineMode: providedSyncEngineMode,
   } = options;
   const persistenceService =
     providedPersistenceService ??
@@ -100,6 +102,7 @@ export function createServer(options: ServerOptions) {
   const ownsPersistenceService = providedPersistenceService === undefined;
   const stateSyncEngine =
     providedStateSyncEngine ?? new LegacyStateSyncEngine({ persistenceService });
+  const syncEngineMode = providedSyncEngineMode ?? inferSyncEngineMode(stateSyncEngine);
   const ownsStateSyncEngine = providedStateSyncEngine === undefined;
   const providerManager = new ProviderManager({ persistenceService });
   const terminalManager = providedTerminalManager ?? new TerminalManager();
@@ -611,4 +614,17 @@ export function createServer(options: ServerOptions) {
   }
 
   return { start, stop, httpServer };
+}
+
+function inferSyncEngineMode(stateSyncEngine: StateSyncEngine): SyncEngineMode {
+  if (stateSyncEngine instanceof LiveStoreReadPilotStateSyncEngine) {
+    return "livestore-read-pilot";
+  }
+  if (stateSyncEngine instanceof ShadowStateSyncEngine) {
+    return "shadow";
+  }
+  if (stateSyncEngine instanceof LegacyStateSyncEngine) {
+    return "legacy";
+  }
+  return "legacy";
 }
