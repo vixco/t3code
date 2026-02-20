@@ -364,9 +364,6 @@ export function createServer(options: ServerOptions) {
       case WS_METHODS.stateCatchUp:
         return persistenceService.catchUp(request.params as never);
 
-      case WS_METHODS.stateImportLegacyRendererState:
-        return persistenceService.importLegacyRendererState(request.params as never);
-
       case WS_METHODS.appSettingsGet:
         return persistenceService.getAppSettings();
 

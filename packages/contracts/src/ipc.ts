@@ -48,8 +48,6 @@ import type {
   StateCatchUpInput,
   StateCatchUpResult,
   StateEvent,
-  StateImportLegacyRendererStateInput,
-  StateImportLegacyRendererStateResult,
   StateListMessagesInput,
   StateListMessagesResult,
   ThreadsCreateInput,
@@ -129,9 +127,6 @@ export interface NativeApi {
     bootstrap: () => Promise<StateBootstrapResult>;
     listMessages: (input: StateListMessagesInput) => Promise<StateListMessagesResult>;
     catchUp: (input: StateCatchUpInput) => Promise<StateCatchUpResult>;
-    importLegacyRendererState: (
-      input: StateImportLegacyRendererStateInput,
-    ) => Promise<StateImportLegacyRendererStateResult>;
     onEvent: (callback: (event: StateEvent) => void) => () => void;
   };
   appSettings: {

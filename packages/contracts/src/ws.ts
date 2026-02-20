@@ -7,7 +7,6 @@ export const WS_METHODS = {
   stateBootstrap: "state.bootstrap",
   stateListMessages: "state.listMessages",
   stateCatchUp: "state.catchUp",
-  stateImportLegacyRendererState: "state.importLegacyRendererState",
   appSettingsGet: "appSettings.get",
   appSettingsUpdate: "appSettings.update",
 

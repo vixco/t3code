@@ -23,8 +23,6 @@ import {
   type StateCatchUpInput,
   type StateCatchUpResult,
   type StateEvent,
-  type StateImportLegacyRendererStateInput,
-  type StateImportLegacyRendererStateResult,
   type StateListMessagesInput,
   type StateListMessagesResult,
   type StateMessage,
@@ -50,7 +48,6 @@ import {
   stateCatchUpInputSchema,
   stateCatchUpResultSchema,
   stateEventSchema,
-  stateImportLegacyRendererStateInputSchema,
   stateListMessagesInputSchema,
   stateListMessagesResultSchema,
   stateMessageSchema,
@@ -70,7 +67,6 @@ import {
 import { StateDb } from "./stateDb";
 
 const METADATA_KEY_PROJECTS_JSON_IMPORTED = "migration.projects_json_imported";
-const METADATA_KEY_LEGACY_RENDERER_IMPORTED = "migration.legacy_renderer_imported";
 const METADATA_KEY_APP_SETTINGS = "app.settings.v1";
 const MAX_TERMINAL_COUNT = 4;
 const DEFAULT_TERMINAL_ID = "default";
@@ -802,114 +798,6 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
       total,
       nextOffset: nextOffset < total ? nextOffset : null,
     });
-  }
-
-  importLegacyRendererState(raw: StateImportLegacyRendererStateInput): StateImportLegacyRendererStateResult {
-    const input = stateImportLegacyRendererStateInputSchema.parse(raw);
-    const alreadyImported = this.readMetadataBoolean(METADATA_KEY_LEGACY_RENDERER_IMPORTED);
-    if (alreadyImported) {
-      return { imported: false, alreadyImported: true };
-    }
-
-    this.stateDb.transaction(() => {
-      const now = nowIso();
-      const projectIdByCwd = new Map<string, string>();
-
-      for (const project of input.projects) {
-        const normalizedCwd = normalizeCwd(project.cwd);
-        if (!isDirectory(normalizedCwd)) {
-          continue;
-        }
-        if (projectIdByCwd.has(normalizedCwd)) {
-          continue;
-        }
-        const existing = this.findProjectByNormalizedCwd(normalizedCwd);
-        const nextProject = stateProjectSchema.parse({
-          id: existing?.id ?? project.id,
-          cwd: normalizedCwd,
-          name: project.name.trim().length > 0 ? project.name.trim() : inferProjectName(normalizedCwd),
-          scripts: normalizeProjectScripts(project.scripts),
-          createdAt: project.createdAt ?? existing?.createdAt ?? now,
-          updatedAt: project.updatedAt ?? now,
-        });
-        this.upsertProjectDocument(nextProject);
-        projectIdByCwd.set(normalizedCwd, nextProject.id);
-      }
-
-      const projectIdMap = new Map<string, string>();
-      for (const project of input.projects) {
-        const normalizedCwd = normalizeCwd(project.cwd);
-        const mappedProjectId = projectIdByCwd.get(normalizedCwd);
-        if (!mappedProjectId) continue;
-        projectIdMap.set(project.id, mappedProjectId);
-      }
-
-      for (const thread of input.threads) {
-        const mappedProjectId = projectIdMap.get(thread.projectId);
-        if (!mappedProjectId) continue;
-
-        const normalizedThread = normalizeThread(
-          stateThreadSchema.parse({
-            id: thread.id,
-            codexThreadId: thread.codexThreadId ?? null,
-            projectId: mappedProjectId,
-            title: thread.title,
-            model: thread.model,
-            terminalOpen: thread.terminalOpen,
-            terminalHeight: thread.terminalHeight,
-            terminalIds: thread.terminalIds,
-            activeTerminalId: thread.activeTerminalId,
-            terminalGroups: thread.terminalGroups,
-            activeTerminalGroupId:
-              thread.activeTerminalGroupId ?? fallbackGroupId(thread.activeTerminalId),
-            createdAt: thread.createdAt,
-            updatedAt: thread.lastVisitedAt ?? thread.createdAt,
-            lastVisitedAt: thread.lastVisitedAt,
-            branch: thread.branch ?? null,
-            worktreePath: thread.worktreePath ?? null,
-            turnDiffSummaries: [],
-          }),
-        );
-        this.upsertThreadDocument(normalizedThread);
-
-        const sortedMessages = [...thread.messages].toSorted((a, b) =>
-          a.createdAt.localeCompare(b.createdAt),
-        );
-        for (const message of sortedMessages) {
-          const messageRecord = stateMessageSchema.parse({
-            id: message.id,
-            threadId: normalizedThread.id,
-            role: message.role,
-            text: message.text,
-            attachments: message.attachments,
-            createdAt: message.createdAt,
-            updatedAt: message.createdAt,
-            streaming: false,
-          });
-          this.upsertMessageDocument(normalizedThread, messageRecord);
-        }
-
-        for (const summary of thread.turnDiffSummaries) {
-          const parsedSummary = stateTurnSummarySchema.parse(summary);
-          this.upsertTurnSummaryDocument(normalizedThread, parsedSummary);
-        }
-      }
-
-      this.writeMetadata(
-        METADATA_KEY_LEGACY_RENDERER_IMPORTED,
-        {
-          importedAt: nowIso(),
-          threadCount: input.threads.length,
-          projectCount: input.projects.length,
-        },
-        true,
-      );
-    });
-
-    return {
-      imported: true,
-      alreadyImported: false,
-    };
   }
 
   bindSessionToThread(sessionId: string, threadId: string, runtimeThreadId?: string | null): void {

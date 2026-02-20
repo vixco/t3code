@@ -102,8 +102,6 @@ export function createWsNativeApi(): NativeApi {
       bootstrap: () => transport.request(WS_METHODS.stateBootstrap),
       listMessages: (input) => transport.request(WS_METHODS.stateListMessages, input),
       catchUp: (input) => transport.request(WS_METHODS.stateCatchUp, input),
-      importLegacyRendererState: (input) =>
-        transport.request(WS_METHODS.stateImportLegacyRendererState, input),
       onEvent: (callback) =>
         transport.subscribe(WS_CHANNELS.stateEvent, callback as (data: unknown) => void),
     },

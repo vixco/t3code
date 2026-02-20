@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   stateBootstrapResultSchema,
   stateCatchUpInputSchema,
-  stateImportLegacyRendererStateInputSchema,
   stateListMessagesInputSchema,
   stateListMessagesResultSchema,
   stateMessageSchema,
@@ -114,32 +113,8 @@ describe("state schemas", () => {
     expect(listInput.limit).toBe(200);
   });
 
-  it("parses state catch-up and legacy import payloads", () => {
+  it("parses state catch-up payloads", () => {
     const catchUp = stateCatchUpInputSchema.parse({});
     expect(catchUp.afterSeq).toBe(0);
-
-    const legacyImport = stateImportLegacyRendererStateInputSchema.parse({
-      projects: [
-        {
-          id: "project-1",
-          name: "repo",
-          cwd: "/repo",
-          scripts: [],
-          createdAt: "2026-02-19T00:00:00.000Z",
-          updatedAt: "2026-02-19T00:00:00.000Z",
-        },
-      ],
-      threads: [
-        {
-          id: "thread-1",
-          projectId: "project-1",
-          title: "Thread",
-          model: "gpt-5-codex",
-          createdAt: "2026-02-19T00:00:00.000Z",
-          messages: [],
-        },
-      ],
-    });
-    expect(legacyImport.projects).toHaveLength(1);
   });
 });

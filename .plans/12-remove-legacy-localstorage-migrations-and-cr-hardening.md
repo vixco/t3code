@@ -21,7 +21,7 @@ This plan intentionally removes migration code instead of improving it. The targ
 - Legacy renderer-state migration is removed entirely.
 - Existing server-side `projects.json` import path is kept unless explicitly removed in a follow-up (it is not localStorage-based).
 
-## Workstream 1: Delete Legacy localStorage Migration End-to-End
+## Workstream 1: Delete Legacy localStorage Migration End-to-End [COMPLETE]
 
 ### 1.1 Contracts and WS protocol cleanup
 - Remove `stateImportLegacyRendererState` from `packages/contracts/src/ws.ts`.

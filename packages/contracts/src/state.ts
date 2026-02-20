@@ -193,57 +193,6 @@ export const threadsUpdateResultSchema = z.object({
   thread: stateThreadSchema,
 });
 
-export const stateLegacyRendererProjectSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  cwd: z.string().min(1),
-  scripts: z.array(projectScriptSchema).default([]),
-  createdAt: z.string().datetime().optional(),
-  updatedAt: z.string().datetime().optional(),
-});
-
-export const stateLegacyRendererMessageSchema = z.object({
-  id: z.string().min(1),
-  role: z.enum(["user", "assistant"]),
-  text: z.string(),
-  attachments: z.array(stateMessageAttachmentSchema).optional(),
-  createdAt: z.string().datetime(),
-  streaming: z.boolean().default(false),
-});
-
-export const stateLegacyRendererThreadSchema = z.object({
-  id: z.string().min(1),
-  codexThreadId: z.string().min(1).nullable().default(null),
-  projectId: z.string().min(1),
-  title: z.string().min(1),
-  model: z.string().min(1),
-  terminalOpen: z.boolean().default(false),
-  terminalHeight: z.number().int().min(120).max(4_096).default(STATE_DEFAULT_TERMINAL_HEIGHT),
-  terminalIds: z
-    .array(z.string().trim().min(1))
-    .max(4)
-    .default([STATE_DEFAULT_TERMINAL_ID]),
-  activeTerminalId: z.string().trim().min(1).default(STATE_DEFAULT_TERMINAL_ID),
-  terminalGroups: z.array(stateThreadTerminalGroupSchema).default([]),
-  activeTerminalGroupId: z.string().trim().min(1).optional(),
-  messages: z.array(stateLegacyRendererMessageSchema).default([]),
-  createdAt: z.string().datetime(),
-  lastVisitedAt: z.string().datetime().optional(),
-  branch: z.string().min(1).nullable().optional(),
-  worktreePath: z.string().min(1).nullable().optional(),
-  turnDiffSummaries: z.array(stateTurnSummarySchema).default([]),
-});
-
-export const stateImportLegacyRendererStateInputSchema = z.object({
-  projects: z.array(stateLegacyRendererProjectSchema),
-  threads: z.array(stateLegacyRendererThreadSchema),
-});
-
-export const stateImportLegacyRendererStateResultSchema = z.object({
-  imported: z.boolean(),
-  alreadyImported: z.boolean(),
-});
-
 export type StateThreadTerminalGroup = z.infer<typeof stateThreadTerminalGroupSchema>;
 export type StateMessageImageAttachment = z.infer<typeof stateMessageImageAttachmentSchema>;
 export type StateMessageAttachment = z.infer<typeof stateMessageAttachmentSchema>;
@@ -267,9 +216,3 @@ export type ThreadsMarkVisitedInput = z.input<typeof threadsMarkVisitedInputSche
 export type ThreadsUpdateBranchInput = z.input<typeof threadsUpdateBranchInputSchema>;
 export type ThreadsUpdateTerminalStateInput = z.input<typeof threadsUpdateTerminalStateInputSchema>;
 export type ThreadsUpdateResult = z.infer<typeof threadsUpdateResultSchema>;
-export type StateImportLegacyRendererStateInput = z.input<
-  typeof stateImportLegacyRendererStateInputSchema
->;
-export type StateImportLegacyRendererStateResult = z.infer<
-  typeof stateImportLegacyRendererStateResultSchema
->;

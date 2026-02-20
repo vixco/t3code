@@ -13,21 +13,8 @@ import { AnchoredToastProvider, ToastProvider } from "../components/ui/toast";
 import { isElectron } from "../env";
 import { useNativeApi } from "../hooks/useNativeApi";
 import { invalidateGitQueries } from "../lib/gitReactQuery";
-import { hydratePersistedState } from "../persistenceSchema";
 import { useStore } from "../store";
 import { onServerWelcome } from "../wsNativeApi";
-
-const CURRENT_RENDERER_STATE_KEY = "t3code:renderer-state:v7";
-const LEGACY_RENDERER_STATE_KEYS = [
-  "t3code:renderer-state:v6",
-  "t3code:renderer-state:v5",
-  "t3code:renderer-state:v4",
-  "t3code:renderer-state:v3",
-  "codething:renderer-state:v4",
-  "codething:renderer-state:v3",
-  "codething:renderer-state:v2",
-  "codething:renderer-state:v1",
-] as const;
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -133,90 +120,6 @@ function errorDetails(error: unknown): string {
   }
 }
 
-function readLegacyRendererImportPayload() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  try {
-    const rawCurrent = window.localStorage.getItem(CURRENT_RENDERER_STATE_KEY);
-    const legacyValues = LEGACY_RENDERER_STATE_KEYS.map((key) =>
-      window.localStorage.getItem(key),
-    );
-    const rawLegacy = legacyValues.find((value) => value !== null) ?? null;
-    const raw = rawCurrent ?? rawLegacy;
-    if (!raw) {
-      return null;
-    }
-    const rawCodethingV1 = window.localStorage.getItem("codething:renderer-state:v1");
-    const hydrated = hydratePersistedState(raw, !rawCurrent && raw === rawCodethingV1);
-    if (!hydrated) {
-      return null;
-    }
-
-    return {
-      projects: hydrated.projects.map((project) => ({
-        id: project.id,
-        name: project.name,
-        cwd: project.cwd,
-        scripts: project.scripts,
-      })),
-      threads: hydrated.threads.map((thread) => ({
-        id: thread.id,
-        codexThreadId: thread.codexThreadId,
-        projectId: thread.projectId,
-        title: thread.title,
-        model: thread.model,
-        terminalOpen: thread.terminalOpen,
-        terminalHeight: thread.terminalHeight,
-        terminalIds: thread.terminalIds,
-        activeTerminalId: thread.activeTerminalId,
-        terminalGroups: thread.terminalGroups,
-        activeTerminalGroupId: thread.activeTerminalGroupId,
-        messages: thread.messages.map((message) => ({
-          id: message.id,
-          role: message.role,
-          text: message.text,
-          ...(message.attachments
-            ? {
-                attachments: message.attachments.map((attachment) => ({
-                  type: attachment.type,
-                  id: attachment.id,
-                  name: attachment.name,
-                  mimeType: attachment.mimeType,
-                  sizeBytes: attachment.sizeBytes,
-                })),
-              }
-            : {}),
-          createdAt: message.createdAt,
-          streaming: message.streaming,
-        })),
-        createdAt: thread.createdAt,
-        ...(thread.lastVisitedAt ? { lastVisitedAt: thread.lastVisitedAt } : {}),
-        ...(thread.branch !== null ? { branch: thread.branch } : {}),
-        ...(thread.worktreePath !== null ? { worktreePath: thread.worktreePath } : {}),
-        turnDiffSummaries: thread.turnDiffSummaries,
-      })),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function clearLegacyRendererState(): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-  try {
-    window.localStorage.removeItem(CURRENT_RENDERER_STATE_KEY);
-    for (const key of LEGACY_RENDERER_STATE_KEYS) {
-      window.localStorage.removeItem(key);
-    }
-  } catch {
-    // Ignore storage cleanup failures.
-  }
-}
-
 function StateSyncRouter() {
   const api = useNativeApi();
   const { dispatch } = useStore();
@@ -244,25 +147,6 @@ function StateSyncRouter() {
           snapshot,
         });
         lastStateSeqRef.current = snapshot.lastStateSeq;
-
-        const legacyPayload = readLegacyRendererImportPayload();
-        if (!legacyPayload) {
-          return;
-        }
-        const importResult = await api.state.importLegacyRendererState(legacyPayload);
-        if (disposed) return;
-        if (importResult.imported) {
-          const refreshed = await api.state.bootstrap();
-          if (disposed) return;
-          dispatch({
-            type: "HYDRATE_FROM_SERVER",
-            snapshot: refreshed,
-          });
-          lastStateSeqRef.current = refreshed.lastStateSeq;
-        }
-        if (importResult.imported || importResult.alreadyImported) {
-          clearLegacyRendererState();
-        }
       } catch {
         if (disposed) return;
         retryTimer = setTimeout(() => {
