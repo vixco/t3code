@@ -443,7 +443,7 @@ describe("WebSocket Server", () => {
       terminalManager?: TerminalManager;
       persistenceService?: PersistenceService;
       stateSyncEngine?: StateSyncEngine;
-      syncEngineMode?: "legacy" | "shadow" | "livestore-read-pilot";
+      syncEngineMode?: "legacy" | "shadow" | "livestore-read-pilot" | "livestore";
     } = {},
   ): ReturnType<typeof createServer> {
     const stateDir = options.stateDir ?? makeTempDir("t3code-ws-state-");
@@ -563,7 +563,7 @@ describe("WebSocket Server", () => {
     vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
     server = createTestServer({
       cwd: "/my/workspace",
-      syncEngineMode: "livestore-read-pilot",
+      syncEngineMode: "livestore",
     });
     await server.start();
     const addr = server.httpServer.address();
@@ -577,7 +577,7 @@ describe("WebSocket Server", () => {
     expect(response.error).toBeUndefined();
     expect(response.result).toEqual({
       cwd: "/my/workspace",
-      syncEngineMode: "livestore-read-pilot",
+      syncEngineMode: "livestore",
       keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
     });
   });

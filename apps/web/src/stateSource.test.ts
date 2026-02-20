@@ -224,6 +224,7 @@ describe("resolveStateSourceMode", () => {
 describe("mapSyncEngineModeToStateSourceMode", () => {
   it("maps read-pilot server mode to read-pilot state source", () => {
     expect(mapSyncEngineModeToStateSourceMode("livestore-read-pilot")).toBe("livestore-read-pilot");
+    expect(mapSyncEngineModeToStateSourceMode("livestore")).toBe("livestore-read-pilot");
   });
 
   it("maps legacy/shadow/undefined server modes to legacy-api source", () => {

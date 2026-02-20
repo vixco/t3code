@@ -1,9 +1,10 @@
-export type SyncEngineMode = "legacy" | "shadow" | "livestore-read-pilot";
+export type SyncEngineMode = "legacy" | "shadow" | "livestore-read-pilot" | "livestore";
 
 const VALID_SYNC_ENGINE_MODES: ReadonlySet<SyncEngineMode> = new Set([
   "legacy",
   "shadow",
   "livestore-read-pilot",
+  "livestore",
 ]);
 
 export function resolveSyncEngineMode(raw: string | undefined): SyncEngineMode {
@@ -15,6 +16,6 @@ export function resolveSyncEngineMode(raw: string | undefined): SyncEngineMode {
     return normalized as SyncEngineMode;
   }
   throw new Error(
-    `Invalid T3CODE_SYNC_ENGINE_MODE: ${raw}. Expected "legacy", "shadow", or "livestore-read-pilot".`,
+    `Invalid T3CODE_SYNC_ENGINE_MODE: ${raw}. Expected "legacy", "shadow", "livestore-read-pilot", or "livestore".`,
   );
 }

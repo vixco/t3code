@@ -3,7 +3,9 @@ import { keybindingRuleSchema, resolvedKeybindingsConfigSchema } from "./keybind
 
 export const serverConfigSchema = z.object({
   cwd: z.string().min(1),
-  syncEngineMode: z.enum(["legacy", "shadow", "livestore-read-pilot"]).default("legacy"),
+  syncEngineMode: z
+    .enum(["legacy", "shadow", "livestore-read-pilot", "livestore"])
+    .default("legacy"),
   keybindings: resolvedKeybindingsConfigSchema.default([]),
 });
 

@@ -138,6 +138,7 @@ async function main() {
   const liveStoreMirror = new LiveStoreStateMirror({
     storeId: `t3-shadow-${mode}`,
   });
+  const isReadPilotMode = syncEngineMode === "livestore-read-pilot" || syncEngineMode === "livestore";
   const stateSyncEngine =
     syncEngineMode === "shadow"
       ? new ShadowStateSyncEngine({
@@ -147,14 +148,15 @@ async function main() {
           enableCatchUpParityCheck: enableLiveStoreShadowCatchUpParityCheck,
           enableListMessagesParityCheck: enableLiveStoreShadowListMessagesParityCheck,
         })
-      : syncEngineMode === "livestore-read-pilot"
+      : isReadPilotMode
         ? new LiveStoreReadPilotStateSyncEngine({
             delegate: legacyStateSyncEngine,
             mirror: liveStoreMirror,
             enableBootstrapParityCheck: enableLiveStoreBootstrapParityCheck,
             enableCatchUpParityCheck: enableLiveStoreCatchUpParityCheck,
             enableListMessagesParityCheck: enableLiveStoreListMessagesParityCheck,
-            disableDelegateReadFallback: disableLiveStoreDelegateReadFallback,
+            disableDelegateReadFallback:
+              syncEngineMode === "livestore" ? true : disableLiveStoreDelegateReadFallback,
           })
         : legacyStateSyncEngine;
   const devUrl = process.env.VITE_DEV_SERVER_URL;

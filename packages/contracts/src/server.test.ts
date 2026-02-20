@@ -31,13 +31,21 @@ describe("serverConfigSchema", () => {
         keybindings: [],
       }).syncEngineMode,
     ).toBe("shadow");
+
+    expect(
+      serverConfigSchema.parse({
+        cwd: "/workspace",
+        syncEngineMode: "livestore",
+        keybindings: [],
+      }).syncEngineMode,
+    ).toBe("livestore");
   });
 
   it("rejects unsupported sync engine mode values", () => {
     expect(() =>
       serverConfigSchema.parse({
         cwd: "/workspace",
-        syncEngineMode: "livestore",
+        syncEngineMode: "something-else",
         keybindings: [],
       }),
     ).toThrow();

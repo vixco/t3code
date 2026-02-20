@@ -12,10 +12,11 @@ describe("resolveSyncEngineMode", () => {
     expect(resolveSyncEngineMode("legacy")).toBe("legacy");
     expect(resolveSyncEngineMode("SHADOW")).toBe("shadow");
     expect(resolveSyncEngineMode("livestore-read-pilot")).toBe("livestore-read-pilot");
+    expect(resolveSyncEngineMode("LIVESTORE")).toBe("livestore");
   });
 
   it("throws for unsupported values", () => {
-    expect(() => resolveSyncEngineMode("livestore")).toThrow(
+    expect(() => resolveSyncEngineMode("something-else")).toThrow(
       /Invalid T3CODE_SYNC_ENGINE_MODE/i,
     );
   });

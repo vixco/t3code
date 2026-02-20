@@ -23,9 +23,11 @@ export function resolveStateSourceMode(rawMode: string | undefined): StateSource
 }
 
 export function mapSyncEngineModeToStateSourceMode(
-  syncEngineMode: "legacy" | "shadow" | "livestore-read-pilot" | undefined,
+  syncEngineMode: "legacy" | "shadow" | "livestore-read-pilot" | "livestore" | undefined,
 ): StateSourceMode {
-  return syncEngineMode === "livestore-read-pilot" ? "livestore-read-pilot" : "legacy-api";
+  return syncEngineMode === "livestore-read-pilot" || syncEngineMode === "livestore"
+    ? "livestore-read-pilot"
+    : "legacy-api";
 }
 
 export function createStateSource(

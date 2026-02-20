@@ -7,6 +7,7 @@ This runbook describes how to operate and verify the LiveStore migration path sa
 Server mode is controlled by `T3CODE_SYNC_ENGINE_MODE`:
 
 - `livestore-read-pilot` (default): write path remains legacy-backed, but state reads prefer LiveStore mirror with delegate fallback.
+- `livestore`: same read path as read-pilot, but with delegate read fallback disabled (strict mirror-read mode).
 - `legacy`: legacy persistence service is canonical for reads/writes.
 - `shadow`: legacy remains canonical, and `state.event` writes are mirrored into LiveStore.
 
@@ -28,7 +29,7 @@ Server mode is controlled by `T3CODE_SYNC_ENGINE_MODE`:
   - In read-pilot mode, disables delegate read fallback for strict mirror-read canary validation.
 - `VITE_T3CODE_STATE_SOURCE_MODE=legacy-api|livestore-read-pilot`
   - Client-side state-source mode seam.
-  - If unset, web derives mode from `server.getConfig().syncEngineMode`.
+  - If unset, web derives mode from `server.getConfig().syncEngineMode` (`livestore-read-pilot`/`livestore` -> read-pilot source).
   - Current implementation is protocol-compatible in both modes.
 
 ## Suggested rollout sequence

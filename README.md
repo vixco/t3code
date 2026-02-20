@@ -108,6 +108,8 @@ The server supports feature-flagged sync-engine modes while migrating from the l
 - `T3CODE_SYNC_ENGINE_MODE=livestore-read-pilot` (default)
   - Uses the LiveStore mirror for `state.bootstrap`, `state.catchUp`, and `state.listMessages` reads when available.
   - Automatically falls back to legacy reads if the mirror is unavailable or errors.
+- `T3CODE_SYNC_ENGINE_MODE=livestore`
+  - Uses the same LiveStore-backed read path as read-pilot, but disables delegate fallback (strict mirror-read mode).
 - `T3CODE_SYNC_ENGINE_MODE=legacy`
   - Uses the existing `PersistenceService`-backed state sync engine for reads and writes.
 - `T3CODE_SYNC_ENGINE_MODE=shadow`
@@ -134,7 +136,7 @@ Web client state-source selection:
 
 - `VITE_T3CODE_STATE_SOURCE_MODE=legacy-api|livestore-read-pilot`
   - Selects the web state-source adapter mode.
-  - If unset, the web app derives mode from `server.getConfig().syncEngineMode` (`livestore-read-pilot` maps to read-pilot source; everything else maps to legacy-api).
+  - If unset, the web app derives mode from `server.getConfig().syncEngineMode` (`livestore-read-pilot`/`livestore` map to read-pilot source; everything else maps to legacy-api).
   - Current behavior is protocol-compatible in both modes (delegates to `api.state.*`) while preserving a client-side seam for future LiveStore-native source wiring.
 
 ## Provider architecture
