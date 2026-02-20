@@ -1,4 +1,8 @@
-import type { StateBootstrapResult } from "@t3tools/contracts";
+import type {
+  StateBootstrapResult,
+  StateCatchUpResult,
+  StateListMessagesResult,
+} from "@t3tools/contracts";
 
 export interface SnapshotParityDiff {
   path: string;
@@ -93,4 +97,84 @@ export function isStateSnapshotInParity(
   actualSnapshot: StateBootstrapResult,
 ): boolean {
   return diffStateSnapshots(expectedSnapshot, actualSnapshot).length === 0;
+}
+
+export function diffCatchUpResults(expected: StateCatchUpResult, actual: StateCatchUpResult): string[] {
+  const diffs: string[] = [];
+
+  if (expected.lastStateSeq !== actual.lastStateSeq) {
+    diffs.push(
+      `lastStateSeq mismatch: expected=${expected.lastStateSeq} actual=${actual.lastStateSeq}`,
+    );
+  }
+
+  if (expected.events.length !== actual.events.length) {
+    diffs.push(`events.length mismatch: expected=${expected.events.length} actual=${actual.events.length}`);
+  }
+
+  const minLength = Math.min(expected.events.length, actual.events.length);
+  for (let index = 0; index < minLength; index += 1) {
+    const expectedEvent = expected.events[index];
+    const actualEvent = actual.events[index];
+    if (!expectedEvent || !actualEvent) {
+      continue;
+    }
+    if (expectedEvent.seq !== actualEvent.seq) {
+      diffs.push(`events[${index}].seq mismatch: expected=${expectedEvent.seq} actual=${actualEvent.seq}`);
+    }
+    if (expectedEvent.eventType !== actualEvent.eventType) {
+      diffs.push(
+        `events[${index}].eventType mismatch: expected=${expectedEvent.eventType} actual=${actualEvent.eventType}`,
+      );
+    }
+    if (expectedEvent.entityId !== actualEvent.entityId) {
+      diffs.push(
+        `events[${index}].entityId mismatch: expected=${expectedEvent.entityId} actual=${actualEvent.entityId}`,
+      );
+    }
+    const expectedPayload = JSON.stringify(expectedEvent.payload);
+    const actualPayload = JSON.stringify(actualEvent.payload);
+    if (expectedPayload !== actualPayload) {
+      diffs.push(`events[${index}].payload mismatch`);
+    }
+  }
+
+  return diffs;
+}
+
+export function diffListMessagesResults(
+  expected: StateListMessagesResult,
+  actual: StateListMessagesResult,
+): string[] {
+  const diffs: string[] = [];
+
+  if (expected.total !== actual.total) {
+    diffs.push(`total mismatch: expected=${expected.total} actual=${actual.total}`);
+  }
+  if (expected.nextOffset !== actual.nextOffset) {
+    diffs.push(
+      `nextOffset mismatch: expected=${String(expected.nextOffset)} actual=${String(actual.nextOffset)}`,
+    );
+  }
+  if (expected.messages.length !== actual.messages.length) {
+    diffs.push(
+      `messages.length mismatch: expected=${expected.messages.length} actual=${actual.messages.length}`,
+    );
+  }
+
+  const minLength = Math.min(expected.messages.length, actual.messages.length);
+  for (let index = 0; index < minLength; index += 1) {
+    const expectedMessage = expected.messages[index];
+    const actualMessage = actual.messages[index];
+    if (!expectedMessage || !actualMessage) {
+      continue;
+    }
+    const expectedSerialized = JSON.stringify(expectedMessage);
+    const actualSerialized = JSON.stringify(actualMessage);
+    if (expectedSerialized !== actualSerialized) {
+      diffs.push(`messages[${index}] mismatch`);
+    }
+  }
+
+  return diffs;
 }

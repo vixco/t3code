@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { StateBootstrapResult } from "@t3tools/contracts";
-import { diffStateSnapshots, isStateSnapshotInParity } from "./parity";
+import {
+  diffCatchUpResults,
+  diffListMessagesResults,
+  diffStateSnapshots,
+  isStateSnapshotInParity,
+} from "./parity";
 
 function makeSnapshot(overrides: Partial<StateBootstrapResult> = {}): StateBootstrapResult {
   return {
@@ -145,5 +150,113 @@ describe("diffStateSnapshots", () => {
       ]),
     );
     expect(isStateSnapshotInParity(expected, actual)).toBe(false);
+  });
+});
+
+describe("diffCatchUpResults", () => {
+  it("returns empty diff when catch-up payloads are equal", () => {
+    const catchUp = {
+      events: [
+        {
+          seq: 1,
+          eventType: "project.upsert" as const,
+          entityId: "project-1",
+          payload: { project: { id: "project-1", name: "Demo" } },
+          createdAt: "2026-02-20T00:00:00.000Z",
+        },
+      ],
+      lastStateSeq: 1,
+    };
+
+    expect(diffCatchUpResults(catchUp, catchUp)).toEqual([]);
+  });
+
+  it("returns targeted diffs for catch-up payload drift", () => {
+    const expected = {
+      events: [
+        {
+          seq: 1,
+          eventType: "project.upsert" as const,
+          entityId: "project-1",
+          payload: { project: { id: "project-1", name: "Demo" } },
+          createdAt: "2026-02-20T00:00:00.000Z",
+        },
+      ],
+      lastStateSeq: 1,
+    };
+    const actual = {
+      events: [
+        {
+          seq: 2,
+          eventType: "project.delete" as const,
+          entityId: "project-2",
+          payload: { projectId: "project-2" },
+          createdAt: "2026-02-20T00:00:00.000Z",
+        },
+      ],
+      lastStateSeq: 2,
+    };
+
+    expect(diffCatchUpResults(expected, actual)).toEqual(
+      expect.arrayContaining([
+        "lastStateSeq mismatch: expected=1 actual=2",
+        "events[0].seq mismatch: expected=1 actual=2",
+        "events[0].eventType mismatch: expected=project.upsert actual=project.delete",
+        "events[0].entityId mismatch: expected=project-1 actual=project-2",
+        "events[0].payload mismatch",
+      ]),
+    );
+  });
+});
+
+describe("diffListMessagesResults", () => {
+  it("returns empty diff for equivalent list-messages responses", () => {
+    const result = {
+      messages: [
+        {
+          id: "message-1",
+          threadId: "thread-1",
+          role: "user" as const,
+          text: "hello",
+          createdAt: "2026-02-20T00:00:00.000Z",
+          updatedAt: "2026-02-20T00:00:00.000Z",
+          streaming: false,
+        },
+      ],
+      total: 1,
+      nextOffset: null,
+    };
+    expect(diffListMessagesResults(result, result)).toEqual([]);
+  });
+
+  it("returns targeted diffs for list-messages drift", () => {
+    const expected = {
+      messages: [],
+      total: 1,
+      nextOffset: 1,
+    };
+    const actual = {
+      messages: [
+        {
+          id: "message-2",
+          threadId: "thread-1",
+          role: "assistant" as const,
+          text: "hi",
+          createdAt: "2026-02-20T00:00:00.000Z",
+          updatedAt: "2026-02-20T00:00:00.000Z",
+          streaming: false,
+        },
+      ],
+      total: 2,
+      nextOffset: null,
+    };
+
+    expect(diffListMessagesResults(expected, actual)).toEqual(
+      expect.arrayContaining([
+        "total mismatch: expected=1 actual=2",
+        "nextOffset mismatch: expected=1 actual=null",
+        "messages.length mismatch: expected=0 actual=1",
+      ]),
+    );
   });
 });
