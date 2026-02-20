@@ -32,6 +32,8 @@ interface LiveStoreReadPilotEvents {
   stateEvent: [event: StateEvent];
 }
 
+type LiveStoreReadSource = "delegate" | "livestore";
+
 export interface LiveStoreReadPilotStateSyncEngineOptions {
   delegate: StateSyncEngine;
   mirror: LiveStoreStateMirror;
@@ -48,7 +50,9 @@ export class LiveStoreReadPilotStateSyncEngine
   private readonly unsubscribeDelegate: () => void;
   private readonly enableBootstrapParityCheck: boolean;
   private closed = false;
-  private bootstrapSource: "delegate" | "livestore" = "delegate";
+  private bootstrapSource: LiveStoreReadSource = "delegate";
+  private catchUpSource: LiveStoreReadSource = "delegate";
+  private listMessagesSource: LiveStoreReadSource = "delegate";
   private bootstrapParityState: "unknown" | "in-parity" | "drift" = "unknown";
 
   constructor(options: LiveStoreReadPilotStateSyncEngineOptions) {
@@ -81,22 +85,21 @@ export class LiveStoreReadPilotStateSyncEngine
         if (this.enableBootstrapParityCheck) {
           this.checkBootstrapParity(snapshot);
         }
-        if (this.bootstrapSource !== "livestore") {
-          this.bootstrapSource = "livestore";
-          this.logger.info("serving state.bootstrap from livestore mirror", {
-            lastStateSeq: snapshot.lastStateSeq,
-          });
-        }
+        this.logReadSourceChange("state.bootstrap", this.bootstrapSource, "livestore", {
+          lastStateSeq: snapshot.lastStateSeq,
+        });
+        this.bootstrapSource = "livestore";
         return snapshot;
       }
     } catch (error) {
       this.logger.warn("failed to read bootstrap from livestore mirror; using delegate", { error });
     }
-    if (this.bootstrapSource !== "delegate") {
-      this.bootstrapSource = "delegate";
-      this.logger.info("serving state.bootstrap from delegate fallback");
-    }
-    return this.delegate.loadSnapshot();
+    const snapshot = this.delegate.loadSnapshot();
+    this.logReadSourceChange("state.bootstrap", this.bootstrapSource, "delegate", {
+      lastStateSeq: snapshot.lastStateSeq,
+    });
+    this.bootstrapSource = "delegate";
+    return snapshot;
   }
 
   private checkBootstrapParity(mirrorSnapshot: StateBootstrapResult): void {
@@ -130,27 +133,63 @@ export class LiveStoreReadPilotStateSyncEngine
 
   listMessages(raw: StateListMessagesInput): StateListMessagesResult {
     try {
-      return this.mirror.debugListMessages(raw);
+      const result = this.mirror.debugListMessages(raw);
+      this.logReadSourceChange("state.listMessages", this.listMessagesSource, "livestore", {
+        threadId: raw.threadId,
+      });
+      this.listMessagesSource = "livestore";
+      return result;
     } catch (error) {
       this.logger.warn("failed to list messages from livestore mirror; using delegate", {
         error,
         threadId: raw.threadId,
       });
-      return this.delegate.listMessages(raw);
+      const result = this.delegate.listMessages(raw);
+      this.logReadSourceChange("state.listMessages", this.listMessagesSource, "delegate", {
+        threadId: raw.threadId,
+      });
+      this.listMessagesSource = "delegate";
+      return result;
     }
   }
 
   catchUp(raw: StateCatchUpInput): StateCatchUpResult {
     const afterSeq = raw.afterSeq ?? 0;
     try {
-      return this.mirror.debugCatchUp(afterSeq);
+      const result = this.mirror.debugCatchUp(afterSeq);
+      this.logReadSourceChange("state.catchUp", this.catchUpSource, "livestore", {
+        afterSeq,
+      });
+      this.catchUpSource = "livestore";
+      return result;
     } catch (error) {
       this.logger.warn("failed to catch up from livestore mirror; using delegate", {
         error,
         afterSeq,
       });
-      return this.delegate.catchUp(raw);
+      const result = this.delegate.catchUp(raw);
+      this.logReadSourceChange("state.catchUp", this.catchUpSource, "delegate", {
+        afterSeq,
+      });
+      this.catchUpSource = "delegate";
+      return result;
     }
+  }
+
+  private logReadSourceChange(
+    route: "state.bootstrap" | "state.catchUp" | "state.listMessages",
+    previous: LiveStoreReadSource,
+    next: LiveStoreReadSource,
+    metadata: Record<string, unknown>,
+  ): void {
+    if (previous === next) {
+      return;
+    }
+    this.logger.info(`serving ${route} from ${next}`, {
+      source: next,
+      previousSource: previous,
+      ...metadata,
+    });
   }
 
   getAppSettings(): AppSettings {

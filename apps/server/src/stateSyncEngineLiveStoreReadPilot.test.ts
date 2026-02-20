@@ -305,4 +305,74 @@ describe("LiveStoreReadPilotStateSyncEngine", () => {
       engine.close();
     }
   });
+
+  it("returns to mirror reads after transient fallback errors", () => {
+    const delegate = new MockDelegateStateSyncEngine();
+    const mirror = makeMirrorStub({
+      snapshot: {
+        projects: [],
+        threads: [],
+        lastStateSeq: 5,
+      },
+      catchUp: {
+        events: [],
+        lastStateSeq: 5,
+      },
+      listMessages: {
+        messages: [],
+        total: 0,
+        nextOffset: null,
+      },
+    });
+    vi.mocked(mirror.debugCatchUp)
+      .mockImplementationOnce(() => {
+        throw new Error("mirror catch-up failure");
+      })
+      .mockImplementation(() => ({
+        events: [],
+        lastStateSeq: 5,
+      }));
+    vi.mocked(mirror.debugListMessages)
+      .mockImplementationOnce(() => {
+        throw new Error("mirror list failure");
+      })
+      .mockImplementation(() => ({
+        messages: [],
+        total: 0,
+        nextOffset: null,
+      }));
+
+    const engine = new LiveStoreReadPilotStateSyncEngine({
+      delegate,
+      mirror,
+    });
+
+    try {
+      expect(engine.catchUp({ afterSeq: 0 })).toEqual({
+        events: [],
+        lastStateSeq: 1,
+      });
+      expect(engine.listMessages({ threadId: "thread-1", offset: 0, limit: 10 })).toEqual({
+        messages: [],
+        total: 0,
+        nextOffset: null,
+      });
+      expect(delegate.catchUpMock).toHaveBeenCalledTimes(1);
+      expect(delegate.listMessagesMock).toHaveBeenCalledTimes(1);
+
+      expect(engine.catchUp({ afterSeq: 0 })).toEqual({
+        events: [],
+        lastStateSeq: 5,
+      });
+      expect(engine.listMessages({ threadId: "thread-1", offset: 0, limit: 10 })).toEqual({
+        messages: [],
+        total: 0,
+        nextOffset: null,
+      });
+      expect(delegate.catchUpMock).toHaveBeenCalledTimes(1);
+      expect(delegate.listMessagesMock).toHaveBeenCalledTimes(1);
+    } finally {
+      engine.close();
+    }
+  });
 });
