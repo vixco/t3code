@@ -28,7 +28,7 @@ function RootRouteView() {
 
   if (!api) {
     return (
-      <div className="flex h-screen flex-col bg-background text-foreground">
+      <div className="flex h-dvh flex-col bg-background text-foreground">
         <div className="flex flex-1 items-center justify-center">
           <p className="text-sm text-muted-foreground">
             Connecting to {APP_DISPLAY_NAME} server...

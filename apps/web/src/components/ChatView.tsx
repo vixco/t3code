@@ -119,6 +119,7 @@ import {
   setupProjectScript,
 } from "~/projectScripts";
 import { Toggle } from "./ui/toggle";
+import { SidebarTrigger } from "./ui/sidebar";
 
 function formatMessageMeta(createdAt: string, duration: string | null): string {
   if (!duration) return formatTimestamp(createdAt);
@@ -433,6 +434,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const phase = derivePhase(activeThread?.session ?? null);
   const isWorking = phase === "running" || isSending || isConnecting || isRevertingCheckpoint;
+  const canSend =
+    Boolean(api) &&
+    Boolean(activeThread) &&
+    !isSending &&
+    !isConnecting &&
+    (prompt.trim().length > 0 || composerImages.length > 0);
   const nowIso = new Date(nowTick).toISOString();
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(activeThread?.events ?? [], undefined),
@@ -1583,7 +1590,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
 
   const ensureSession = useCallback(
-    async (cwdOverride?: string): Promise<EnsuredSessionInfo | null> => {
+    async (
+      cwdOverride?: string,
+      options?: {
+        silent?: boolean;
+      },
+    ): Promise<EnsuredSessionInfo | null> => {
       if (!api || !activeThread || !activeProject) return null;
       if (activeThread.session && activeThread.session.status !== "closed") {
         const sessionThreadId = activeThread.session.threadId ?? null;
@@ -1606,7 +1618,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
       }
 
       const priorCodexThreadId = activeThread.codexThreadId;
-      setIsConnecting(true);
+      const shouldShowConnectingState = !options?.silent;
+      if (shouldShowConnectingState) {
+        setIsConnecting(true);
+      }
       try {
         const session = await api.providers.startSession({
           provider: "codex",
@@ -1649,7 +1664,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
         });
         return null;
       } finally {
-        setIsConnecting(false);
+        if (shouldShowConnectingState) {
+          setIsConnecting(false);
+        }
       }
     },
     [
@@ -1679,7 +1696,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
     checkpointHydrationSessionRequestRef.current.add(requestKey);
     setThreadError(activeThreadId, null);
-    void ensureSession().then(
+    void ensureSession(undefined, { silent: true }).then(
       () => {
         checkpointHydrationSessionRequestRef.current.delete(requestKey);
       },
@@ -1904,6 +1921,24 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
   };
 
+  const triggerSend = () => {
+    if (!canSend) return;
+    const form = textareaRef.current?.form;
+    if (form) {
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+      } else {
+        const submitEvent = new Event("submit", { bubbles: true, cancelable: true });
+        const dispatched = form.dispatchEvent(submitEvent);
+        if (!dispatched) {
+          return;
+        }
+      }
+      return;
+    }
+    void onSend({ preventDefault: () => undefined } as FormEvent);
+  };
+
   const onInterrupt = async () => {
     if (!api || !activeThread?.session) return;
     await api.providers.interruptTurn({
@@ -2047,7 +2082,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      void onSend(e as unknown as FormEvent);
+      triggerSend();
     }
   };
   const onToggleWorkGroup = useCallback((groupId: string) => {
@@ -2117,7 +2152,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       {/* Top bar */}
       <header
-        className={`flex items-center justify-between border-b border-border px-5 ${isElectron ? "drag-region h-[52px]" : "py-3"}`}
+        className={`flex items-center justify-between border-b border-border px-3 sm:px-5 ${isElectron ? "drag-region h-[52px]" : "py-3"}`}
       >
         <ChatHeader
           activeThreadId={activeThread.id}
@@ -2151,7 +2186,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       {/* Messages */}
       <div
         ref={messagesScrollRef}
-        className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+        className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-5 sm:py-4"
         onScroll={onMessagesScroll}
       >
         <MessagesTimeline
@@ -2176,7 +2211,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
       </div>
 
       {/* Input bar */}
-      <div className={cn("px-5 pt-2", isGitRepo ? "pb-1" : "pb-4")}>
+      <div
+        className={cn(
+          "px-3 pt-2 sm:px-5 max-sm:pb-[calc(0.5rem+env(safe-area-inset-bottom))]",
+          isGitRepo ? "pb-1" : "pb-4",
+        )}
+      >
         <form onSubmit={onSend} className="mx-auto max-w-3xl">
           <div
             className={`group rounded-[20px] border bg-card transition-colors duration-200 focus-within:border-ring ${
@@ -2275,8 +2315,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
             </div>
 
             {/* Bottom toolbar */}
-            <div className="flex items-center justify-between px-3 pb-3">
-              <div className="flex items-center gap-1">
+            <div className="flex items-center justify-end px-3 pb-3 sm:justify-between">
+              <div className="hidden items-center gap-1 sm:flex">
                 {/* Model picker */}
                 <ModelPicker model={selectedModel} onModelChange={onModelSelect} />
 
@@ -2317,7 +2357,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                 {phase === "running" ? (
                   <button
                     type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105"
+                    className="relative z-10 flex h-10 w-10 touch-manipulation items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 pointer-events-auto sm:h-8 sm:w-8 sm:hover:scale-105"
                     onClick={() => void onInterrupt()}
                     aria-label="Stop generation"
                   >
@@ -2333,11 +2373,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
                   </button>
                 ) : (
                   <button
-                    type="submit"
-                    className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/90 text-primary-foreground transition-all duration-150 hover:bg-primary hover:scale-105 disabled:opacity-30 disabled:hover:scale-100"
-                    disabled={
-                      isSending || isConnecting || (!prompt.trim() && composerImages.length === 0)
-                    }
+                    type="button"
+                    className="relative z-10 flex h-10 w-10 touch-manipulation items-center justify-center rounded-full bg-primary/90 text-primary-foreground transition-all duration-150 hover:bg-primary pointer-events-auto disabled:opacity-30 disabled:hover:scale-100 sm:h-8 sm:w-8 sm:hover:scale-105"
+                    disabled={!canSend}
+                    onClick={triggerSend}
                     aria-label={
                       isConnecting ? "Connecting" : isSending ? "Sending" : "Send message"
                     }
@@ -2387,13 +2426,15 @@ export default function ChatView({ threadId }: ChatViewProps) {
       </div>
 
       {isGitRepo && (
-        <BranchToolbar
-          threadId={activeThread.id}
-          envMode={envMode}
-          onEnvModeChange={onEnvModeChange}
-          envLocked={envLocked}
-          onComposerFocusRequest={scheduleComposerFocus}
-        />
+        <div className="hidden sm:block">
+          <BranchToolbar
+            threadId={activeThread.id}
+            envMode={envMode}
+            onEnvModeChange={onEnvModeChange}
+            envLocked={envLocked}
+            onComposerFocusRequest={scheduleComposerFocus}
+          />
+        </div>
       )}
 
       {activeThread.terminalOpen && api && activeProject && (
@@ -2497,28 +2538,43 @@ const ChatHeader = memo(function ChatHeader({
 }: ChatHeaderProps) {
   return (
     <>
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <h2 className="truncate text-sm font-medium text-foreground" title={activeThreadTitle}>
+      <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+        <SidebarTrigger className="size-8 md:hidden" />
+        <Separator orientation="vertical" className="md:hidden data-[orientation=vertical]:h-4" />
+        <h2
+          className="truncate text-xs font-medium text-foreground sm:text-sm"
+          title={activeThreadTitle}
+        >
           {activeThreadTitle}
         </h2>
-        {activeProjectName && <Badge variant="outline">{activeProjectName}</Badge>}
+        {activeProjectName && (
+          <Badge variant="outline" className="hidden sm:inline-flex">
+            {activeProjectName}
+          </Badge>
+        )}
       </div>
-      <div className="shrink-0 flex items-center gap-3">
+      <div className="shrink-0 flex items-center gap-1.5 sm:gap-3">
         {activeProjectScripts && (
-          <ProjectScriptsControl
-            scripts={activeProjectScripts}
-            keybindings={keybindings}
-            preferredScriptId={preferredScriptId}
-            onRunScript={onRunProjectScript}
-            onAddScript={onAddProjectScript}
-            onUpdateScript={onUpdateProjectScript}
-          />
+          <div className="hidden md:block">
+            <ProjectScriptsControl
+              scripts={activeProjectScripts}
+              keybindings={keybindings}
+              preferredScriptId={preferredScriptId}
+              onRunScript={onRunProjectScript}
+              onAddScript={onAddProjectScript}
+              onUpdateScript={onUpdateProjectScript}
+            />
+          </div>
         )}
         {activeProjectName && (
-          <OpenInPicker keybindings={keybindings} activeThreadId={activeThreadId} />
+          <div className="hidden md:block">
+            <OpenInPicker keybindings={keybindings} activeThreadId={activeThreadId} />
+          </div>
         )}
         {activeProjectName && (
-          <GitActionsControl api={api} gitCwd={gitCwd} activeThreadId={activeThreadId} />
+          <div className="hidden md:block">
+            <GitActionsControl api={api} gitCwd={gitCwd} activeThreadId={activeThreadId} />
+          </div>
         )}
         <Toggle
           pressed={diffOpen}

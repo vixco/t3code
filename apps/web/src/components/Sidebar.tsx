@@ -112,7 +112,11 @@ function terminalStatusIndicator(thread: Thread): TerminalStatusIndicator | null
   };
 }
 
-export default function Sidebar() {
+interface SidebarProps {
+  embedded?: boolean;
+}
+
+export default function Sidebar({ embedded = false }: SidebarProps = {}) {
   const { state, dispatch } = useStore();
   const api = useNativeApi();
   const navigate = useNavigate();
@@ -497,8 +501,12 @@ export default function Sidebar() {
     };
   }, [handleNewThread, keybindings, routeThreadId, state.projects, state.threads]);
 
+  const rootClassName = embedded
+    ? "sidebar flex h-full min-h-0 flex-col bg-card"
+    : "sidebar flex h-full w-[260px] shrink-0 flex-col border-r border-border bg-card max-sm:w-[36vw] max-sm:min-w-[140px] max-sm:max-w-[200px]";
+
   return (
-    <aside className="sidebar flex h-full w-[260px] shrink-0 flex-col border-r border-border bg-card">
+    <aside className={rootClassName}>
       {/* Branding */}
       <div
         className={`flex items-center gap-2.5 px-4 ${isElectron ? "drag-region h-[52px] pl-[76px]" : "py-4"}`}
@@ -507,7 +515,7 @@ export default function Sidebar() {
           <span className="truncate text-sm font-semibold tracking-tight text-foreground">
             T3 <span className="font-normal text-muted-foreground">Code</span>
           </span>
-          <span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-widest text-muted-foreground/60">
+          <span className="hidden rounded-full bg-muted/50 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-widest text-muted-foreground/60 sm:inline-block">
             {APP_STAGE_LABEL}
           </span>
         </div>
@@ -563,7 +571,9 @@ export default function Sidebar() {
                 <span className="flex-1 truncate text-xs font-medium text-foreground/90">
                   {project.name}
                 </span>
-                <span className="text-[10px] text-muted-foreground/60">{threads.length}</span>
+                <span className="hidden text-[10px] text-muted-foreground/60 sm:inline">
+                  {threads.length}
+                </span>
               </button>
 
               {/* Threads */}
@@ -627,7 +637,7 @@ export default function Sidebar() {
                               />
                             </span>
                           )}
-                          <span className="text-[10px] text-muted-foreground/40">
+                          <span className="hidden text-[10px] text-muted-foreground/40 sm:inline">
                             {formatRelativeTime(thread.createdAt)}
                           </span>
                         </div>
