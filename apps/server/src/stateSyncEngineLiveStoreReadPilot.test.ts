@@ -202,6 +202,18 @@ describe("LiveStoreReadPilotStateSyncEngine", () => {
       expect(delegate.loadSnapshotMock).not.toHaveBeenCalled();
       expect(delegate.catchUpMock).not.toHaveBeenCalled();
       expect(delegate.listMessagesMock).not.toHaveBeenCalled();
+      expect(engine.debugReadMetrics()).toEqual({
+        routeReadCounts: {
+          "state.bootstrap": { livestore: 1, delegate: 0 },
+          "state.catchUp": { livestore: 1, delegate: 0 },
+          "state.listMessages": { livestore: 1, delegate: 0 },
+        },
+        fallbackCounts: {
+          "state.bootstrap": { "mirror-error": 0, "empty-mirror": 0 },
+          "state.catchUp": { "mirror-error": 0, "empty-mirror": 0 },
+          "state.listMessages": { "mirror-error": 0, "empty-mirror": 0 },
+        },
+      });
     } finally {
       engine.close();
     }
@@ -258,6 +270,18 @@ describe("LiveStoreReadPilotStateSyncEngine", () => {
       expect(delegate.loadSnapshotMock).toHaveBeenCalledTimes(1);
       expect(delegate.catchUpMock).toHaveBeenCalledTimes(1);
       expect(delegate.listMessagesMock).toHaveBeenCalledTimes(1);
+      expect(engine.debugReadMetrics()).toEqual({
+        routeReadCounts: {
+          "state.bootstrap": { livestore: 0, delegate: 1 },
+          "state.catchUp": { livestore: 0, delegate: 1 },
+          "state.listMessages": { livestore: 0, delegate: 1 },
+        },
+        fallbackCounts: {
+          "state.bootstrap": { "mirror-error": 1, "empty-mirror": 0 },
+          "state.catchUp": { "mirror-error": 1, "empty-mirror": 0 },
+          "state.listMessages": { "mirror-error": 1, "empty-mirror": 0 },
+        },
+      });
     } finally {
       engine.close();
     }
@@ -476,6 +500,18 @@ describe("LiveStoreReadPilotStateSyncEngine", () => {
         lastStateSeq: 0,
       });
       expect(delegate.loadSnapshotMock).not.toHaveBeenCalled();
+      expect(engine.debugReadMetrics()).toEqual({
+        routeReadCounts: {
+          "state.bootstrap": { livestore: 1, delegate: 0 },
+          "state.catchUp": { livestore: 0, delegate: 0 },
+          "state.listMessages": { livestore: 0, delegate: 0 },
+        },
+        fallbackCounts: {
+          "state.bootstrap": { "mirror-error": 0, "empty-mirror": 0 },
+          "state.catchUp": { "mirror-error": 0, "empty-mirror": 0 },
+          "state.listMessages": { "mirror-error": 0, "empty-mirror": 0 },
+        },
+      });
     } finally {
       engine.close();
     }
@@ -546,6 +582,18 @@ describe("LiveStoreReadPilotStateSyncEngine", () => {
       });
       expect(delegate.catchUpMock).toHaveBeenCalledTimes(1);
       expect(delegate.listMessagesMock).toHaveBeenCalledTimes(1);
+      expect(engine.debugReadMetrics()).toEqual({
+        routeReadCounts: {
+          "state.bootstrap": { livestore: 0, delegate: 0 },
+          "state.catchUp": { livestore: 1, delegate: 1 },
+          "state.listMessages": { livestore: 1, delegate: 1 },
+        },
+        fallbackCounts: {
+          "state.bootstrap": { "mirror-error": 0, "empty-mirror": 0 },
+          "state.catchUp": { "mirror-error": 1, "empty-mirror": 0 },
+          "state.listMessages": { "mirror-error": 1, "empty-mirror": 0 },
+        },
+      });
     } finally {
       engine.close();
     }

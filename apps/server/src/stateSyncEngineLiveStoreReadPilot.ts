@@ -33,6 +33,13 @@ interface LiveStoreReadPilotEvents {
 }
 
 type LiveStoreReadSource = "delegate" | "livestore";
+type LiveStoreReadRoute = "state.bootstrap" | "state.catchUp" | "state.listMessages";
+type LiveStoreFallbackReason = "mirror-error" | "empty-mirror";
+
+export interface LiveStoreReadPilotMetrics {
+  routeReadCounts: Record<LiveStoreReadRoute, { livestore: number; delegate: number }>;
+  fallbackCounts: Record<LiveStoreReadRoute, { "mirror-error": number; "empty-mirror": number }>;
+}
 
 export interface LiveStoreReadPilotStateSyncEngineOptions {
   delegate: StateSyncEngine;
@@ -62,6 +69,18 @@ export class LiveStoreReadPilotStateSyncEngine
   private bootstrapParityState: "unknown" | "in-parity" | "drift" = "unknown";
   private catchUpParityState: "unknown" | "in-parity" | "drift" = "unknown";
   private listMessagesParityState: "unknown" | "in-parity" | "drift" = "unknown";
+  private readonly metrics: LiveStoreReadPilotMetrics = {
+    routeReadCounts: {
+      "state.bootstrap": { livestore: 0, delegate: 0 },
+      "state.catchUp": { livestore: 0, delegate: 0 },
+      "state.listMessages": { livestore: 0, delegate: 0 },
+    },
+    fallbackCounts: {
+      "state.bootstrap": { "mirror-error": 0, "empty-mirror": 0 },
+      "state.catchUp": { "mirror-error": 0, "empty-mirror": 0 },
+      "state.listMessages": { "mirror-error": 0, "empty-mirror": 0 },
+    },
+  };
 
   constructor(options: LiveStoreReadPilotStateSyncEngineOptions) {
     super();
@@ -100,12 +119,15 @@ export class LiveStoreReadPilotStateSyncEngine
         this.logReadSourceChange("state.bootstrap", this.bootstrapSource, "delegate", {
           lastStateSeq: delegateSnapshot.lastStateSeq,
         });
+        this.recordReadRoute("state.bootstrap", "delegate");
+        this.recordFallback("state.bootstrap", "empty-mirror");
         this.bootstrapSource = "delegate";
         return delegateSnapshot;
       }
       this.logReadSourceChange("state.bootstrap", this.bootstrapSource, "livestore", {
         lastStateSeq: snapshot.lastStateSeq,
       });
+      this.recordReadRoute("state.bootstrap", "livestore");
       this.bootstrapSource = "livestore";
       return snapshot;
     } catch (error) {
@@ -116,11 +138,13 @@ export class LiveStoreReadPilotStateSyncEngine
         throw error;
       }
       this.logger.warn("failed to read bootstrap from livestore mirror; using delegate", { error });
+      this.recordFallback("state.bootstrap", "mirror-error");
     }
     const snapshot = this.delegate.loadSnapshot();
     this.logReadSourceChange("state.bootstrap", this.bootstrapSource, "delegate", {
       lastStateSeq: snapshot.lastStateSeq,
     });
+    this.recordReadRoute("state.bootstrap", "delegate");
     this.bootstrapSource = "delegate";
     return snapshot;
   }
@@ -163,6 +187,7 @@ export class LiveStoreReadPilotStateSyncEngine
       this.logReadSourceChange("state.listMessages", this.listMessagesSource, "livestore", {
         threadId: raw.threadId,
       });
+      this.recordReadRoute("state.listMessages", "livestore");
       this.listMessagesSource = "livestore";
       return result;
     } catch (error) {
@@ -176,6 +201,7 @@ export class LiveStoreReadPilotStateSyncEngine
         );
         throw error;
       }
+      this.recordFallback("state.listMessages", "mirror-error");
       this.logger.warn("failed to list messages from livestore mirror; using delegate", {
         error,
         threadId: raw.threadId,
@@ -184,6 +210,7 @@ export class LiveStoreReadPilotStateSyncEngine
       this.logReadSourceChange("state.listMessages", this.listMessagesSource, "delegate", {
         threadId: raw.threadId,
       });
+      this.recordReadRoute("state.listMessages", "delegate");
       this.listMessagesSource = "delegate";
       return result;
     }
@@ -234,6 +261,7 @@ export class LiveStoreReadPilotStateSyncEngine
       this.logReadSourceChange("state.catchUp", this.catchUpSource, "livestore", {
         afterSeq,
       });
+      this.recordReadRoute("state.catchUp", "livestore");
       this.catchUpSource = "livestore";
       return result;
     } catch (error) {
@@ -244,6 +272,7 @@ export class LiveStoreReadPilotStateSyncEngine
         });
         throw error;
       }
+      this.recordFallback("state.catchUp", "mirror-error");
       this.logger.warn("failed to catch up from livestore mirror; using delegate", {
         error,
         afterSeq,
@@ -252,9 +281,25 @@ export class LiveStoreReadPilotStateSyncEngine
       this.logReadSourceChange("state.catchUp", this.catchUpSource, "delegate", {
         afterSeq,
       });
+      this.recordReadRoute("state.catchUp", "delegate");
       this.catchUpSource = "delegate";
       return result;
     }
+  }
+
+  debugReadMetrics(): LiveStoreReadPilotMetrics {
+    return {
+      routeReadCounts: {
+        "state.bootstrap": { ...this.metrics.routeReadCounts["state.bootstrap"] },
+        "state.catchUp": { ...this.metrics.routeReadCounts["state.catchUp"] },
+        "state.listMessages": { ...this.metrics.routeReadCounts["state.listMessages"] },
+      },
+      fallbackCounts: {
+        "state.bootstrap": { ...this.metrics.fallbackCounts["state.bootstrap"] },
+        "state.catchUp": { ...this.metrics.fallbackCounts["state.catchUp"] },
+        "state.listMessages": { ...this.metrics.fallbackCounts["state.listMessages"] },
+      },
+    };
   }
 
   private checkCatchUpParity(raw: StateCatchUpInput, mirrorResult: StateCatchUpResult): void {
@@ -289,7 +334,7 @@ export class LiveStoreReadPilotStateSyncEngine
   }
 
   private logReadSourceChange(
-    route: "state.bootstrap" | "state.catchUp" | "state.listMessages",
+    route: LiveStoreReadRoute,
     previous: LiveStoreReadSource,
     next: LiveStoreReadSource,
     metadata: Record<string, unknown>,
@@ -302,6 +347,14 @@ export class LiveStoreReadPilotStateSyncEngine
       previousSource: previous,
       ...metadata,
     });
+  }
+
+  private recordReadRoute(route: LiveStoreReadRoute, source: LiveStoreReadSource): void {
+    this.metrics.routeReadCounts[route][source] += 1;
+  }
+
+  private recordFallback(route: LiveStoreReadRoute, reason: LiveStoreFallbackReason): void {
+    this.metrics.fallbackCounts[route][reason] += 1;
   }
 
   getAppSettings(): AppSettings {
@@ -365,6 +418,7 @@ export class LiveStoreReadPilotStateSyncEngine
       return;
     }
     this.closed = true;
+    this.logger.info("livestore read pilot metrics", { metrics: this.metrics });
     this.unsubscribeDelegate();
     this.removeAllListeners();
     void this.mirror.dispose();

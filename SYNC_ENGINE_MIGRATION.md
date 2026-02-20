@@ -48,6 +48,7 @@ Server mode is controlled by `T3CODE_SYNC_ENGINE_MODE`:
 4. **Confidence window**
    - Keep parity flags enabled until drift warnings are consistently absent.
    - Track fallback frequency (should trend toward zero in healthy conditions).
+   - Review `livestore read pilot metrics` shutdown logs for route-level source and fallback counts.
 
 ## Phase-5 cleanup readiness checklist
 

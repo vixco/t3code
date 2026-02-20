@@ -131,6 +131,7 @@ Optional diagnostics:
   - In `shadow` mode, compares mirror vs delegate `state.listMessages` responses and logs drift diagnostics.
 - `T3CODE_LIVESTORE_DISABLE_READ_FALLBACK=1`
   - In `livestore-read-pilot` mode, disables delegate read fallback and fails requests when mirror reads fail (strict canary mode).
+  - Read-source/fallback counters are emitted on shutdown via `livestore read pilot metrics` logs.
 
 Web client state-source selection:
 
