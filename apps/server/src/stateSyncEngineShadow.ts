@@ -24,6 +24,7 @@ import type {
   ThreadsUpdateTitleInput,
 } from "@t3tools/contracts";
 import { createLogger } from "./logger";
+import { diffStateSnapshots } from "./livestore/parity";
 import type { ApplyCheckpointRevertInput, StateSyncEngine } from "./stateSyncEngine";
 
 interface StateSyncEngineShadowEvents {
@@ -32,12 +33,14 @@ interface StateSyncEngineShadowEvents {
 
 export interface StateEventMirror {
   mirrorStateEvent(event: StateEvent): Promise<void>;
+  debugReadSnapshot?(): StateBootstrapResult;
   dispose(): Promise<void> | void;
 }
 
 export interface ShadowStateSyncEngineOptions {
   delegate: StateSyncEngine;
   mirror: StateEventMirror;
+  enableBootstrapParityCheck?: boolean;
 }
 
 export class ShadowStateSyncEngine
@@ -46,14 +49,17 @@ export class ShadowStateSyncEngine
 {
   private readonly delegate: StateSyncEngine;
   private readonly mirror: StateEventMirror;
+  private readonly enableBootstrapParityCheck: boolean;
   private readonly logger = createLogger("shadow-sync-engine");
   private readonly unsubscribeDelegate: () => void;
   private closed = false;
+  private bootstrapParityState: "unknown" | "in-parity" | "drift" = "unknown";
 
   constructor(options: ShadowStateSyncEngineOptions) {
     super();
     this.delegate = options.delegate;
     this.mirror = options.mirror;
+    this.enableBootstrapParityCheck = options.enableBootstrapParityCheck ?? false;
     this.unsubscribeDelegate = this.delegate.onStateEvent((event) => {
       this.emit("stateEvent", event);
       void this.mirror.mirrorStateEvent(event).catch((error) => {
@@ -70,7 +76,44 @@ export class ShadowStateSyncEngine
   }
 
   loadSnapshot(): StateBootstrapResult {
-    return this.delegate.loadSnapshot();
+    const snapshot = this.delegate.loadSnapshot();
+    if (this.enableBootstrapParityCheck) {
+      this.checkBootstrapParity(snapshot);
+    }
+    return snapshot;
+  }
+
+  private checkBootstrapParity(delegateSnapshot: StateBootstrapResult): void {
+    if (typeof this.mirror.debugReadSnapshot !== "function") {
+      return;
+    }
+
+    let mirrorSnapshot: StateBootstrapResult;
+    try {
+      mirrorSnapshot = this.mirror.debugReadSnapshot();
+    } catch (error) {
+      this.logger.warn("shadow bootstrap parity check failed to read mirror snapshot", { error });
+      return;
+    }
+
+    const diffs = diffStateSnapshots(delegateSnapshot, mirrorSnapshot);
+    if (diffs.length === 0) {
+      if (this.bootstrapParityState !== "in-parity") {
+        this.bootstrapParityState = "in-parity";
+        this.logger.info("shadow bootstrap parity check passed", {
+          lastStateSeq: delegateSnapshot.lastStateSeq,
+        });
+      }
+      return;
+    }
+
+    this.bootstrapParityState = "drift";
+    this.logger.warn("shadow bootstrap parity drift detected", {
+      diffCount: diffs.length,
+      samplePaths: diffs.slice(0, 5).map((diff) => diff.path),
+      delegateLastStateSeq: delegateSnapshot.lastStateSeq,
+      mirrorLastStateSeq: mirrorSnapshot.lastStateSeq,
+    });
   }
 
   listMessages(raw: StateListMessagesInput): StateListMessagesResult {

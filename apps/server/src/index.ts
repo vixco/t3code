@@ -122,6 +122,8 @@ async function main() {
     parseBooleanEnv(process.env.T3CODE_LIVESTORE_CATCHUP_PARITY_CHECK) ?? false;
   const enableLiveStoreListMessagesParityCheck =
     parseBooleanEnv(process.env.T3CODE_LIVESTORE_LIST_MESSAGES_PARITY_CHECK) ?? false;
+  const enableLiveStoreShadowBootstrapParityCheck =
+    parseBooleanEnv(process.env.T3CODE_LIVESTORE_SHADOW_BOOTSTRAP_PARITY_CHECK) ?? false;
   const persistenceService = new PersistenceService({
     dbPath: stateDbPath,
     legacyProjectsJsonPath: path.join(legacyStateDir, "projects.json"),
@@ -135,6 +137,7 @@ async function main() {
       ? new ShadowStateSyncEngine({
           delegate: legacyStateSyncEngine,
           mirror: liveStoreMirror,
+          enableBootstrapParityCheck: enableLiveStoreShadowBootstrapParityCheck,
         })
       : syncEngineMode === "livestore-read-pilot"
         ? new LiveStoreReadPilotStateSyncEngine({
@@ -180,6 +183,7 @@ async function main() {
     liveStoreBootstrapParityCheck: enableLiveStoreBootstrapParityCheck,
     liveStoreCatchUpParityCheck: enableLiveStoreCatchUpParityCheck,
     liveStoreListMessagesParityCheck: enableLiveStoreListMessagesParityCheck,
+    liveStoreShadowBootstrapParityCheck: enableLiveStoreShadowBootstrapParityCheck,
     authEnabled: Boolean(authToken),
   });
 

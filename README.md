@@ -121,6 +121,8 @@ Optional diagnostics:
   - In `livestore-read-pilot` mode, compares LiveStore vs legacy `state.catchUp` responses and logs drift diagnostics.
 - `T3CODE_LIVESTORE_LIST_MESSAGES_PARITY_CHECK=1`
   - In `livestore-read-pilot` mode, compares LiveStore vs legacy `state.listMessages` responses and logs drift diagnostics.
+- `T3CODE_LIVESTORE_SHADOW_BOOTSTRAP_PARITY_CHECK=1`
+  - In `shadow` mode, compares mirror vs delegate `state.bootstrap` snapshots and logs drift diagnostics.
 
 Web client state-source selection:
 

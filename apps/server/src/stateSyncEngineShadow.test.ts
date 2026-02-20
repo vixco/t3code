@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StateEvent } from "@t3tools/contracts";
 import { diffStateSnapshots } from "./livestore/parity";
 import { LiveStoreStateMirror } from "./livestore/liveStoreEngine";
@@ -172,6 +172,40 @@ describe("ShadowStateSyncEngine", () => {
       });
 
       await waitForParity(() => legacy.loadSnapshot(), () => mirror.debugReadSnapshot());
+    } finally {
+      shadow.close();
+      service.close();
+    }
+  });
+
+  it("can run optional bootstrap parity diagnostics without changing read results", () => {
+    const stateDir = makeTempDir("t3code-shadow-parity-diagnostics-state-");
+    const projectDir = makeTempDir("t3code-shadow-parity-diagnostics-project-");
+    const service = new PersistenceService({
+      dbPath: path.join(stateDir, "state.sqlite"),
+    });
+    const legacy = new LegacyStateSyncEngine({ persistenceService: service });
+    const debugReadSnapshot = vi.fn(() => ({
+      projects: [],
+      threads: [],
+      lastStateSeq: 0,
+    }));
+    const mirror: StateEventMirror = {
+      mirrorStateEvent: async () => undefined,
+      debugReadSnapshot,
+      dispose: async () => undefined,
+    };
+    const shadow = new ShadowStateSyncEngine({
+      delegate: legacy,
+      mirror,
+      enableBootstrapParityCheck: true,
+    });
+
+    try {
+      legacy.addProject({ cwd: projectDir });
+      const snapshot = shadow.loadSnapshot();
+      expect(snapshot.projects).toHaveLength(1);
+      expect(debugReadSnapshot).toHaveBeenCalledTimes(1);
     } finally {
       shadow.close();
       service.close();
