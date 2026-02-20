@@ -105,13 +105,13 @@ T3 Code has a global runtime mode switch in the chat toolbar:
 
 The server supports feature-flagged sync-engine modes while migrating from the legacy in-house state sync pipeline to LiveStore.
 
-- `T3CODE_SYNC_ENGINE_MODE=legacy` (default)
+- `T3CODE_SYNC_ENGINE_MODE=livestore-read-pilot` (default)
+  - Uses the LiveStore mirror for `state.bootstrap`, `state.catchUp`, and `state.listMessages` reads when available.
+  - Automatically falls back to legacy reads if the mirror is unavailable or errors.
+- `T3CODE_SYNC_ENGINE_MODE=legacy`
   - Uses the existing `PersistenceService`-backed state sync engine for reads and writes.
 - `T3CODE_SYNC_ENGINE_MODE=shadow`
   - Keeps legacy state as canonical, but mirrors committed `state.event` traffic into a LiveStore shadow store for parity validation.
-- `T3CODE_SYNC_ENGINE_MODE=livestore-read-pilot`
-  - Uses the LiveStore mirror for `state.bootstrap`, `state.catchUp`, and `state.listMessages` reads when available.
-  - Automatically falls back to legacy reads if the mirror is unavailable or errors.
 
 Optional diagnostics:
 

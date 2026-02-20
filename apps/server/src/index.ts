@@ -41,7 +41,7 @@ function parsePort(value: string | undefined): number | undefined {
 
 function resolveSyncEngineMode(raw: string | undefined): SyncEngineMode {
   if (!raw || raw.trim().length === 0) {
-    return "legacy";
+    return "livestore-read-pilot";
   }
   const normalized = raw.trim().toLowerCase();
   if (

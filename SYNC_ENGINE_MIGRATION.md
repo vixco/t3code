@@ -6,9 +6,9 @@ This runbook describes how to operate and verify the LiveStore migration path sa
 
 Server mode is controlled by `T3CODE_SYNC_ENGINE_MODE`:
 
-- `legacy` (default): legacy persistence service is canonical for reads/writes.
+- `livestore-read-pilot` (default): write path remains legacy-backed, but state reads prefer LiveStore mirror with delegate fallback.
+- `legacy`: legacy persistence service is canonical for reads/writes.
 - `shadow`: legacy remains canonical, and `state.event` writes are mirrored into LiveStore.
-- `livestore-read-pilot`: write path remains legacy-backed, but state reads prefer LiveStore mirror with delegate fallback.
 
 ## Diagnostics flags
 
