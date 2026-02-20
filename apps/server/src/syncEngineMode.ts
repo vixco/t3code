@@ -9,7 +9,7 @@ const VALID_SYNC_ENGINE_MODES: ReadonlySet<SyncEngineMode> = new Set([
 
 export function resolveSyncEngineMode(raw: string | undefined): SyncEngineMode {
   if (!raw || raw.trim().length === 0) {
-    return "livestore";
+    return "livestore-read-pilot";
   }
   const normalized = raw.trim().toLowerCase();
   if (VALID_SYNC_ENGINE_MODES.has(normalized as SyncEngineMode)) {
