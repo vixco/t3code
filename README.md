@@ -108,6 +108,7 @@ The server supports feature-flagged sync-engine modes while migrating from the l
 - `T3CODE_SYNC_ENGINE_MODE=livestore-read-pilot` (default)
   - Uses the LiveStore mirror for `state.bootstrap`, `state.catchUp`, and `state.listMessages` reads when available.
   - Automatically falls back to legacy reads if the mirror is unavailable or errors.
+  - Mirror state is pre-bootstrapped from persisted catch-up history during server startup.
 - `T3CODE_SYNC_ENGINE_MODE=livestore`
   - Uses the LiveStore-backed read path and disables delegate fallback (strict mirror-read mode).
 - `T3CODE_SYNC_ENGINE_MODE=legacy`

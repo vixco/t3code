@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { fixPath } from "./fixPath";
 import { createLogger } from "./logger";
+import { bootstrapMirrorFromCatchUp } from "./livestore/mirrorBootstrap";
 import { LiveStoreStateMirror } from "./livestore/liveStoreEngine";
 import { PersistenceService } from "./persistenceService";
 import { LegacyStateSyncEngine } from "./stateSyncEngineLegacy";
@@ -144,6 +145,20 @@ async function main() {
     storeId: `t3-shadow-${mode}`,
   });
   const isReadPilotMode = syncEngineMode === "livestore-read-pilot" || syncEngineMode === "livestore";
+  if (syncEngineMode === "shadow" || isReadPilotMode) {
+    const bootstrapResult = bootstrapMirrorFromCatchUp({
+      source: legacyStateSyncEngine,
+      mirror: liveStoreMirror,
+      logger,
+      failOnError: syncEngineMode === "livestore",
+    });
+    logger.info("bootstrapped livestore mirror from persisted catch-up history", {
+      mirroredCount: bootstrapResult.mirroredCount,
+      lastStateSeq: bootstrapResult.lastStateSeq,
+      complete: bootstrapResult.complete,
+      syncEngineMode,
+    });
+  }
   const stateSyncEngine =
     syncEngineMode === "shadow"
       ? new ShadowStateSyncEngine({
