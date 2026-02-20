@@ -262,4 +262,47 @@ describe("LiveStoreReadPilotStateSyncEngine", () => {
       engine.close();
     }
   });
+
+  it("runs bootstrap parity check against delegate when enabled", () => {
+    const delegate = new MockDelegateStateSyncEngine();
+    delegate.loadSnapshotMock.mockReturnValue({
+      projects: [],
+      threads: [],
+      lastStateSeq: 9,
+    });
+    const mirror = makeMirrorStub({
+      snapshot: {
+        projects: [],
+        threads: [],
+        lastStateSeq: 5,
+      },
+      catchUp: {
+        events: [],
+        lastStateSeq: 5,
+      },
+      listMessages: {
+        messages: [],
+        total: 0,
+        nextOffset: null,
+      },
+    });
+
+    const engine = new LiveStoreReadPilotStateSyncEngine({
+      delegate,
+      mirror,
+      enableBootstrapParityCheck: true,
+    });
+
+    try {
+      expect(engine.loadSnapshot()).toEqual({
+        projects: [],
+        threads: [],
+        lastStateSeq: 5,
+      });
+      // One call from the parity check path while mirror remains source.
+      expect(delegate.loadSnapshotMock).toHaveBeenCalledTimes(1);
+    } finally {
+      engine.close();
+    }
+  });
 });
