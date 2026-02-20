@@ -45,6 +45,7 @@ import { PersistenceService } from "./persistenceService";
 import { ProviderManager } from "./providerManager";
 import type { ApplyCheckpointRevertInput, StateSyncEngine } from "./stateSyncEngine";
 import { LegacyStateSyncEngine } from "./stateSyncEngineLegacy";
+import { LiveStoreReadPilotStateSyncEngine } from "./stateSyncEngineLiveStoreReadPilot";
 import { ShadowStateSyncEngine } from "./stateSyncEngineShadow";
 import { LiveStoreStateMirror } from "./livestore/liveStoreEngine";
 import { diffStateSnapshots } from "./livestore/parity";
@@ -1044,6 +1045,90 @@ describe("WebSocket Server", () => {
       expect(diffStateSnapshots(legacy.loadSnapshot(), mirror.debugReadSnapshot())).toEqual([]);
     } finally {
       shadow.close();
+    }
+  });
+
+  it("serves ordered bootstrap and catch-up through the read-pilot sync engine", async () => {
+    const stateDir = makeTempDir("t3code-ws-read-pilot-state-");
+    const projectCwd = makeTempDir("t3code-ws-read-pilot-project-");
+    const persistenceService = new PersistenceService({
+      dbPath: path.join(stateDir, "state.sqlite"),
+      legacyProjectsJsonPath: path.join(stateDir, "projects.json"),
+    });
+    const legacy = new LegacyStateSyncEngine({ persistenceService });
+    const mirror = new LiveStoreStateMirror({ storeId: "ws-read-pilot-parity-test" });
+    const shadow = new ShadowStateSyncEngine({
+      delegate: legacy,
+      mirror,
+    });
+    const readPilot = new LiveStoreReadPilotStateSyncEngine({
+      delegate: shadow,
+      mirror,
+    });
+
+    try {
+      server = createTestServer({
+        cwd: "/test",
+        stateSyncEngine: readPilot,
+      });
+      await server.start();
+      const addr = server.httpServer.address();
+      const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+      const ws = await connectWs(port);
+      connections.push(ws);
+      await waitForMessage(ws);
+
+      const addedProject = await sendRequest(ws, WS_METHODS.projectsAdd, { cwd: projectCwd });
+      expect(addedProject.error).toBeUndefined();
+      const projectId = (addedProject.result as { project: { id: string } }).project.id;
+
+      const createdThread = await sendRequest(ws, WS_METHODS.threadsCreate, {
+        projectId,
+        title: "Read pilot thread",
+        model: "gpt-5.3-codex",
+      });
+      expect(createdThread.error).toBeUndefined();
+      const threadId = (createdThread.result as { thread: { id: string } }).thread.id;
+
+      await sendRequest(ws, WS_METHODS.threadsUpdateTitle, {
+        threadId,
+        title: "Read pilot thread updated",
+      });
+
+      await waitForCondition(() => {
+        const diffs = diffStateSnapshots(legacy.loadSnapshot(), mirror.debugReadSnapshot());
+        return diffs.length === 0;
+      });
+
+      const bootstrap = await sendRequest(ws, WS_METHODS.stateBootstrap);
+      expect(bootstrap.error).toBeUndefined();
+      const snapshot = bootstrap.result as {
+        projects: Array<{ id: string }>;
+        threads: Array<{ id: string; title: string }>;
+        lastStateSeq: number;
+      };
+      expect(snapshot.projects).toHaveLength(1);
+      expect(snapshot.threads).toHaveLength(1);
+      expect(snapshot.threads[0]?.title).toBe("Read pilot thread updated");
+      expect(snapshot.lastStateSeq).toBeGreaterThan(0);
+
+      const catchUp = await sendRequest(ws, WS_METHODS.stateCatchUp, { afterSeq: 0 });
+      expect(catchUp.error).toBeUndefined();
+      const events = (catchUp.result as { events: StateEvent[] }).events;
+      expect(events.length).toBeGreaterThan(0);
+      for (let index = 1; index < events.length; index += 1) {
+        const previous = events[index - 1];
+        const current = events[index];
+        expect(previous).toBeDefined();
+        expect(current).toBeDefined();
+        if (!previous || !current) continue;
+        expect(current.seq).toBeGreaterThan(previous.seq);
+      }
+      expect(events.some((event) => event.eventType === "project.upsert")).toBe(true);
+      expect(events.some((event) => event.eventType === "thread.upsert")).toBe(true);
+    } finally {
+      readPilot.close();
     }
   });
 
