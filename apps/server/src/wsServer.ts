@@ -90,6 +90,7 @@ export function createServer(options: ServerOptions) {
     new PersistenceService({
       dbPath: stateDbPath ?? path.join(os.homedir(), ".t3", "state.sqlite"),
     });
+  const ownsPersistenceService = providedPersistenceService === undefined;
   const providerManager = new ProviderManager({ persistenceService });
   const terminalManager = providedTerminalManager ?? new TerminalManager();
   const gitManager = providedGitManager ?? new GitManager();
@@ -346,12 +347,20 @@ export function createServer(options: ServerOptions) {
             turnCount: number;
           };
           const result = await providerManager.revertToCheckpoint(params as never);
-          persistenceService.applyCheckpointRevert({
-            sessionId: params.sessionId,
-            runtimeThreadId: result.threadId,
-            turnCount: result.turnCount,
-            messageCount: result.messageCount,
-          });
+          try {
+            persistenceService.applyCheckpointRevert({
+              sessionId: params.sessionId,
+              runtimeThreadId: result.threadId,
+              turnCount: result.turnCount,
+              messageCount: result.messageCount,
+            });
+          } catch (error) {
+            logger.warn("failed to persist checkpoint revert", {
+              sessionId: params.sessionId,
+              turnCount: params.turnCount,
+              error,
+            });
+          }
           return result;
         }
 
@@ -373,7 +382,11 @@ export function createServer(options: ServerOptions) {
       case WS_METHODS.threadsCreate:
         return persistenceService.createThread(request.params as never);
 
-      case WS_METHODS.threadsUpdate:
+      case "threads.update":
+        throw new Error(
+          `"threads.update" is unsupported; use ${WS_METHODS.threadsUpdateTerminalState}`,
+        );
+
       case WS_METHODS.threadsUpdateTerminalState:
         return persistenceService.updateThreadTerminalState(request.params as never);
 
@@ -542,7 +555,9 @@ export function createServer(options: ServerOptions) {
     providerManager.stopAll();
     providerManager.dispose();
     terminalManager.dispose();
-    persistenceService.close();
+    if (ownsPersistenceService) {
+      persistenceService.close();
+    }
 
     for (const client of clients) {
       client.close();

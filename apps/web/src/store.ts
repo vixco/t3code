@@ -648,8 +648,20 @@ export function reducer(state: AppState, action: Action): AppState {
         const payloadTurnDiffSummaries = Array.isArray(threadPayload?.turnDiffSummaries)
           ? (threadPayload.turnDiffSummaries as Thread["turnDiffSummaries"])
           : undefined;
+        const payloadTerminalIds = Array.isArray(threadPayload?.terminalIds)
+          ? (threadPayload.terminalIds as string[])
+          : (existing?.terminalIds ?? [DEFAULT_THREAD_TERMINAL_ID]);
+        const payloadRunningTerminalIds = Array.isArray(threadPayload?.runningTerminalIds)
+          ? (threadPayload.runningTerminalIds as string[])
+          : (existing?.runningTerminalIds ?? []);
+        const payloadTerminalGroups = Array.isArray(threadPayload?.terminalGroups)
+          ? (threadPayload.terminalGroups as ThreadTerminalGroup[])
+          : (existing?.terminalGroups ?? []);
         const bootstrapThread: StateBootstrapThread = {
           ...(threadPayload as unknown as Omit<StateBootstrapThread, "messages">),
+          terminalIds: payloadTerminalIds,
+          runningTerminalIds: payloadRunningTerminalIds,
+          terminalGroups: payloadTerminalGroups,
           messages: existingStateMessages,
           turnDiffSummaries: payloadTurnDiffSummaries
             ? mergeTurnDiffSummaries(existing?.turnDiffSummaries ?? [], payloadTurnDiffSummaries)

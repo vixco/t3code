@@ -605,6 +605,113 @@ describe("store reducer thread continuity", () => {
     expect(next.threads[0]?.turnDiffSummaries[0]?.assistantMessageId).toBe("msg-1");
   });
 
+  it("preserves existing terminal arrays when thread.upsert omits them", () => {
+    const state = makeState(
+      makeThread({
+        terminalOpen: true,
+        terminalIds: [DEFAULT_THREAD_TERMINAL_ID, "term-2"],
+        runningTerminalIds: ["term-2"],
+        activeTerminalId: "term-2",
+        terminalGroups: [
+          {
+            id: `group-${DEFAULT_THREAD_TERMINAL_ID}`,
+            terminalIds: [DEFAULT_THREAD_TERMINAL_ID],
+          },
+          {
+            id: "group-term-2",
+            terminalIds: ["term-2"],
+          },
+        ],
+        activeTerminalGroupId: "group-term-2",
+      }),
+    );
+
+    const next = reducer(state, {
+      type: "APPLY_STATE_EVENT",
+      event: {
+        seq: 1,
+        eventType: "thread.upsert",
+        entityId: "thread-local-1",
+        createdAt: "2026-02-09T00:00:06.000Z",
+        payload: {
+          thread: {
+            id: "thread-local-1",
+            codexThreadId: "thr-1",
+            projectId: "project-1",
+            title: "Thread",
+            model: "gpt-5.3-codex",
+            terminalOpen: true,
+            terminalHeight: DEFAULT_THREAD_TERMINAL_HEIGHT,
+            activeTerminalId: "term-2",
+            activeTerminalGroupId: "group-term-2",
+            createdAt: "2026-02-09T00:00:00.000Z",
+            updatedAt: "2026-02-09T00:00:06.000Z",
+            lastVisitedAt: "2026-02-09T00:00:06.000Z",
+            branch: null,
+            worktreePath: null,
+            turnDiffSummaries: [],
+          },
+        },
+      },
+    });
+
+    expect(next.threads[0]?.terminalIds).toEqual([DEFAULT_THREAD_TERMINAL_ID, "term-2"]);
+    expect(next.threads[0]?.runningTerminalIds).toEqual(["term-2"]);
+    expect(next.threads[0]?.terminalGroups).toEqual([
+      {
+        id: `group-${DEFAULT_THREAD_TERMINAL_ID}`,
+        terminalIds: [DEFAULT_THREAD_TERMINAL_ID],
+      },
+      {
+        id: "group-term-2",
+        terminalIds: ["term-2"],
+      },
+    ]);
+  });
+
+  it("uses safe terminal defaults when a new thread.upsert omits terminal arrays", () => {
+    const state = makeState(makeThread());
+
+    const next = reducer(state, {
+      type: "APPLY_STATE_EVENT",
+      event: {
+        seq: 1,
+        eventType: "thread.upsert",
+        entityId: "thread-local-2",
+        createdAt: "2026-02-09T00:00:06.000Z",
+        payload: {
+          thread: {
+            id: "thread-local-2",
+            codexThreadId: null,
+            projectId: "project-1",
+            title: "Second thread",
+            model: "gpt-5.3-codex",
+            terminalOpen: false,
+            terminalHeight: DEFAULT_THREAD_TERMINAL_HEIGHT,
+            createdAt: "2026-02-09T00:00:01.000Z",
+            updatedAt: "2026-02-09T00:00:06.000Z",
+            lastVisitedAt: "2026-02-09T00:00:06.000Z",
+            branch: null,
+            worktreePath: null,
+            turnDiffSummaries: [],
+          },
+        },
+      },
+    });
+
+    const createdThread = next.threads.find((thread) => thread.id === "thread-local-2");
+    expect(createdThread).toBeDefined();
+    expect(createdThread?.terminalIds).toEqual([DEFAULT_THREAD_TERMINAL_ID]);
+    expect(createdThread?.runningTerminalIds).toEqual([]);
+    expect(createdThread?.activeTerminalId).toBe(DEFAULT_THREAD_TERMINAL_ID);
+    expect(createdThread?.terminalGroups).toEqual([
+      {
+        id: `group-${DEFAULT_THREAD_TERMINAL_ID}`,
+        terminalIds: [DEFAULT_THREAD_TERMINAL_ID],
+      },
+    ]);
+  });
+
   it("infers checkpoint turn counts when deriving turn summaries from an empty baseline", () => {
     const state = makeState(makeThread({ turnDiffSummaries: [] }));
     const next = reducer(state, {

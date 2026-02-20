@@ -16,7 +16,16 @@ export class StateDb {
     this.dbPath = path.resolve(options.dbPath);
     fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
     this.db = openSqliteDatabase(this.dbPath);
-    runStateMigrations(this.db);
+    try {
+      runStateMigrations(this.db);
+    } catch (error) {
+      try {
+        this.db.close();
+      } catch {
+        // Best effort close on failed initialization.
+      }
+      throw error;
+    }
   }
 
   close(): void {
@@ -30,7 +39,11 @@ export class StateDb {
       this.db.exec("COMMIT;");
       return result;
     } catch (error) {
-      this.db.exec("ROLLBACK;");
+      try {
+        this.db.exec("ROLLBACK;");
+      } catch {
+        // Preserve the original transactional failure.
+      }
       throw error;
     }
   }

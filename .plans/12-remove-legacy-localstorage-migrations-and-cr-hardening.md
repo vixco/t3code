@@ -50,7 +50,7 @@ This plan intentionally removes migration code instead of improving it. The targ
 - `rg` for: `importLegacyRendererState`, `stateImportLegacyRendererState`, `renderer-state:v`, `hydratePersistedState`, legacy metadata keys.
 - Ensure zero references remain in app code, contracts, and tests.
 
-## Workstream 2: Resolve CR Findings in Surviving Code (Grouped by Relevance)
+## Workstream 2: Resolve CR Findings in Surviving Code (Grouped by Relevance) [COMPLETE]
 
 ### Group A: Data integrity and transactional correctness (highest priority)
 - `apps/server/src/persistenceService.ts`

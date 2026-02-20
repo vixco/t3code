@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { openSqliteDatabase } from "./sqliteAdapter";
 
@@ -24,5 +24,20 @@ describe("sqliteAdapter", () => {
     expect(rows.map((entry) => entry.value)).toEqual(["hello"]);
 
     db.close();
+  });
+
+  it("throws a helpful error when node:sqlite is unavailable", () => {
+    const missingModuleError = new Error("No such built-in module: node:sqlite");
+    (missingModuleError as NodeJS.ErrnoException).code = "ERR_UNKNOWN_BUILTIN_MODULE";
+    const requireFn = vi.fn((specifier: string) => {
+      if (specifier === "node:sqlite") {
+        throw missingModuleError;
+      }
+      throw new Error(`Unexpected module request: ${specifier}`);
+    });
+
+    expect(() => openSqliteDatabase(":memory:", requireFn as never, false)).toThrow(
+      "node:sqlite is unavailable",
+    );
   });
 });

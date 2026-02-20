@@ -792,7 +792,7 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
       }
     }
 
-    const nextOffset = input.offset + messages.length;
+    const nextOffset = input.offset + rows.length;
     return stateListMessagesResultSchema.parse({
       messages,
       total,
@@ -926,17 +926,19 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
       if (event.method === "item/started") {
         const assistantItemId = parseAssistantItemId(event);
         if (assistantItemId) {
+          const existing = this.getMessageById(nextThread.id, assistantItemId);
           const payload = asObject(event.payload);
           const item = asObject(payload?.item);
           const seedText = asString(item?.text) ?? "";
+          const text = existing?.text.length ? existing.text : seedText;
           const assistantMessage = stateMessageSchema.parse({
             id: assistantItemId,
             threadId: nextThread.id,
             role: "assistant",
-            text: seedText,
-            createdAt: event.createdAt,
-            updatedAt: event.createdAt,
-            streaming: true,
+            text,
+            createdAt: existing?.createdAt ?? event.createdAt,
+            updatedAt: existing?.updatedAt ?? event.createdAt,
+            streaming: existing?.streaming ?? true,
           });
           this.upsertMessageDocument(nextThread, assistantMessage);
           this.appendStateEvent(
@@ -1362,7 +1364,11 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
     const pendingEvents: StateEvent[] = [];
     const result = this.stateDb.transaction(() => fn(pendingEvents));
     for (const event of pendingEvents) {
-      this.emit("stateEvent", event);
+      try {
+        this.emit("stateEvent", event);
+      } catch {
+        // Listener failures should not break already-committed writes.
+      }
     }
     return result;
   }
@@ -1475,7 +1481,7 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
       ...(patch.assistantMessageId ?? existing?.assistantMessageId
         ? { assistantMessageId: patch.assistantMessageId ?? existing?.assistantMessageId }
         : {}),
-      ...(patch.checkpointTurnCount ?? existing?.checkpointTurnCount
+      ...(patch.checkpointTurnCount !== undefined || existing?.checkpointTurnCount !== undefined
         ? { checkpointTurnCount: patch.checkpointTurnCount ?? existing?.checkpointTurnCount }
         : {}),
       files:

@@ -29,6 +29,7 @@ import type {
 } from "@t3tools/contracts";
 import type { TerminalManager } from "./terminalManager";
 import { PersistenceService } from "./persistenceService";
+import { ProviderManager } from "./providerManager";
 
 interface PendingMessages {
   queue: unknown[];
@@ -235,6 +236,7 @@ describe("WebSocket Server", () => {
   let server: ReturnType<typeof createServer> | null = null;
   const connections: WebSocket[] = [];
   const tempDirs: string[] = [];
+  const injectedPersistenceServices: PersistenceService[] = [];
 
   function makeTempDir(prefix: string): string {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -253,13 +255,17 @@ describe("WebSocket Server", () => {
         runStackedAction: (input: { cwd: string; action: string }) => Promise<unknown>;
       };
       terminalManager?: TerminalManager;
+      persistenceService?: PersistenceService;
     } = {},
   ): ReturnType<typeof createServer> {
     const stateDir = options.stateDir ?? makeTempDir("t3code-ws-state-");
-    const persistenceService = new PersistenceService({
-      dbPath: path.join(stateDir, "state.sqlite"),
-      legacyProjectsJsonPath: path.join(stateDir, "projects.json"),
-    });
+    const persistenceService =
+      options.persistenceService ??
+      new PersistenceService({
+        dbPath: path.join(stateDir, "state.sqlite"),
+        legacyProjectsJsonPath: path.join(stateDir, "projects.json"),
+      });
+    injectedPersistenceServices.push(persistenceService);
     return createServer({
       port: 0,
       cwd: options.cwd ?? "/test/project",
@@ -280,6 +286,9 @@ describe("WebSocket Server", () => {
       await server.stop();
     }
     server = null;
+    for (const service of injectedPersistenceServices.splice(0, injectedPersistenceServices.length)) {
+      service.close();
+    }
     for (const dir of tempDirs.splice(0, tempDirs.length)) {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -821,6 +830,91 @@ describe("WebSocket Server", () => {
     expect(diffResponse.error?.message).toContain("Unknown provider session");
   });
 
+  it("returns provider revert results even if checkpoint revert persistence fails", async () => {
+    const stateDir = makeTempDir("t3code-ws-revert-failure-state-");
+    const persistenceService = new PersistenceService({
+      dbPath: path.join(stateDir, "state.sqlite"),
+      legacyProjectsJsonPath: path.join(stateDir, "projects.json"),
+    });
+
+    const revertResult = {
+      threadId: "runtime-thread-1",
+      turnCount: 0,
+      messageCount: 0,
+      rolledBackTurns: 1,
+      checkpoints: [
+        {
+          id: "root",
+          turnCount: 0,
+          messageCount: 0,
+          label: "Start of conversation",
+          isCurrent: true,
+        },
+      ],
+    };
+    vi.spyOn(ProviderManager.prototype, "revertToCheckpoint").mockResolvedValue(revertResult);
+    vi.spyOn(persistenceService, "applyCheckpointRevert").mockImplementation(() => {
+      throw new Error("persistence write failed");
+    });
+
+    server = createTestServer({ cwd: "/test", stateDir, persistenceService });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.providersRevertToCheckpoint, {
+      sessionId: "sess-1",
+      turnCount: 0,
+    });
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual(revertResult);
+  });
+
+  it("rejects threads.update and keeps threads.updateTerminalState as the canonical route", async () => {
+    const stateDir = makeTempDir("t3code-ws-threads-update-state-");
+    const projectCwd = makeTempDir("t3code-ws-threads-update-project-");
+    server = createTestServer({ cwd: "/test", stateDir });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const addedProject = await sendRequest(ws, WS_METHODS.projectsAdd, { cwd: projectCwd });
+    expect(addedProject.error).toBeUndefined();
+    const projectId = (addedProject.result as { project: { id: string } }).project.id;
+
+    const createdThread = await sendRequest(ws, WS_METHODS.threadsCreate, {
+      projectId,
+      title: "Thread Terminal State",
+      model: "gpt-5.3-codex",
+    });
+    expect(createdThread.error).toBeUndefined();
+    const threadId = (createdThread.result as { thread: { id: string } }).thread.id;
+
+    const deprecatedResponse = await sendRequest(ws, "threads.update", {
+      threadId,
+      terminalOpen: true,
+    });
+    expect(deprecatedResponse.result).toBeUndefined();
+    expect(deprecatedResponse.error?.message).toContain('"threads.update" is unsupported');
+
+    const canonicalResponse = await sendRequest(ws, WS_METHODS.threadsUpdateTerminalState, {
+      threadId,
+      terminalOpen: true,
+    });
+    expect(canonicalResponse.error).toBeUndefined();
+    expect((canonicalResponse.result as { thread: { terminalOpen: boolean } }).thread.terminalOpen).toBe(
+      true,
+    );
+  });
+
   it("routes terminal RPC methods and broadcasts terminal events", async () => {
     const cwd = makeTempDir("t3code-ws-terminal-cwd-");
     const terminalManager = new MockTerminalManager();
@@ -907,6 +1001,43 @@ describe("WebSocket Server", () => {
     server = null;
 
     expect(terminalManager.listenerCount("event")).toBe(0);
+  });
+
+  it("does not close an injected persistence service on stop", async () => {
+    const stateDir = makeTempDir("t3code-ws-injected-persistence-state-");
+    const persistenceService = new PersistenceService({
+      dbPath: path.join(stateDir, "state.sqlite"),
+      legacyProjectsJsonPath: path.join(stateDir, "projects.json"),
+    });
+    const closeSpy = vi.spyOn(persistenceService, "close");
+    server = createServer({
+      port: 0,
+      cwd: "/test",
+      persistenceService,
+    });
+
+    await server.start();
+    await server.stop();
+    server = null;
+
+    expect(closeSpy).not.toHaveBeenCalled();
+    persistenceService.close();
+  });
+
+  it("closes internally owned persistence service on stop", async () => {
+    const stateDir = makeTempDir("t3code-ws-internal-persistence-state-");
+    const closeSpy = vi.spyOn(PersistenceService.prototype, "close");
+    server = createServer({
+      port: 0,
+      cwd: "/test",
+      stateDbPath: path.join(stateDir, "state.sqlite"),
+    });
+
+    await server.start();
+    await server.stop();
+    server = null;
+
+    expect(closeSpy).toHaveBeenCalledTimes(1);
   });
 
   it("returns validation errors for invalid terminal open params", async () => {

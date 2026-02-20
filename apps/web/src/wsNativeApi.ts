@@ -111,7 +111,6 @@ export function createWsNativeApi(): NativeApi {
     },
     threads: {
       create: (input) => transport.request(WS_METHODS.threadsCreate, input),
-      update: (input) => transport.request(WS_METHODS.threadsUpdate, input),
       delete: (input) => transport.request(WS_METHODS.threadsDelete, input),
       markVisited: (input) => transport.request(WS_METHODS.threadsMarkVisited, input),
       updateTerminalState: (input) =>

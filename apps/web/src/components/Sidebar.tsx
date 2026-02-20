@@ -16,6 +16,7 @@ import { gitRemoveWorktreeMutationOptions } from "../lib/gitReactQuery";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { toastManager } from "./ui/toast";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
+import { createLocalThreadForProject } from "./Sidebar.logic";
 
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 
@@ -146,7 +147,22 @@ export default function Sidebar() {
         worktreePath?: string | null;
       },
     ) => {
-      if (!api) return;
+      if (!api) {
+        const localThread = createLocalThreadForProject({
+          projectId,
+          projects: state.projects,
+          ...(options ? { options } : {}),
+        });
+        dispatch({
+          type: "ADD_THREAD",
+          thread: localThread,
+        });
+        void navigate({
+          to: "/$threadId",
+          params: { threadId: localThread.id },
+        });
+        return;
+      }
       void (async () => {
         try {
           const result = await api.threads.create({

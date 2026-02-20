@@ -135,7 +135,6 @@ export interface NativeApi {
   };
   threads: {
     create: (input: ThreadsCreateInput) => Promise<ThreadsUpdateResult>;
-    update: (input: ThreadsUpdateTerminalStateInput) => Promise<ThreadsUpdateResult>;
     delete: (input: ThreadsDeleteInput) => Promise<void>;
     markVisited: (input: ThreadsMarkVisitedInput) => Promise<ThreadsUpdateResult>;
     updateTerminalState: (input: ThreadsUpdateTerminalStateInput) => Promise<ThreadsUpdateResult>;

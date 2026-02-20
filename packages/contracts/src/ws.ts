@@ -12,7 +12,6 @@ export const WS_METHODS = {
 
   // Thread methods
   threadsCreate: "threads.create",
-  threadsUpdate: "threads.update",
   threadsDelete: "threads.delete",
   threadsMarkVisited: "threads.markVisited",
   threadsUpdateTerminalState: "threads.updateTerminalState",

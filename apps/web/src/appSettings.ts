@@ -42,6 +42,7 @@ let cachedSnapshotKey = `${cachedBackendCacheKey}|${cachedLocalCacheKey ?? ""}`;
 let backendHydrationPromise: Promise<void> | null = null;
 let backendHydrated = false;
 let backendUpdateSequence = 0;
+let optimisticWriteSequence = 0;
 
 function emitChange(): void {
   for (const listener of listeners) {
@@ -137,6 +138,9 @@ async function hydrateBackendSettings(): Promise<void> {
     return;
   }
 
+  const hydrationSequence = optimisticWriteSequence;
+  const hasOptimisticWriteSinceHydration = () => hydrationSequence !== optimisticWriteSequence;
+
   backendHydrationPromise = (async () => {
     const api = readNativeApi();
     if (!api?.appSettings || typeof api.appSettings.get !== "function") {
@@ -146,35 +150,42 @@ async function hydrateBackendSettings(): Promise<void> {
 
     const legacySettings = readLegacySettingsSnapshot();
     let next = normalizeBackendSettings(await api.appSettings.get());
-    const migrationPatch = appSettingsUpdateInputSchema.parse({
-      ...(next.codexBinaryPath.length === 0 && legacySettings?.codexBinaryPath
-        ? { codexBinaryPath: legacySettings.codexBinaryPath }
-        : {}),
-      ...(next.codexHomePath.length === 0 && legacySettings?.codexHomePath
-        ? { codexHomePath: legacySettings.codexHomePath }
-        : {}),
-    });
-    const hasMigrationPatch =
-      migrationPatch.codexBinaryPath !== undefined || migrationPatch.codexHomePath !== undefined;
-    if (hasMigrationPatch) {
-      next = normalizeBackendSettings(await api.appSettings.update(migrationPatch));
+    if (!hasOptimisticWriteSinceHydration()) {
+      const migrationPatch = appSettingsUpdateInputSchema.parse({
+        ...(next.codexBinaryPath.length === 0 && legacySettings?.codexBinaryPath
+          ? { codexBinaryPath: legacySettings.codexBinaryPath }
+          : {}),
+        ...(next.codexHomePath.length === 0 && legacySettings?.codexHomePath
+          ? { codexHomePath: legacySettings.codexHomePath }
+          : {}),
+      });
+      const hasMigrationPatch =
+        migrationPatch.codexBinaryPath !== undefined || migrationPatch.codexHomePath !== undefined;
+      if (hasMigrationPatch) {
+        next = normalizeBackendSettings(await api.appSettings.update(migrationPatch));
+      }
     }
 
-    setCachedBackendSettings(next);
-    backendHydrated = true;
+    if (!hasOptimisticWriteSinceHydration()) {
+      setCachedBackendSettings(next);
 
+      if (legacySettings) {
+        persistLocalSettings({
+          confirmThreadDelete: legacySettings.confirmThreadDelete,
+        });
+      }
+
+      emitChange();
+    }
+
+    backendHydrated = true;
     if (legacySettings) {
-      persistLocalSettings({
-        confirmThreadDelete: legacySettings.confirmThreadDelete,
-      });
       try {
         window.localStorage.removeItem(LEGACY_APP_SETTINGS_STORAGE_KEY);
       } catch {
         // Best-effort legacy cleanup only.
       }
     }
-
-    emitChange();
   })()
     .catch(() => undefined)
     .finally(() => {
@@ -197,6 +208,71 @@ export function getAppSettingsSnapshot(): AppSettings {
   });
   cachedSnapshotKey = snapshotKey;
   return cachedSnapshot;
+}
+
+export function ensureAppSettingsHydrated(): Promise<void> {
+  return hydrateBackendSettings();
+}
+
+export function updateAppSettings(patch: Partial<AppSettings>): void {
+  const parsedPatch = appSettingsSchema.partial().parse(patch);
+  let didChange = false;
+  let didOptimisticWrite = false;
+  const markOptimisticWrite = () => {
+    if (didOptimisticWrite) return;
+    didOptimisticWrite = true;
+    optimisticWriteSequence += 1;
+  };
+
+  if (parsedPatch.confirmThreadDelete !== undefined) {
+    markOptimisticWrite();
+    persistLocalSettings({
+      ...readLocalSettingsSnapshot(),
+      confirmThreadDelete: parsedPatch.confirmThreadDelete,
+    });
+    didChange = true;
+  }
+
+  const backendPatch = appSettingsUpdateInputSchema.parse({
+    ...(parsedPatch.codexBinaryPath !== undefined
+      ? { codexBinaryPath: parsedPatch.codexBinaryPath }
+      : {}),
+    ...(parsedPatch.codexHomePath !== undefined ? { codexHomePath: parsedPatch.codexHomePath } : {}),
+  });
+  const hasBackendPatch =
+    backendPatch.codexBinaryPath !== undefined || backendPatch.codexHomePath !== undefined;
+  if (hasBackendPatch) {
+    markOptimisticWrite();
+    const previous = cachedBackendSettings;
+    const optimisticNext = backendAppSettingsSchema.parse({
+      ...cachedBackendSettings,
+      ...backendPatch,
+    });
+    setCachedBackendSettings(optimisticNext);
+    backendHydrated = true;
+    didChange = true;
+
+    const updateSequence = ++backendUpdateSequence;
+    const api = readNativeApi();
+    if (api?.appSettings && typeof api.appSettings.update === "function") {
+      void api.appSettings
+        .update(backendPatch)
+        .then((response) => {
+          if (updateSequence !== backendUpdateSequence) return;
+          setCachedBackendSettings(normalizeBackendSettings(response));
+          emitChange();
+        })
+        .catch(() => {
+          if (updateSequence !== backendUpdateSequence) return;
+          setCachedBackendSettings(previous);
+          emitChange();
+        });
+    }
+  }
+
+  if (didChange) {
+    emitChange();
+  }
 }
 
 function subscribe(listener: () => void): () => void {
@@ -223,60 +299,11 @@ export function useAppSettings() {
   const settings = useSyncExternalStore(subscribe, getAppSettingsSnapshot, () => DEFAULT_APP_SETTINGS);
 
   useEffect(() => {
-    void hydrateBackendSettings();
+    void ensureAppSettingsHydrated();
   }, []);
 
   const updateSettings = useCallback((patch: Partial<AppSettings>) => {
-    const parsedPatch = appSettingsSchema.partial().parse(patch);
-    let didChange = false;
-
-    if (parsedPatch.confirmThreadDelete !== undefined) {
-      persistLocalSettings({
-        ...readLocalSettingsSnapshot(),
-        confirmThreadDelete: parsedPatch.confirmThreadDelete,
-      });
-      didChange = true;
-    }
-
-    const backendPatch = appSettingsUpdateInputSchema.parse({
-      ...(parsedPatch.codexBinaryPath !== undefined
-        ? { codexBinaryPath: parsedPatch.codexBinaryPath }
-        : {}),
-      ...(parsedPatch.codexHomePath !== undefined ? { codexHomePath: parsedPatch.codexHomePath } : {}),
-    });
-    const hasBackendPatch =
-      backendPatch.codexBinaryPath !== undefined || backendPatch.codexHomePath !== undefined;
-    if (hasBackendPatch) {
-      const previous = cachedBackendSettings;
-      const optimisticNext = backendAppSettingsSchema.parse({
-        ...cachedBackendSettings,
-        ...backendPatch,
-      });
-      setCachedBackendSettings(optimisticNext);
-      backendHydrated = true;
-      didChange = true;
-
-      const updateSequence = ++backendUpdateSequence;
-      const api = readNativeApi();
-      if (api?.appSettings && typeof api.appSettings.update === "function") {
-        void api.appSettings
-          .update(backendPatch)
-          .then((response) => {
-            if (updateSequence !== backendUpdateSequence) return;
-            setCachedBackendSettings(normalizeBackendSettings(response));
-            emitChange();
-          })
-          .catch(() => {
-            if (updateSequence !== backendUpdateSequence) return;
-            setCachedBackendSettings(previous);
-            emitChange();
-          });
-      }
-    }
-
-    if (didChange) {
-      emitChange();
-    }
+    updateAppSettings(patch);
   }, []);
 
   const resetSettings = useCallback(() => {
