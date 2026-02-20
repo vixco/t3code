@@ -90,7 +90,11 @@ export function runStateMigrations(db: SqliteDatabase): void {
     db.exec(`PRAGMA user_version=${STATE_DB_SCHEMA_VERSION};`);
     db.exec("COMMIT;");
   } catch (error) {
-    db.exec("ROLLBACK;");
+    try {
+      db.exec("ROLLBACK;");
+    } catch {
+      // Preserve the original migration error if rollback also throws.
+    }
     throw error;
   }
 }
