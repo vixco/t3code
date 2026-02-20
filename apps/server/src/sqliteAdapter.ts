@@ -19,6 +19,10 @@ export interface SqliteDatabase {
   close: () => void;
 }
 
+export interface EffectSqliteDatabaseAdapter extends SqliteDatabase {
+  runWithSqlClient: <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) => A;
+}
+
 interface SqliteDriverModule {
   SqliteClient?: {
     layer: (config: { filename: string }) => Layer.Layer<SqlClient.SqlClient>;
@@ -143,6 +147,10 @@ class EffectSqliteDatabase implements SqliteDatabase {
     Effect.runSync(Scope.close(this.scope, Exit.void));
   }
 
+  runWithSqlClient<A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>): A {
+    return this.runEffect(effect);
+  }
+
   private runStatement(sql: string, params: ReadonlyArray<unknown>): unknown {
     this.runEffect(this.sql.unsafe(sql, params).raw);
     const stats = this.runEffect(
@@ -162,8 +170,9 @@ class EffectSqliteDatabase implements SqliteDatabase {
     return this.runEffect(this.sql.unsafe(sql, params).unprepared) as unknown[];
   }
 
-  private runEffect<A>(effect: Effect.Effect<A, unknown>): A {
-    return Effect.runSync(Effect.provideServices(effect, this.services));
+  private runEffect<A, E, R>(effect: Effect.Effect<A, E, R>): A {
+    const provided = Effect.provideServices(effect, this.services) as Effect.Effect<A, E, never>;
+    return Effect.runSync(provided);
   }
 }
 
@@ -177,7 +186,7 @@ function openDriverDatabase(
   if (typeof layer !== "function") {
     throw new Error(`${moduleId} was loaded but SqliteClient.layer is missing.`);
   }
-  return new EffectSqliteDatabase(layer({ filename: dbPath }));
+  return new EffectSqliteDatabase(layer({ filename: dbPath })) satisfies EffectSqliteDatabaseAdapter;
 }
 
 function openNodeSqliteDatabase(

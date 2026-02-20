@@ -2,6 +2,9 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Queue from "effect/Queue";
 
 import {
   type ProviderCheckpoint,
@@ -175,6 +178,8 @@ export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
   private readonly pendingEventsBySession = new Map<string, ProviderEvent[]>();
   private readonly sessionCheckpointCwds = new Map<string, string>();
   private readonly filesystemLocks = new Map<string, Promise<void>>();
+  private readonly persistenceQueue = Effect.runSync(Queue.unbounded<ProviderEvent>());
+  private readonly persistenceWorker = Effect.runFork(this.runPersistenceWorker());
   private disposed = false;
   private readonly onCodexEvent = (event: ProviderEvent) => {
     if (this.disposed) {
@@ -182,11 +187,7 @@ export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
     }
 
     this.routeEventToThreadLog(event);
-    try {
-      this.persistenceService?.ingestProviderEvent(event);
-    } catch {
-      // Persistence failures should not break provider streaming.
-    }
+    this.enqueuePersistenceEvent(event);
     if (event.method === "session/closed" || event.method === "session/exited") {
       this.persistenceService?.unbindSession(event.sessionId);
     }
@@ -415,6 +416,7 @@ export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
     }
 
     this.disposed = true;
+    this.shutdownPersistenceWorker();
     this.codex.off("event", this.onCodexEvent);
     for (const stream of this.threadLogStreams.values()) {
       stream.end();
@@ -424,6 +426,41 @@ export class ProviderManager extends EventEmitter<ProviderManagerEvents> {
     this.pendingEventsBySession.clear();
     this.sessionCheckpointCwds.clear();
     this.filesystemLocks.clear();
+  }
+
+  private runPersistenceWorker(): Effect.Effect<void> {
+    return Effect.forever(
+      Effect.flatMap(Queue.take(this.persistenceQueue), (event) =>
+        Effect.sync(() => {
+          try {
+            this.persistenceService?.ingestProviderEvent(event);
+          } catch {
+            // Persistence failures should not break provider streaming.
+          }
+        }),
+      ),
+    );
+  }
+
+  private enqueuePersistenceEvent(event: ProviderEvent): void {
+    try {
+      Effect.runSync(Queue.offer(this.persistenceQueue, event));
+    } catch {
+      // Best effort ingest queue; runtime event stream should continue.
+    }
+  }
+
+  private shutdownPersistenceWorker(): void {
+    try {
+      Effect.runSync(Queue.shutdown(this.persistenceQueue));
+    } catch {
+      // Ignore queue shutdown failures during dispose.
+    }
+    try {
+      Effect.runSync(Fiber.interrupt(this.persistenceWorker));
+    } catch {
+      // Ignore worker interrupt failures during dispose.
+    }
   }
 
   private async initializeFilesystemCheckpointing(
