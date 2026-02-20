@@ -1132,6 +1132,102 @@ describe("WebSocket Server", () => {
     }
   });
 
+  it("falls back to legacy reads when the read-pilot mirror fails", async () => {
+    const stateDir = makeTempDir("t3code-ws-read-pilot-fallback-state-");
+    const projectCwd = makeTempDir("t3code-ws-read-pilot-fallback-project-");
+    const persistenceService = new PersistenceService({
+      dbPath: path.join(stateDir, "state.sqlite"),
+      legacyProjectsJsonPath: path.join(stateDir, "projects.json"),
+    });
+    const legacy = new LegacyStateSyncEngine({ persistenceService });
+    const failingMirror = {
+      mirrorStateEvent: vi.fn(async () => undefined),
+      dispose: vi.fn(async () => undefined),
+      debugReadSnapshot: vi.fn(() => {
+        throw new Error("mirror bootstrap failed");
+      }),
+      debugCatchUp: vi.fn(() => {
+        throw new Error("mirror catch-up failed");
+      }),
+      debugListMessages: vi.fn(() => {
+        throw new Error("mirror listMessages failed");
+      }),
+    } as unknown as LiveStoreStateMirror;
+    const readPilot = new LiveStoreReadPilotStateSyncEngine({
+      delegate: legacy,
+      mirror: failingMirror,
+    });
+
+    try {
+      server = createTestServer({
+        cwd: "/test",
+        stateSyncEngine: readPilot,
+      });
+      await server.start();
+      const addr = server.httpServer.address();
+      const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+      const ws = await connectWs(port);
+      connections.push(ws);
+      await waitForMessage(ws);
+
+      const addedProject = await sendRequest(ws, WS_METHODS.projectsAdd, { cwd: projectCwd });
+      expect(addedProject.error).toBeUndefined();
+      const projectId = (addedProject.result as { project: { id: string } }).project.id;
+
+      const createdThread = await sendRequest(ws, WS_METHODS.threadsCreate, {
+        projectId,
+        title: "Read pilot fallback thread",
+        model: "gpt-5.3-codex",
+      });
+      expect(createdThread.error).toBeUndefined();
+      const threadId = (createdThread.result as { thread: { id: string } }).thread.id;
+
+      persistenceService.bindSessionToThread(
+        "read-pilot-fallback-session",
+        threadId,
+        "runtime-thread-fallback",
+      );
+      persistenceService.persistUserMessageForTurn({
+        sessionId: "read-pilot-fallback-session",
+        clientMessageId: "msg-fallback-1",
+        clientMessageText: "fallback message",
+        input: "fallback message",
+        attachments: [],
+      });
+
+      const bootstrap = await sendRequest(ws, WS_METHODS.stateBootstrap);
+      expect(bootstrap.error).toBeUndefined();
+      const snapshot = bootstrap.result as {
+        projects: Array<{ id: string }>;
+        threads: Array<{ id: string; title: string }>;
+        lastStateSeq: number;
+      };
+      expect(snapshot.projects).toHaveLength(1);
+      expect(snapshot.threads).toHaveLength(1);
+      expect(snapshot.threads[0]?.title).toBe("Read pilot fallback thread");
+      expect(snapshot.lastStateSeq).toBeGreaterThan(0);
+
+      const catchUp = await sendRequest(ws, WS_METHODS.stateCatchUp, { afterSeq: 0 });
+      expect(catchUp.error).toBeUndefined();
+      const events = (catchUp.result as { events: StateEvent[] }).events;
+      expect(events.length).toBeGreaterThan(0);
+      expect(events.some((event) => event.eventType === "project.upsert")).toBe(true);
+      expect(events.some((event) => event.eventType === "thread.upsert")).toBe(true);
+
+      const listMessages = await sendRequest(ws, WS_METHODS.stateListMessages, {
+        threadId,
+        offset: 0,
+        limit: 10,
+      });
+      expect(listMessages.error).toBeUndefined();
+      const messages = (listMessages.result as { messages: Array<{ id: string }> }).messages;
+      expect(messages.map((message) => message.id)).toEqual(["msg-fallback-1"]);
+    } finally {
+      readPilot.close();
+    }
+  });
+
   it("broadcasts ordered state.event pushes", async () => {
     const stateDir = makeTempDir("t3code-ws-state-events-");
     const projectCwd = makeTempDir("t3code-ws-state-events-project-");
