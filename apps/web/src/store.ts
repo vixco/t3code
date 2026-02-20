@@ -649,9 +649,9 @@ export function reducer(state: AppState, action: Action): AppState {
           ...(threadPayload as unknown as Omit<StateBootstrapThread, "messages">),
           messages: existingStateMessages,
           turnDiffSummaries:
-            (threadPayload?.turnDiffSummaries as Thread["turnDiffSummaries"] | undefined) ??
-            existing?.turnDiffSummaries ??
-            [],
+            (threadPayload?.turnDiffSummaries as Thread["turnDiffSummaries"] | undefined)?.length
+              ? (threadPayload!.turnDiffSummaries as Thread["turnDiffSummaries"])
+              : (existing?.turnDiffSummaries ?? []),
         };
         const nextThread = hydrateThreadFromBootstrap(bootstrapThread, existing);
         const nextThreads = existing

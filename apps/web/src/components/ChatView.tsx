@@ -764,8 +764,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const hasReachedTerminalLimit =
     (activeThread?.terminalIds.length ?? 0) >= MAX_THREAD_TERMINAL_COUNT;
 
+  const prevSyncedThreadIdRef = useRef<string | undefined>(undefined);
+
   useEffect(() => {
     if (!api || !activeThread) return;
+    if (prevSyncedThreadIdRef.current !== activeThread.id) return;
     void api.threads
       .updateTitle({
         threadId: activeThread.id,
@@ -776,6 +779,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
   useEffect(() => {
     if (!api || !activeThread) return;
+    if (prevSyncedThreadIdRef.current !== activeThread.id) return;
     void api.threads
       .updateModel({
         threadId: activeThread.id,
@@ -786,6 +790,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
   useEffect(() => {
     if (!api || !activeThread) return;
+    if (prevSyncedThreadIdRef.current !== activeThread.id) return;
     void api.threads
       .updateBranch({
         threadId: activeThread.id,
@@ -797,6 +802,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
   useEffect(() => {
     if (!api || !activeThread) return;
+    if (prevSyncedThreadIdRef.current !== activeThread.id) return;
     void api.threads
       .updateTerminalState({
         threadId: activeThread.id,
@@ -818,6 +824,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
     activeThread?.activeTerminalGroupId,
     api,
   ]);
+
+  useEffect(() => {
+    prevSyncedThreadIdRef.current = activeThread?.id;
+  }, [activeThread?.id]);
 
   const revokePreviewUrls = useCallback((images: Array<{ previewUrl?: string }>) => {
     for (const image of images) {
