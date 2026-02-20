@@ -17,6 +17,7 @@ import {
   type DragEvent,
   type FormEvent,
   type KeyboardEvent,
+  type WheelEvent,
   memo,
   type RefObject,
   useCallback,
@@ -402,6 +403,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
   >(() => readLastInvokedScriptByProjectFromStorage());
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
+  const lastKnownScrollTopRef = useRef(0);
+  const lastKnownScrollHeightRef = useRef(0);
   const pendingAutoScrollFrameRef = useRef<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerCommandInputRef = useRef<HTMLInputElement>(null);
@@ -1101,6 +1104,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
     const scrollContainer = messagesScrollRef.current;
     if (!scrollContainer) return;
     scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior });
+    lastKnownScrollTopRef.current = scrollContainer.scrollTop;
+    lastKnownScrollHeightRef.current = scrollContainer.scrollHeight;
     shouldAutoScrollRef.current = true;
   }, []);
   const requestAutoTailToBottom = useCallback(() => {
@@ -1114,7 +1119,29 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const onMessagesScroll = useCallback(() => {
     const scrollContainer = messagesScrollRef.current;
     if (!scrollContainer) return;
-    shouldAutoScrollRef.current = isScrollContainerAtBottom(scrollContainer);
+    const currentScrollTop = scrollContainer.scrollTop;
+    const currentScrollHeight = scrollContainer.scrollHeight;
+    const atBottom = isScrollContainerAtBottom(scrollContainer);
+
+    if (atBottom) {
+      shouldAutoScrollRef.current = true;
+    } else if (shouldAutoScrollRef.current) {
+      // While tailing, only relinquish control when the user scrolls upward.
+      const scrolledUp = currentScrollTop < lastKnownScrollTopRef.current - 1;
+      const contentHeightChanged =
+        Math.abs(currentScrollHeight - lastKnownScrollHeightRef.current) > 1;
+      if (scrolledUp && !contentHeightChanged) {
+        shouldAutoScrollRef.current = false;
+      }
+    }
+
+    lastKnownScrollTopRef.current = currentScrollTop;
+    lastKnownScrollHeightRef.current = currentScrollHeight;
+  }, []);
+  const onMessagesWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
+    if (event.deltaY < 0) {
+      shouldAutoScrollRef.current = false;
+    }
   }, []);
   useLayoutEffect(() => {
     if (!activeThread?.id) return;
@@ -2061,6 +2088,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         ref={messagesScrollRef}
         className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
         onScroll={onMessagesScroll}
+        onWheel={onMessagesWheel}
       >
         <MessagesTimeline
           hasMessages={activeThread.messages.length > 0}
