@@ -125,9 +125,11 @@ describe("PersistenceService", () => {
 
     const catchUp = service.catchUp({ afterSeq: 0 });
     expect(catchUp.events.length).toBeGreaterThan(0);
-    expect(catchUp.events.every((event, index, events) => event.seq === events[index]?.seq)).toBe(
-      true,
-    );
+    expect(
+      catchUp.events.every(
+        (event, index, events) => index === 0 || event.seq > events[index - 1]!.seq,
+      ),
+    ).toBe(true);
     expect(catchUp.events.some((event) => event.eventType === "project.upsert")).toBe(true);
     expect(catchUp.events.some((event) => event.eventType === "thread.upsert")).toBe(true);
     expect(catchUp.events.some((event) => event.eventType === "message.upsert")).toBe(true);

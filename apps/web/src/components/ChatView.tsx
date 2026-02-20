@@ -782,6 +782,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
       .catch(() => undefined);
   }, [activeThread?.id, activeThread?.branch, activeThread?.worktreePath, api]);
 
+  const terminalIdsKey = JSON.stringify(activeThread?.terminalIds ?? null);
+  const terminalGroupsKey = JSON.stringify(activeThread?.terminalGroups ?? null);
+
   useEffect(() => {
     if (!api || !activeThread) return;
     void api.threads
@@ -795,13 +798,14 @@ export default function ChatView({ threadId }: ChatViewProps) {
         activeTerminalGroupId: activeThread.activeTerminalGroupId,
       })
       .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeThread?.id,
     activeThread?.terminalOpen,
     activeThread?.terminalHeight,
-    activeThread?.terminalIds,
+    terminalIdsKey,
     activeThread?.activeTerminalId,
-    activeThread?.terminalGroups,
+    terminalGroupsKey,
     activeThread?.activeTerminalGroupId,
     api,
   ]);
