@@ -5,7 +5,7 @@ interface CatchUpSource {
 }
 
 interface MirrorSink {
-  mirrorStateEvent(event: StateEvent): void;
+  mirrorStateEvent(event: StateEvent): void | Promise<void>;
 }
 
 interface LoggerLike {
@@ -18,18 +18,18 @@ export interface MirrorBootstrapResult {
   complete: boolean;
 }
 
-export function bootstrapMirrorFromCatchUp(options: {
+export async function bootstrapMirrorFromCatchUp(options: {
   source: CatchUpSource;
   mirror: MirrorSink;
   logger: LoggerLike;
   failOnError?: boolean;
-}): MirrorBootstrapResult {
+}): Promise<MirrorBootstrapResult> {
   const { source, mirror, logger, failOnError = false } = options;
   const catchUpResult = source.catchUp({ afterSeq: 0 });
   let mirroredCount = 0;
   for (const event of catchUpResult.events) {
     try {
-      mirror.mirrorStateEvent(event);
+      await mirror.mirrorStateEvent(event);
       mirroredCount += 1;
     } catch (error) {
       if (failOnError) {

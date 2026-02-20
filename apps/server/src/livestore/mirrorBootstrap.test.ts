@@ -3,7 +3,7 @@ import { createLogger } from "../logger";
 import { bootstrapMirrorFromCatchUp } from "./mirrorBootstrap";
 
 describe("bootstrapMirrorFromCatchUp", () => {
-  it("mirrors catch-up history into the mirror sink", () => {
+  it("mirrors catch-up history into the mirror sink", async () => {
     const mirrorStateEvent = vi.fn();
     const source = {
       catchUp: vi.fn().mockReturnValue({
@@ -27,7 +27,7 @@ describe("bootstrapMirrorFromCatchUp", () => {
       }),
     };
 
-    const result = bootstrapMirrorFromCatchUp({
+    const result = await bootstrapMirrorFromCatchUp({
       source,
       mirror: { mirrorStateEvent },
       logger: createLogger("mirror-bootstrap-test"),
@@ -41,7 +41,7 @@ describe("bootstrapMirrorFromCatchUp", () => {
     expect(mirrorStateEvent).toHaveBeenCalledTimes(2);
   });
 
-  it("returns partial progress when non-fatal mirroring errors occur", () => {
+  it("returns partial progress when non-fatal mirroring errors occur", async () => {
     const mirrorStateEvent = vi
       .fn()
       .mockImplementationOnce(() => {})
@@ -70,7 +70,7 @@ describe("bootstrapMirrorFromCatchUp", () => {
       }),
     };
 
-    const result = bootstrapMirrorFromCatchUp({
+    const result = await bootstrapMirrorFromCatchUp({
       source,
       mirror: { mirrorStateEvent },
       logger: createLogger("mirror-bootstrap-test"),
@@ -84,7 +84,7 @@ describe("bootstrapMirrorFromCatchUp", () => {
     expect(mirrorStateEvent).toHaveBeenCalledTimes(2);
   });
 
-  it("throws when failOnError is enabled", () => {
+  it("throws when failOnError is enabled", async () => {
     const mirrorStateEvent = vi.fn().mockImplementation(() => {
       throw new Error("mirror write failed");
     });
@@ -103,13 +103,13 @@ describe("bootstrapMirrorFromCatchUp", () => {
       }),
     };
 
-    expect(() =>
+    await expect(
       bootstrapMirrorFromCatchUp({
         source,
         mirror: { mirrorStateEvent },
         logger: createLogger("mirror-bootstrap-test"),
         failOnError: true,
       }),
-    ).toThrow(/failed to bootstrap livestore mirror/i);
+    ).rejects.toThrow(/failed to bootstrap livestore mirror/i);
   });
 });

@@ -146,7 +146,7 @@ async function main() {
   });
   const isReadPilotMode = syncEngineMode === "livestore-read-pilot" || syncEngineMode === "livestore";
   if (syncEngineMode === "shadow" || isReadPilotMode) {
-    const bootstrapResult = bootstrapMirrorFromCatchUp({
+    const bootstrapResult = await bootstrapMirrorFromCatchUp({
       source: legacyStateSyncEngine,
       mirror: liveStoreMirror,
       logger,
