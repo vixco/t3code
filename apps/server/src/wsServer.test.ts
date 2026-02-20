@@ -656,6 +656,44 @@ describe("WebSocket Server", () => {
     }
   });
 
+  it("infers strict livestore mode in server.getConfig when fallback is disabled", async () => {
+    const stateDir = makeTempDir("t3code-ws-config-livestore-infer-state-");
+    const persistenceService = new PersistenceService({
+      dbPath: path.join(stateDir, "state.sqlite"),
+    });
+    const legacy = new LegacyStateSyncEngine({ persistenceService });
+    const mirror = new LiveStoreStateMirror({ storeId: "ws-config-livestore-infer-test" });
+    const strictReadPilot = new LiveStoreReadPilotStateSyncEngine({
+      delegate: legacy,
+      mirror,
+      disableDelegateReadFallback: true,
+    });
+
+    try {
+      server = createTestServer({
+        cwd: "/my/workspace",
+        stateSyncEngine: strictReadPilot,
+      });
+      await server.start();
+      const addr = server.httpServer.address();
+      const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+      const ws = await connectWs(port);
+      connections.push(ws);
+      await waitForMessage(ws);
+
+      const response = await sendRequest(ws, WS_METHODS.serverGetConfig);
+      expect(response.error).toBeUndefined();
+      expect(response.result).toEqual({
+        cwd: "/my/workspace",
+        syncEngineMode: "livestore",
+        keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+      });
+    } finally {
+      strictReadPilot.close();
+    }
+  });
+
   it("reads keybindings from ~/.t3/keybindings.json", async () => {
     const fakeHome = makeTempDir("t3code-home-");
     const configDir = path.join(fakeHome, ".t3");

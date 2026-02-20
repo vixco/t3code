@@ -618,7 +618,7 @@ export function createServer(options: ServerOptions) {
 
 function inferSyncEngineMode(stateSyncEngine: StateSyncEngine): SyncEngineMode {
   if (stateSyncEngine instanceof LiveStoreReadPilotStateSyncEngine) {
-    return "livestore-read-pilot";
+    return stateSyncEngine.isReadFallbackDisabled() ? "livestore" : "livestore-read-pilot";
   }
   if (stateSyncEngine instanceof ShadowStateSyncEngine) {
     return "shadow";

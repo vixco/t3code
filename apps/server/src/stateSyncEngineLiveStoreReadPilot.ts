@@ -302,6 +302,10 @@ export class LiveStoreReadPilotStateSyncEngine
     };
   }
 
+  isReadFallbackDisabled(): boolean {
+    return this.disableDelegateReadFallback;
+  }
+
   private checkCatchUpParity(raw: StateCatchUpInput, mirrorResult: StateCatchUpResult): void {
     let delegateResult: StateCatchUpResult;
     try {
