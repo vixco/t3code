@@ -34,6 +34,15 @@ T3 Code runs as a **Node.js WebSocket server** that wraps `codex app-server` (JS
 - `/apps/desktop`: Electron shell. Spawns a desktop-scoped `t3` backend process and loads the shared web app.
 - `/packages/contracts`: Shared Zod schemas and TypeScript contracts for provider events, WebSocket protocol, and model/session types.
 
+## Persistence architecture
+
+Server persistence now runs on the Effect v4 beta SQL stack with SQLite:
+
+- Effect SQL drivers are selected by runtime (Bun in development, Node in production).
+- Schema bootstrapping is managed through the Effect SQL migrator.
+- Persistence reads/writes are organized into Effect-backed repositories under `apps/server/src/persistence/`.
+- State synchronization (`state.bootstrap`, ordered `state.event`, `state.catchUp`) is still exposed through the existing WebSocket API surface, with typed state-event payloads shared through `@t3tools/contracts`.
+
 ## Codex prerequisites
 
 - Install Codex CLI so `codex` is on your PATH.
