@@ -37,7 +37,7 @@ describe("sqliteAdapter", () => {
     });
 
     expect(() => openSqliteDatabase(":memory:", requireFn as never, false)).toThrow(
-      "node:sqlite is unavailable",
+      "@effect/sql-sqlite-node is unavailable",
     );
   });
 });
