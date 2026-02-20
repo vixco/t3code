@@ -11,6 +11,19 @@ import {
   DEFAULT_TERMINAL_ID,
   WS_CHANNELS,
   WS_METHODS,
+  type AppSettingsUpdateInput,
+  type ProjectAddInput,
+  type ProjectRemoveInput,
+  type ProjectUpdateScriptsInput,
+  type StateCatchUpInput,
+  type StateListMessagesInput,
+  type ThreadsCreateInput,
+  type ThreadsDeleteInput,
+  type ThreadsMarkVisitedInput,
+  type ThreadsUpdateBranchInput,
+  type ThreadsUpdateModelInput,
+  type ThreadsUpdateTerminalStateInput,
+  type ThreadsUpdateTitleInput,
   type KeybindingsConfig,
   type ResolvedKeybindingsConfig,
   type StateEvent,
@@ -30,6 +43,7 @@ import type {
 import type { TerminalManager } from "./terminalManager";
 import { PersistenceService } from "./persistenceService";
 import { ProviderManager } from "./providerManager";
+import type { ApplyCheckpointRevertInput, StateSyncEngine } from "./stateSyncEngine";
 
 interface PendingMessages {
   queue: unknown[];
@@ -145,6 +159,157 @@ class MockTerminalManager extends EventEmitter<{ event: [event: TerminalEvent] }
   dispose(): void {}
 }
 
+class MockStateSyncEngine extends EventEmitter<{ stateEvent: [event: StateEvent] }>
+  implements StateSyncEngine
+{
+  readonly loadSnapshotMock = vi.fn<
+    () => {
+      projects: [];
+      threads: [];
+      lastStateSeq: number;
+    }
+  >(() => ({
+    projects: [],
+    threads: [],
+    lastStateSeq: 42,
+  }));
+  readonly listMessagesMock = vi.fn(() => ({
+    messages: [],
+    total: 0,
+    nextOffset: null,
+  }));
+  readonly catchUpMock = vi.fn(() => ({
+    events: [],
+    lastStateSeq: 42,
+  }));
+  readonly getAppSettingsMock = vi.fn(() => ({
+    codexBinaryPath: "",
+    codexHomePath: "",
+  }));
+  readonly updateAppSettingsMock = vi.fn(() => ({
+    codexBinaryPath: "",
+    codexHomePath: "",
+  }));
+  readonly createThreadMock = vi.fn(() => ({
+    thread: {
+      id: "thread-1",
+      codexThreadId: null,
+      projectId: "project-1",
+      title: "Thread",
+      model: "gpt-5.3-codex",
+      terminalOpen: false,
+      terminalHeight: 280,
+      terminalIds: ["default"],
+      runningTerminalIds: [],
+      activeTerminalId: "default",
+      terminalGroups: [{ id: "group-default", terminalIds: ["default"] }],
+      activeTerminalGroupId: "group-default",
+      createdAt: "2026-02-20T00:00:00.000Z",
+      updatedAt: "2026-02-20T00:00:00.000Z",
+      branch: null,
+      worktreePath: null,
+      turnDiffSummaries: [],
+    },
+  }));
+  readonly updateThreadTerminalStateMock = vi.fn(() => this.createThreadMock());
+  readonly updateThreadModelMock = vi.fn(() => this.createThreadMock());
+  readonly updateThreadTitleMock = vi.fn(() => this.createThreadMock());
+  readonly updateThreadBranchMock = vi.fn(() => this.createThreadMock());
+  readonly markThreadVisitedMock = vi.fn(() => this.createThreadMock());
+  readonly deleteThreadMock = vi.fn();
+  readonly listProjectsMock = vi.fn(() => []);
+  readonly addProjectMock = vi.fn(() => ({
+    project: {
+      id: "project-1",
+      cwd: "/tmp/project",
+      name: "project",
+      scripts: [],
+      createdAt: "2026-02-20T00:00:00.000Z",
+      updatedAt: "2026-02-20T00:00:00.000Z",
+    },
+    created: true,
+  }));
+  readonly removeProjectMock = vi.fn();
+  readonly updateProjectScriptsMock = vi.fn(() => ({
+    project: {
+      id: "project-1",
+      cwd: "/tmp/project",
+      name: "project",
+      scripts: [],
+      createdAt: "2026-02-20T00:00:00.000Z",
+      updatedAt: "2026-02-20T00:00:00.000Z",
+    },
+  }));
+  readonly applyCheckpointRevertMock = vi.fn();
+  readonly closeMock = vi.fn();
+
+  onStateEvent(listener: (event: StateEvent) => void): () => void {
+    this.on("stateEvent", listener);
+    return () => {
+      this.off("stateEvent", listener);
+    };
+  }
+
+  emitStateEvent(event: StateEvent): void {
+    this.emit("stateEvent", event);
+  }
+
+  loadSnapshot() {
+    return this.loadSnapshotMock();
+  }
+  listMessages(_raw: StateListMessagesInput) {
+    return this.listMessagesMock();
+  }
+  catchUp(_raw: StateCatchUpInput) {
+    return this.catchUpMock();
+  }
+  getAppSettings() {
+    return this.getAppSettingsMock();
+  }
+  updateAppSettings(_raw: AppSettingsUpdateInput) {
+    return this.updateAppSettingsMock();
+  }
+  createThread(_raw: ThreadsCreateInput) {
+    return this.createThreadMock();
+  }
+  updateThreadTerminalState(_raw: ThreadsUpdateTerminalStateInput) {
+    return this.updateThreadTerminalStateMock();
+  }
+  updateThreadModel(_raw: ThreadsUpdateModelInput) {
+    return this.updateThreadModelMock();
+  }
+  updateThreadTitle(_raw: ThreadsUpdateTitleInput) {
+    return this.updateThreadTitleMock();
+  }
+  updateThreadBranch(_raw: ThreadsUpdateBranchInput) {
+    return this.updateThreadBranchMock();
+  }
+  markThreadVisited(_raw: ThreadsMarkVisitedInput) {
+    return this.markThreadVisitedMock();
+  }
+  deleteThread(_raw: ThreadsDeleteInput): void {
+    this.deleteThreadMock();
+  }
+  listProjects() {
+    return this.listProjectsMock();
+  }
+  addProject(_raw: ProjectAddInput) {
+    return this.addProjectMock();
+  }
+  removeProject(_raw: ProjectRemoveInput): void {
+    this.removeProjectMock();
+  }
+  updateProjectScripts(_raw: ProjectUpdateScriptsInput) {
+    return this.updateProjectScriptsMock();
+  }
+  applyCheckpointRevert(input: ApplyCheckpointRevertInput): void {
+    this.applyCheckpointRevertMock(input);
+  }
+  close(): void {
+    this.closeMock();
+  }
+}
+
 function connectWs(port: number, token?: string): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
     const query = token ? `?token=${encodeURIComponent(token)}` : "";
@@ -256,6 +421,7 @@ describe("WebSocket Server", () => {
       };
       terminalManager?: TerminalManager;
       persistenceService?: PersistenceService;
+      stateSyncEngine?: StateSyncEngine;
     } = {},
   ): ReturnType<typeof createServer> {
     const stateDir = options.stateDir ?? makeTempDir("t3code-ws-state-");
@@ -272,6 +438,7 @@ describe("WebSocket Server", () => {
       ...(options.devUrl ? { devUrl: options.devUrl } : {}),
       ...(options.authToken ? { authToken: options.authToken } : {}),
       persistenceService,
+      ...(options.stateSyncEngine ? { stateSyncEngine: options.stateSyncEngine } : {}),
       ...(options.gitManager ? { gitManager: options.gitManager as never } : {}),
       ...(options.terminalManager ? { terminalManager: options.terminalManager } : {}),
     });
@@ -761,6 +928,46 @@ describe("WebSocket Server", () => {
     }
     expect(events.some((event) => event.eventType === "project.upsert")).toBe(true);
     expect(events.some((event) => event.eventType === "thread.upsert")).toBe(true);
+  });
+
+  it("uses the injected state sync engine for state routes and pushes", async () => {
+    const shadowEngine = new MockStateSyncEngine();
+    server = createTestServer({
+      cwd: "/test",
+      stateSyncEngine: shadowEngine,
+    });
+    await server.start();
+    const addr = server.httpServer.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const bootstrap = await sendRequest(ws, WS_METHODS.stateBootstrap);
+    expect(bootstrap.error).toBeUndefined();
+    expect(bootstrap.result).toEqual({
+      projects: [],
+      threads: [],
+      lastStateSeq: 42,
+    });
+    expect(shadowEngine.loadSnapshotMock).toHaveBeenCalledTimes(1);
+
+    const projects = await sendRequest(ws, WS_METHODS.projectsList);
+    expect(projects.error).toBeUndefined();
+    expect(projects.result).toEqual([]);
+    expect(shadowEngine.listProjectsMock).toHaveBeenCalledTimes(1);
+
+    const mirroredStateEvent: StateEvent = {
+      seq: 43,
+      eventType: "thread.upsert",
+      entityId: "thread-1",
+      payload: { threadId: "thread-1" },
+      createdAt: "2026-02-20T00:00:01.000Z",
+    };
+    shadowEngine.emitStateEvent(mirroredStateEvent);
+    const pushed = await waitForPush(ws, WS_CHANNELS.stateEvent);
+    expect(pushed.data).toEqual(mirroredStateEvent);
   });
 
   it("broadcasts ordered state.event pushes", async () => {
