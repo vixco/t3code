@@ -38,6 +38,7 @@ export interface LiveStoreReadPilotStateSyncEngineOptions {
   delegate: StateSyncEngine;
   mirror: LiveStoreStateMirror;
   enableBootstrapParityCheck?: boolean;
+  enableCatchUpParityCheck?: boolean;
 }
 
 export class LiveStoreReadPilotStateSyncEngine
@@ -49,17 +50,20 @@ export class LiveStoreReadPilotStateSyncEngine
   private readonly logger = createLogger("livestore-read-pilot");
   private readonly unsubscribeDelegate: () => void;
   private readonly enableBootstrapParityCheck: boolean;
+  private readonly enableCatchUpParityCheck: boolean;
   private closed = false;
   private bootstrapSource: LiveStoreReadSource = "delegate";
   private catchUpSource: LiveStoreReadSource = "delegate";
   private listMessagesSource: LiveStoreReadSource = "delegate";
   private bootstrapParityState: "unknown" | "in-parity" | "drift" = "unknown";
+  private catchUpParityState: "unknown" | "in-parity" | "drift" = "unknown";
 
   constructor(options: LiveStoreReadPilotStateSyncEngineOptions) {
     super();
     this.delegate = options.delegate;
     this.mirror = options.mirror;
     this.enableBootstrapParityCheck = options.enableBootstrapParityCheck ?? false;
+    this.enableCatchUpParityCheck = options.enableCatchUpParityCheck ?? false;
     this.unsubscribeDelegate = this.delegate.onStateEvent((event) => {
       this.emit("stateEvent", event);
       void this.mirror.mirrorStateEvent(event).catch((error) => {
@@ -157,6 +161,9 @@ export class LiveStoreReadPilotStateSyncEngine
     const afterSeq = raw.afterSeq ?? 0;
     try {
       const result = this.mirror.debugCatchUp(afterSeq);
+      if (this.enableCatchUpParityCheck) {
+        this.checkCatchUpParity(raw, result);
+      }
       this.logReadSourceChange("state.catchUp", this.catchUpSource, "livestore", {
         afterSeq,
       });
@@ -174,6 +181,37 @@ export class LiveStoreReadPilotStateSyncEngine
       this.catchUpSource = "delegate";
       return result;
     }
+  }
+
+  private checkCatchUpParity(raw: StateCatchUpInput, mirrorResult: StateCatchUpResult): void {
+    let delegateResult: StateCatchUpResult;
+    try {
+      delegateResult = this.delegate.catchUp(raw);
+    } catch (error) {
+      this.logger.warn("catch-up parity check failed to read delegate catch-up", { error });
+      return;
+    }
+
+    const diffs = diffCatchUpResults(delegateResult, mirrorResult);
+    if (diffs.length === 0) {
+      if (this.catchUpParityState !== "in-parity") {
+        this.catchUpParityState = "in-parity";
+        this.logger.info("livestore read pilot catch-up parity check passed", {
+          afterSeq: raw.afterSeq ?? 0,
+          lastStateSeq: mirrorResult.lastStateSeq,
+        });
+      }
+      return;
+    }
+
+    this.catchUpParityState = "drift";
+    this.logger.warn("livestore read pilot catch-up parity drift detected", {
+      afterSeq: raw.afterSeq ?? 0,
+      diffCount: diffs.length,
+      sampleDiffs: diffs.slice(0, 5),
+      delegateLastStateSeq: delegateResult.lastStateSeq,
+      mirrorLastStateSeq: mirrorResult.lastStateSeq,
+    });
   }
 
   private logReadSourceChange(
@@ -257,4 +295,47 @@ export class LiveStoreReadPilotStateSyncEngine
     this.removeAllListeners();
     void this.mirror.dispose();
   }
+}
+
+function diffCatchUpResults(expected: StateCatchUpResult, actual: StateCatchUpResult): string[] {
+  const diffs: string[] = [];
+
+  if (expected.lastStateSeq !== actual.lastStateSeq) {
+    diffs.push(
+      `lastStateSeq mismatch: expected=${expected.lastStateSeq} actual=${actual.lastStateSeq}`,
+    );
+  }
+
+  if (expected.events.length !== actual.events.length) {
+    diffs.push(`events.length mismatch: expected=${expected.events.length} actual=${actual.events.length}`);
+  }
+
+  const minLength = Math.min(expected.events.length, actual.events.length);
+  for (let index = 0; index < minLength; index += 1) {
+    const expectedEvent = expected.events[index];
+    const actualEvent = actual.events[index];
+    if (!expectedEvent || !actualEvent) {
+      continue;
+    }
+    if (expectedEvent.seq !== actualEvent.seq) {
+      diffs.push(`events[${index}].seq mismatch: expected=${expectedEvent.seq} actual=${actualEvent.seq}`);
+    }
+    if (expectedEvent.eventType !== actualEvent.eventType) {
+      diffs.push(
+        `events[${index}].eventType mismatch: expected=${expectedEvent.eventType} actual=${actualEvent.eventType}`,
+      );
+    }
+    if (expectedEvent.entityId !== actualEvent.entityId) {
+      diffs.push(
+        `events[${index}].entityId mismatch: expected=${expectedEvent.entityId} actual=${actualEvent.entityId}`,
+      );
+    }
+    const expectedPayload = JSON.stringify(expectedEvent.payload);
+    const actualPayload = JSON.stringify(actualEvent.payload);
+    if (expectedPayload !== actualPayload) {
+      diffs.push(`events[${index}].payload mismatch`);
+    }
+  }
+
+  return diffs;
 }

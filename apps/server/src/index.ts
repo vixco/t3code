@@ -135,6 +135,8 @@ async function main() {
   const syncEngineMode = resolveSyncEngineMode(process.env.T3CODE_SYNC_ENGINE_MODE);
   const enableLiveStoreBootstrapParityCheck =
     parseBooleanEnv(process.env.T3CODE_LIVESTORE_BOOTSTRAP_PARITY_CHECK) ?? false;
+  const enableLiveStoreCatchUpParityCheck =
+    parseBooleanEnv(process.env.T3CODE_LIVESTORE_CATCHUP_PARITY_CHECK) ?? false;
   const persistenceService = new PersistenceService({
     dbPath: stateDbPath,
     legacyProjectsJsonPath: path.join(legacyStateDir, "projects.json"),
@@ -154,6 +156,7 @@ async function main() {
             delegate: legacyStateSyncEngine,
             mirror: liveStoreMirror,
             enableBootstrapParityCheck: enableLiveStoreBootstrapParityCheck,
+            enableCatchUpParityCheck: enableLiveStoreCatchUpParityCheck,
           })
         : legacyStateSyncEngine;
   const devUrl = process.env.VITE_DEV_SERVER_URL;
@@ -188,6 +191,7 @@ async function main() {
     legacyStateDir,
     syncEngineMode,
     liveStoreBootstrapParityCheck: enableLiveStoreBootstrapParityCheck,
+    liveStoreCatchUpParityCheck: enableLiveStoreCatchUpParityCheck,
     authEnabled: Boolean(authToken),
   });
 

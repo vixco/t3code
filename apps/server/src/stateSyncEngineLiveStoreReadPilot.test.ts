@@ -306,6 +306,48 @@ describe("LiveStoreReadPilotStateSyncEngine", () => {
     }
   });
 
+  it("runs catch-up parity check against delegate when enabled", () => {
+    const delegate = new MockDelegateStateSyncEngine();
+    delegate.catchUpMock.mockReturnValue({
+      events: [],
+      lastStateSeq: 11,
+    });
+    const mirror = makeMirrorStub({
+      snapshot: {
+        projects: [],
+        threads: [],
+        lastStateSeq: 5,
+      },
+      catchUp: {
+        events: [],
+        lastStateSeq: 7,
+      },
+      listMessages: {
+        messages: [],
+        total: 0,
+        nextOffset: null,
+      },
+    });
+
+    const engine = new LiveStoreReadPilotStateSyncEngine({
+      delegate,
+      mirror,
+      enableCatchUpParityCheck: true,
+    });
+
+    try {
+      expect(engine.catchUp({ afterSeq: 3 })).toEqual({
+        events: [],
+        lastStateSeq: 7,
+      });
+      // One call from parity-check comparison path while mirror remains source.
+      expect(delegate.catchUpMock).toHaveBeenCalledTimes(1);
+      expect(delegate.catchUpMock).toHaveBeenCalledWith({ afterSeq: 3 });
+    } finally {
+      engine.close();
+    }
+  });
+
   it("returns to mirror reads after transient fallback errors", () => {
     const delegate = new MockDelegateStateSyncEngine();
     const mirror = makeMirrorStub({
