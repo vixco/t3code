@@ -66,7 +66,6 @@ import {
   threadsUpdateResultSchema,
 } from "@t3tools/contracts";
 
-import { StateDb } from "./stateDb";
 import {
   countMessagesForThread as countMessagesForThreadEffect,
   deleteDocumentByIdAndKind as deleteDocumentByIdAndKindEffect,
@@ -101,7 +100,8 @@ import {
   readMetadataValue as readMetadataValueEffect,
   writeMetadataValue as writeMetadataValueEffect,
 } from "./persistence/metadataRepo";
-import type { EffectSqliteDatabaseAdapter } from "./sqliteAdapter";
+import { openSqliteDatabase, type EffectSqliteDatabaseAdapter, type SqliteDatabase } from "./sqliteAdapter";
+import { runStateMigrations } from "./stateMigrations";
 
 const METADATA_KEY_PROJECTS_JSON_IMPORTED = "migration.projects_json_imported";
 const METADATA_KEY_APP_SETTINGS = "app.settings.v1";
@@ -466,22 +466,32 @@ function mergeTurnSummaryFiles(
 }
 
 export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
-  private readonly stateDb: StateDb;
-  private readonly db: StateDb["db"];
+  private readonly db: SqliteDatabase;
   private readonly sessionThreadIds = new Map<string, string>();
   private readonly runtimeThreadIds = new Map<string, string>();
 
   constructor(options: PersistenceServiceOptions) {
     super();
-    this.stateDb = new StateDb({ dbPath: options.dbPath });
-    this.db = this.stateDb.db;
+    const dbPath = path.resolve(options.dbPath);
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    this.db = openSqliteDatabase(dbPath);
+    try {
+      runStateMigrations(this.db);
+    } catch (error) {
+      try {
+        this.db.close();
+      } catch {
+        // Best effort close on failed initialization.
+      }
+      throw error;
+    }
     if (options.legacyProjectsJsonPath) {
       this.importProjectsJsonIfNeeded(options.legacyProjectsJsonPath);
     }
   }
 
   close(): void {
-    this.stateDb.close();
+    this.db.close();
   }
 
   getAppSettings(): AppSettings {
@@ -1379,7 +1389,7 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
     }
 
     let importedCount = 0;
-    this.stateDb.transaction(() => {
+    this.runDbTransaction(() => {
       try {
         const raw = fs.readFileSync(normalizedPath, "utf8");
         const payload = JSON.parse(raw) as { projects?: unknown };
@@ -1431,9 +1441,25 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
     });
   }
 
+  private runDbTransaction<T>(fn: () => T): T {
+    this.db.exec("BEGIN IMMEDIATE;");
+    try {
+      const result = fn();
+      this.db.exec("COMMIT;");
+      return result;
+    } catch (error) {
+      try {
+        this.db.exec("ROLLBACK;");
+      } catch {
+        // Preserve the original transactional failure.
+      }
+      throw error;
+    }
+  }
+
   private withTransaction<T>(fn: (pendingEvents: StateEvent[]) => T): T {
     const pendingEvents: StateEvent[] = [];
-    const result = this.stateDb.transaction(() => fn(pendingEvents));
+    const result = this.runDbTransaction(() => fn(pendingEvents));
     for (const event of pendingEvents) {
       try {
         this.emit("stateEvent", event);
@@ -1983,7 +2009,7 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
       write();
       return;
     }
-    this.stateDb.transaction(write);
+    this.runDbTransaction(write);
   }
 
   private runWithEffectSql<A>(
@@ -1997,6 +2023,6 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
   }
 }
 
-function isEffectSqliteDatabase(db: StateDb["db"]): db is EffectSqliteDatabaseAdapter {
+function isEffectSqliteDatabase(db: SqliteDatabase): db is EffectSqliteDatabaseAdapter {
   return "runWithSqlClient" in db && typeof db.runWithSqlClient === "function";
 }
