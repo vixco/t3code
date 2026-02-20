@@ -69,6 +69,9 @@ import {
 import { StateDb } from "./stateDb";
 import {
   getDocumentRowById as getDocumentRowByIdEffect,
+  listMessagePayloadsForThread as listMessagePayloadsForThreadEffect,
+  listMessagePayloadsForThreadDesc as listMessagePayloadsForThreadDescEffect,
+  listTurnSummaryPayloadsForThread as listTurnSummaryPayloadsForThreadEffect,
   readNextSortKey as readNextSortKeyEffect,
   upsertDocument as upsertDocumentEffect,
   type DocumentRow,
@@ -1644,17 +1647,20 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
   }
 
   private findLatestAssistantMessageIdForThread(threadId: string): string | undefined {
-    const rows = this.db
-      .prepare(
-        `SELECT data_json
-         FROM documents
-         WHERE kind = 'message' AND thread_id = ?
-         ORDER BY sort_key DESC, updated_at DESC;`,
-      )
-      .all(threadId) as Array<{ data_json: string }>;
+    const payloads = this.runWithEffectSql(listMessagePayloadsForThreadDescEffect(threadId), () => {
+      const rows = this.db
+        .prepare(
+          `SELECT data_json
+           FROM documents
+           WHERE kind = 'message' AND thread_id = ?
+           ORDER BY sort_key DESC, updated_at DESC;`,
+        )
+        .all(threadId) as Array<{ data_json: string }>;
+      return rows.map((row) => row.data_json);
+    });
 
-    for (const row of rows) {
-      const message = this.parseJson(row.data_json, stateMessageSchema);
+    for (const payload of payloads) {
+      const message = this.parseJson(payload, stateMessageSchema);
       if (!message) {
         continue;
       }
@@ -1667,14 +1673,17 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
   }
 
   private listMessagesForThread(threadId: string): StateMessage[] {
-    const rows = this.db
-      .prepare(
-        "SELECT data_json FROM documents WHERE kind = 'message' AND thread_id = ? ORDER BY sort_key ASC;",
-      )
-      .all(threadId) as Array<{ data_json: string }>;
+    const payloads = this.runWithEffectSql(listMessagePayloadsForThreadEffect(threadId), () => {
+      const rows = this.db
+        .prepare(
+          "SELECT data_json FROM documents WHERE kind = 'message' AND thread_id = ? ORDER BY sort_key ASC;",
+        )
+        .all(threadId) as Array<{ data_json: string }>;
+      return rows.map((row) => row.data_json);
+    });
     const messages: StateMessage[] = [];
-    for (const row of rows) {
-      const parsed = this.parseJson(row.data_json, stateMessageSchema);
+    for (const payload of payloads) {
+      const parsed = this.parseJson(payload, stateMessageSchema);
       if (parsed) {
         messages.push(parsed);
       }
@@ -1683,14 +1692,17 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
   }
 
   private listTurnSummariesForThread(threadId: string): StateTurnSummary[] {
-    const rows = this.db
-      .prepare(
-        "SELECT data_json FROM documents WHERE kind = 'turn_summary' AND thread_id = ? ORDER BY sort_key DESC, updated_at DESC;",
-      )
-      .all(threadId) as Array<{ data_json: string }>;
+    const payloads = this.runWithEffectSql(listTurnSummaryPayloadsForThreadEffect(threadId), () => {
+      const rows = this.db
+        .prepare(
+          "SELECT data_json FROM documents WHERE kind = 'turn_summary' AND thread_id = ? ORDER BY sort_key DESC, updated_at DESC;",
+        )
+        .all(threadId) as Array<{ data_json: string }>;
+      return rows.map((row) => row.data_json);
+    });
     const summaries: StateTurnSummary[] = [];
-    for (const row of rows) {
-      const parsed = this.parseJson(row.data_json, stateTurnSummarySchema);
+    for (const payload of payloads) {
+      const parsed = this.parseJson(payload, stateTurnSummarySchema);
       if (parsed) {
         summaries.push(parsed);
       }

@@ -87,3 +87,48 @@ export const readNextSortKey = (
       .unprepared) as Array<{ next_sort_key?: number }>;
     return rows[0]?.next_sort_key ?? 1;
   });
+
+export const listMessagePayloadsForThread = (
+  threadId: string,
+): Effect.Effect<string[], unknown, SqlClient.SqlClient> =>
+  Effect.gen(function*() {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = (yield* sql
+      .unsafe<{ data_json: string }>(
+        "SELECT data_json FROM documents WHERE kind = 'message' AND thread_id = ? ORDER BY sort_key ASC;",
+        [threadId],
+      )
+      .unprepared) as Array<{ data_json: string }>;
+    return rows.map((row) => row.data_json);
+  });
+
+export const listMessagePayloadsForThreadDesc = (
+  threadId: string,
+): Effect.Effect<string[], unknown, SqlClient.SqlClient> =>
+  Effect.gen(function*() {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = (yield* sql
+      .unsafe<{ data_json: string }>(
+        `SELECT data_json
+         FROM documents
+         WHERE kind = 'message' AND thread_id = ?
+         ORDER BY sort_key DESC, updated_at DESC;`,
+        [threadId],
+      )
+      .unprepared) as Array<{ data_json: string }>;
+    return rows.map((row) => row.data_json);
+  });
+
+export const listTurnSummaryPayloadsForThread = (
+  threadId: string,
+): Effect.Effect<string[], unknown, SqlClient.SqlClient> =>
+  Effect.gen(function*() {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = (yield* sql
+      .unsafe<{ data_json: string }>(
+        "SELECT data_json FROM documents WHERE kind = 'turn_summary' AND thread_id = ? ORDER BY sort_key DESC, updated_at DESC;",
+        [threadId],
+      )
+      .unprepared) as Array<{ data_json: string }>;
+    return rows.map((row) => row.data_json);
+  });
