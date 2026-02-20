@@ -72,6 +72,10 @@ import {
   listStateEventsAfterSeq as listStateEventsAfterSeqEffect,
   readLastStateSeq as readLastStateSeqEffect,
 } from "./persistence/stateEventsRepo";
+import {
+  readMetadataValue as readMetadataValueEffect,
+  writeMetadataValue as writeMetadataValueEffect,
+} from "./persistence/metadataRepo";
 import type { EffectSqliteDatabaseAdapter } from "./sqliteAdapter";
 
 const METADATA_KEY_PROJECTS_JSON_IMPORTED = "migration.projects_json_imported";
@@ -1835,22 +1839,26 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
   }
 
   private readMetadata(key: string): unknown {
-    const row = this.db
-      .prepare("SELECT value_json FROM metadata WHERE key = ? LIMIT 1;")
-      .get(key) as { value_json: string } | undefined;
-    if (!row) {
-      return null;
-    }
-    return this.tryParseJson(row.value_json);
+    return this.runWithEffectSql(readMetadataValueEffect(key), () => {
+      const row = this.db
+        .prepare("SELECT value_json FROM metadata WHERE key = ? LIMIT 1;")
+        .get(key) as { value_json: string } | undefined;
+      if (!row) {
+        return null;
+      }
+      return this.tryParseJson(row.value_json);
+    });
   }
 
   private writeMetadata(key: string, value: unknown, inTransaction = false): void {
     const write = () => {
-      this.db
-        .prepare(
-          "INSERT INTO metadata (key, value_json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json;",
-        )
-        .run(key, JSON.stringify(value));
+      this.runWithEffectSql(writeMetadataValueEffect(key, value), () => {
+        this.db
+          .prepare(
+            "INSERT INTO metadata (key, value_json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json;",
+          )
+          .run(key, JSON.stringify(value));
+      });
     };
     if (inTransaction) {
       write();
