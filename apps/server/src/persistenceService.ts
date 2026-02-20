@@ -68,6 +68,12 @@ import {
 
 import { StateDb } from "./stateDb";
 import {
+  getDocumentRowById as getDocumentRowByIdEffect,
+  readNextSortKey as readNextSortKeyEffect,
+  upsertDocument as upsertDocumentEffect,
+  type DocumentRow,
+} from "./persistence/documentsRepo";
+import {
   appendStateEvent as appendStateEventEffect,
   listStateEventsAfterSeq as listStateEventsAfterSeqEffect,
   readLastStateSeq as readLastStateSeqEffect,
@@ -83,17 +89,6 @@ const METADATA_KEY_APP_SETTINGS = "app.settings.v1";
 const MAX_TERMINAL_COUNT = 4;
 const DEFAULT_TERMINAL_ID = "default";
 const DEFAULT_TERMINAL_HEIGHT = 280;
-
-interface DocumentRow {
-  id: string;
-  kind: string;
-  project_id: string | null;
-  thread_id: string | null;
-  sort_key: number | null;
-  created_at: string;
-  updated_at: string;
-  data_json: string;
-}
 
 interface StateEventRow {
   seq: number;
@@ -1680,56 +1675,74 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
   }
 
   private upsertDocument(input: UpsertDocumentInput): void {
-    this.db
-      .prepare(
-        `INSERT INTO documents (
-          id,
-          kind,
-          project_id,
-          thread_id,
-          sort_key,
-          schema_version,
-          created_at,
-          updated_at,
-          data_json
-        ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          kind = excluded.kind,
-          project_id = excluded.project_id,
-          thread_id = excluded.thread_id,
-          sort_key = excluded.sort_key,
-          schema_version = excluded.schema_version,
-          updated_at = excluded.updated_at,
-          data_json = excluded.data_json;`,
-      )
-      .run(
-        input.id,
-        input.kind,
-        input.projectId,
-        input.threadId,
-        input.sortKey,
-        input.createdAt,
-        input.updatedAt,
-        JSON.stringify(input.data),
-      );
+    this.runWithEffectSql(
+      upsertDocumentEffect({
+        id: input.id,
+        kind: input.kind,
+        projectId: input.projectId,
+        threadId: input.threadId,
+        sortKey: input.sortKey,
+        createdAt: input.createdAt,
+        updatedAt: input.updatedAt,
+        dataJson: JSON.stringify(input.data),
+      }),
+      () => {
+        this.db
+          .prepare(
+            `INSERT INTO documents (
+              id,
+              kind,
+              project_id,
+              thread_id,
+              sort_key,
+              schema_version,
+              created_at,
+              updated_at,
+              data_json
+            ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              kind = excluded.kind,
+              project_id = excluded.project_id,
+              thread_id = excluded.thread_id,
+              sort_key = excluded.sort_key,
+              schema_version = excluded.schema_version,
+              updated_at = excluded.updated_at,
+              data_json = excluded.data_json;`,
+          )
+          .run(
+            input.id,
+            input.kind,
+            input.projectId,
+            input.threadId,
+            input.sortKey,
+            input.createdAt,
+            input.updatedAt,
+            JSON.stringify(input.data),
+          );
+      },
+    );
   }
 
   private getDocumentRowById(id: string): DocumentRow | null {
-    const row = this.db
-      .prepare(
-        "SELECT id, kind, project_id, thread_id, sort_key, created_at, updated_at, data_json FROM documents WHERE id = ? LIMIT 1;",
-      )
-      .get(id) as DocumentRow | undefined;
-    return row ?? null;
+    return this.runWithEffectSql(getDocumentRowByIdEffect(id), () => {
+      const row = this.db
+        .prepare(
+          "SELECT id, kind, project_id, thread_id, sort_key, created_at, updated_at, data_json FROM documents WHERE id = ? LIMIT 1;",
+        )
+        .get(id) as DocumentRow | undefined;
+      return row ?? null;
+    });
   }
 
   private readNextSortKey(kind: "message" | "turn_summary", threadId: string): number {
-    const row = this.db
-      .prepare(
-        "SELECT COALESCE(MAX(sort_key), 0) + 1 AS next_sort_key FROM documents WHERE kind = ? AND thread_id = ?;",
-      )
-      .get(kind, threadId) as { next_sort_key: number } | undefined;
-    return row?.next_sort_key ?? 1;
+    return this.runWithEffectSql(readNextSortKeyEffect(kind, threadId), () => {
+      const row = this.db
+        .prepare(
+          "SELECT COALESCE(MAX(sort_key), 0) + 1 AS next_sort_key FROM documents WHERE kind = ? AND thread_id = ?;",
+        )
+        .get(kind, threadId) as { next_sort_key: number } | undefined;
+      return row?.next_sort_key ?? 1;
+    });
   }
 
   private resolveThreadIdForEvent(event: ProviderEvent, runtimeThreadId: string | null): string | null {
