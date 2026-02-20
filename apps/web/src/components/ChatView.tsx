@@ -17,6 +17,8 @@ import {
   type DragEvent,
   type FormEvent,
   type KeyboardEvent,
+  type PointerEvent,
+  type TouchEvent,
   type WheelEvent,
   memo,
   type RefObject,
@@ -404,7 +406,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const lastKnownScrollTopRef = useRef(0);
-  const lastKnownScrollHeightRef = useRef(0);
+  const isPointerScrollActiveRef = useRef(false);
+  const lastTouchClientYRef = useRef<number | null>(null);
+  const pendingUserScrollUpIntentRef = useRef(false);
   const pendingAutoScrollFrameRef = useRef<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerCommandInputRef = useRef<HTMLInputElement>(null);
@@ -1105,7 +1109,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
     if (!scrollContainer) return;
     scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior });
     lastKnownScrollTopRef.current = scrollContainer.scrollTop;
-    lastKnownScrollHeightRef.current = scrollContainer.scrollHeight;
     shouldAutoScrollRef.current = true;
   }, []);
   const requestAutoTailToBottom = useCallback(() => {
@@ -1120,28 +1123,59 @@ export default function ChatView({ threadId }: ChatViewProps) {
     const scrollContainer = messagesScrollRef.current;
     if (!scrollContainer) return;
     const currentScrollTop = scrollContainer.scrollTop;
-    const currentScrollHeight = scrollContainer.scrollHeight;
     const atBottom = isScrollContainerAtBottom(scrollContainer);
 
-    if (atBottom) {
+    if (!shouldAutoScrollRef.current && atBottom) {
       shouldAutoScrollRef.current = true;
-    } else if (shouldAutoScrollRef.current) {
-      // While tailing, only relinquish control when the user scrolls upward.
+      pendingUserScrollUpIntentRef.current = false;
+    } else if (shouldAutoScrollRef.current && pendingUserScrollUpIntentRef.current) {
       const scrolledUp = currentScrollTop < lastKnownScrollTopRef.current - 1;
-      const contentHeightChanged =
-        Math.abs(currentScrollHeight - lastKnownScrollHeightRef.current) > 1;
-      if (scrolledUp && !contentHeightChanged) {
+      if (scrolledUp) {
+        shouldAutoScrollRef.current = false;
+      }
+      pendingUserScrollUpIntentRef.current = false;
+    } else if (shouldAutoScrollRef.current && isPointerScrollActiveRef.current) {
+      // Pointer-driven upward scroll means user takes control.
+      const scrolledUp = currentScrollTop < lastKnownScrollTopRef.current - 1;
+      if (scrolledUp) {
         shouldAutoScrollRef.current = false;
       }
     }
 
     lastKnownScrollTopRef.current = currentScrollTop;
-    lastKnownScrollHeightRef.current = currentScrollHeight;
   }, []);
   const onMessagesWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
+    // Wheel-up indicates user intent to move away from bottom.
     if (event.deltaY < 0) {
-      shouldAutoScrollRef.current = false;
+      pendingUserScrollUpIntentRef.current = true;
     }
+  }, []);
+  const onMessagesPointerDown = useCallback((_event: PointerEvent<HTMLDivElement>) => {
+    isPointerScrollActiveRef.current = true;
+  }, []);
+  const onMessagesPointerUp = useCallback((_event: PointerEvent<HTMLDivElement>) => {
+    isPointerScrollActiveRef.current = false;
+  }, []);
+  const onMessagesPointerCancel = useCallback((_event: PointerEvent<HTMLDivElement>) => {
+    isPointerScrollActiveRef.current = false;
+  }, []);
+  const onMessagesTouchStart = useCallback((event: TouchEvent<HTMLDivElement>) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+    lastTouchClientYRef.current = touch.clientY;
+  }, []);
+  const onMessagesTouchMove = useCallback((event: TouchEvent<HTMLDivElement>) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+    const previousTouchY = lastTouchClientYRef.current;
+    if (previousTouchY !== null && touch.clientY > previousTouchY + 1) {
+      // Finger moved downward => user intends to scroll content upward.
+      pendingUserScrollUpIntentRef.current = true;
+    }
+    lastTouchClientYRef.current = touch.clientY;
+  }, []);
+  const onMessagesTouchEnd = useCallback((_event: TouchEvent<HTMLDivElement>) => {
+    lastTouchClientYRef.current = null;
   }, []);
   useLayoutEffect(() => {
     if (!activeThread?.id) return;
@@ -2089,6 +2123,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
         className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
         onScroll={onMessagesScroll}
         onWheel={onMessagesWheel}
+        onPointerDown={onMessagesPointerDown}
+        onPointerUp={onMessagesPointerUp}
+        onPointerCancel={onMessagesPointerCancel}
+        onTouchStart={onMessagesTouchStart}
+        onTouchMove={onMessagesTouchMove}
+        onTouchEnd={onMessagesTouchEnd}
+        onTouchCancel={onMessagesTouchEnd}
       >
         <MessagesTimeline
           hasMessages={activeThread.messages.length > 0}
