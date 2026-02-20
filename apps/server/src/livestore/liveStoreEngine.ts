@@ -2,12 +2,17 @@ import { makeAdapter } from "@livestore/adapter-node";
 import { createStorePromise } from "@livestore/livestore";
 import {
   stateBootstrapResultSchema,
+  stateCatchUpResultSchema,
+  stateListMessagesResultSchema,
   stateMessageSchema,
   stateProjectSchema,
   stateThreadSchema,
   stateTurnSummarySchema,
   type StateBootstrapResult,
+  type StateCatchUpResult,
   type StateEvent,
+  type StateListMessagesInput,
+  type StateListMessagesResult,
 } from "@t3tools/contracts";
 import { createLogger } from "../logger";
 import type { StateEventMirror } from "../stateSyncEngineShadow";
@@ -54,6 +59,7 @@ export class LiveStoreStateMirror implements StateEventMirror {
     string,
     Map<string, StateBootstrapResult["threads"][number]["turnDiffSummaries"][number]>
   >();
+  private readonly mirroredEventsBySeq = new Map<number, StateEvent>();
 
   constructor(options: LiveStoreStateMirrorOptions = {}) {
     this.enabled = options.enabled ?? true;
@@ -107,6 +113,7 @@ export class LiveStoreStateMirror implements StateEventMirror {
     this.threadsById.clear();
     this.threadMessagesByThreadId.clear();
     this.turnSummariesByThreadId.clear();
+    this.mirroredEventsBySeq.clear();
     if (!store) {
       return;
     }
@@ -195,7 +202,34 @@ export class LiveStoreStateMirror implements StateEventMirror {
     });
   }
 
+  debugCatchUp(afterSeq: number): StateCatchUpResult {
+    const events = Array.from(this.mirroredEventsBySeq.entries())
+      .filter(([seq]) => seq > afterSeq)
+      .sort(([a], [b]) => a - b)
+      .map(([, event]) => event);
+    return stateCatchUpResultSchema.parse({
+      events,
+      lastStateSeq: this.lastMirroredSeq,
+    });
+  }
+
+  debugListMessages(raw: StateListMessagesInput): StateListMessagesResult {
+    const snapshot = this.debugReadSnapshot();
+    const thread = snapshot.threads.find((candidate) => candidate.id === raw.threadId);
+    const messages = thread?.messages ?? [];
+    const offset = Math.max(0, Math.floor(raw.offset ?? 0));
+    const limit = Math.max(1, Math.floor(raw.limit ?? 200));
+    const paged = messages.slice(offset, offset + limit);
+    const nextOffset = offset + paged.length;
+    return stateListMessagesResultSchema.parse({
+      messages: paged,
+      total: messages.length,
+      nextOffset: nextOffset < messages.length ? nextOffset : null,
+    });
+  }
+
   private applyProjection(event: StateEvent): void {
+    this.mirroredEventsBySeq.set(event.seq, event);
     const payload = asObject(event.payload);
 
     if (event.eventType === "project.upsert") {

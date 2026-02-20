@@ -9,6 +9,7 @@ import { createLogger } from "./logger";
 import { LiveStoreStateMirror } from "./livestore/liveStoreEngine";
 import { PersistenceService } from "./persistenceService";
 import { LegacyStateSyncEngine } from "./stateSyncEngineLegacy";
+import { LiveStoreReadPilotStateSyncEngine } from "./stateSyncEngineLiveStoreReadPilot";
 import { ShadowStateSyncEngine } from "./stateSyncEngineShadow";
 import { createServer } from "./wsServer";
 
@@ -19,7 +20,7 @@ const cwd = process.cwd();
 const logger = createLogger("server");
 
 type RuntimeMode = "web" | "desktop";
-type SyncEngineMode = "legacy" | "shadow";
+type SyncEngineMode = "legacy" | "shadow" | "livestore-read-pilot";
 
 function parseBooleanEnv(value: string | undefined): boolean | undefined {
   if (value === undefined) return undefined;
@@ -43,11 +44,15 @@ function resolveSyncEngineMode(raw: string | undefined): SyncEngineMode {
     return "legacy";
   }
   const normalized = raw.trim().toLowerCase();
-  if (normalized === "legacy" || normalized === "shadow") {
+  if (
+    normalized === "legacy" ||
+    normalized === "shadow" ||
+    normalized === "livestore-read-pilot"
+  ) {
     return normalized;
   }
   throw new Error(
-    `Invalid T3CODE_SYNC_ENGINE_MODE: ${raw}. Expected "legacy" or "shadow".`,
+    `Invalid T3CODE_SYNC_ENGINE_MODE: ${raw}. Expected "legacy", "shadow", or "livestore-read-pilot".`,
   );
 }
 
@@ -133,15 +138,21 @@ async function main() {
     legacyProjectsJsonPath: path.join(legacyStateDir, "projects.json"),
   });
   const legacyStateSyncEngine = new LegacyStateSyncEngine({ persistenceService });
+  const liveStoreMirror = new LiveStoreStateMirror({
+    storeId: `t3-shadow-${mode}`,
+  });
   const stateSyncEngine =
     syncEngineMode === "shadow"
       ? new ShadowStateSyncEngine({
           delegate: legacyStateSyncEngine,
-          mirror: new LiveStoreStateMirror({
-            storeId: `t3-shadow-${mode}`,
-          }),
+          mirror: liveStoreMirror,
         })
-      : legacyStateSyncEngine;
+      : syncEngineMode === "livestore-read-pilot"
+        ? new LiveStoreReadPilotStateSyncEngine({
+            delegate: legacyStateSyncEngine,
+            mirror: liveStoreMirror,
+          })
+        : legacyStateSyncEngine;
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   const noBrowser = parseBooleanEnv(process.env.T3CODE_NO_BROWSER) ?? mode === "desktop";
   const authToken = process.env.T3CODE_AUTH_TOKEN;

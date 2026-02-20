@@ -1,0 +1,265 @@
+import { EventEmitter } from "node:events";
+import { describe, expect, it, vi } from "vitest";
+import type {
+  AppSettings,
+  AppSettingsUpdateInput,
+  ProjectAddInput,
+  ProjectAddResult,
+  ProjectListResult,
+  ProjectRemoveInput,
+  ProjectUpdateScriptsInput,
+  ProjectUpdateScriptsResult,
+  StateBootstrapResult,
+  StateCatchUpInput,
+  StateCatchUpResult,
+  StateEvent,
+  StateListMessagesInput,
+  StateListMessagesResult,
+  ThreadsCreateInput,
+  ThreadsDeleteInput,
+  ThreadsMarkVisitedInput,
+  ThreadsUpdateBranchInput,
+  ThreadsUpdateModelInput,
+  ThreadsUpdateResult,
+  ThreadsUpdateTerminalStateInput,
+  ThreadsUpdateTitleInput,
+} from "@t3tools/contracts";
+import type { LiveStoreStateMirror } from "./livestore/liveStoreEngine";
+import type { ApplyCheckpointRevertInput, StateSyncEngine } from "./stateSyncEngine";
+import { LiveStoreReadPilotStateSyncEngine } from "./stateSyncEngineLiveStoreReadPilot";
+
+class MockDelegateStateSyncEngine extends EventEmitter<{ stateEvent: [event: StateEvent] }>
+  implements StateSyncEngine
+{
+  readonly loadSnapshotMock = vi.fn<() => StateBootstrapResult>(() => ({
+    projects: [],
+    threads: [],
+    lastStateSeq: 1,
+  }));
+  readonly listMessagesMock = vi.fn<(raw: StateListMessagesInput) => StateListMessagesResult>(() => ({
+    messages: [],
+    total: 0,
+    nextOffset: null,
+  }));
+  readonly catchUpMock = vi.fn<(raw: StateCatchUpInput) => StateCatchUpResult>(() => ({
+    events: [],
+    lastStateSeq: 1,
+  }));
+  readonly getAppSettingsMock = vi.fn<() => AppSettings>(() => ({
+    codexBinaryPath: "",
+    codexHomePath: "",
+  }));
+  readonly updateAppSettingsMock = vi.fn<(raw: AppSettingsUpdateInput) => AppSettings>(() => ({
+    codexBinaryPath: "",
+    codexHomePath: "",
+  }));
+  readonly createThreadMock = vi.fn<(raw: ThreadsCreateInput) => ThreadsUpdateResult>(() => {
+    throw new Error("not implemented in test");
+  });
+  readonly updateThreadTerminalStateMock = vi.fn<
+    (raw: ThreadsUpdateTerminalStateInput) => ThreadsUpdateResult
+  >(() => {
+    throw new Error("not implemented in test");
+  });
+  readonly updateThreadModelMock = vi.fn<(raw: ThreadsUpdateModelInput) => ThreadsUpdateResult>(() => {
+    throw new Error("not implemented in test");
+  });
+  readonly updateThreadTitleMock = vi.fn<(raw: ThreadsUpdateTitleInput) => ThreadsUpdateResult>(() => {
+    throw new Error("not implemented in test");
+  });
+  readonly updateThreadBranchMock = vi.fn<(raw: ThreadsUpdateBranchInput) => ThreadsUpdateResult>(() => {
+    throw new Error("not implemented in test");
+  });
+  readonly markThreadVisitedMock = vi.fn<(raw: ThreadsMarkVisitedInput) => ThreadsUpdateResult>(() => {
+    throw new Error("not implemented in test");
+  });
+  readonly deleteThreadMock = vi.fn<(raw: ThreadsDeleteInput) => void>(() => {});
+  readonly listProjectsMock = vi.fn<() => ProjectListResult>(() => []);
+  readonly addProjectMock = vi.fn<(raw: ProjectAddInput) => ProjectAddResult>(() => {
+    throw new Error("not implemented in test");
+  });
+  readonly removeProjectMock = vi.fn<(raw: ProjectRemoveInput) => void>(() => {});
+  readonly updateProjectScriptsMock = vi.fn<
+    (raw: ProjectUpdateScriptsInput) => ProjectUpdateScriptsResult
+  >(() => {
+    throw new Error("not implemented in test");
+  });
+  readonly applyCheckpointRevertMock = vi.fn<(input: ApplyCheckpointRevertInput) => void>(() => {});
+  readonly closeMock = vi.fn();
+
+  onStateEvent(listener: (event: StateEvent) => void): () => void {
+    this.on("stateEvent", listener);
+    return () => {
+      this.off("stateEvent", listener);
+    };
+  }
+
+  emitStateEvent(event: StateEvent): void {
+    this.emit("stateEvent", event);
+  }
+
+  loadSnapshot(): StateBootstrapResult {
+    return this.loadSnapshotMock();
+  }
+  listMessages(raw: StateListMessagesInput): StateListMessagesResult {
+    return this.listMessagesMock(raw);
+  }
+  catchUp(raw: StateCatchUpInput): StateCatchUpResult {
+    return this.catchUpMock(raw);
+  }
+  getAppSettings(): AppSettings {
+    return this.getAppSettingsMock();
+  }
+  updateAppSettings(raw: AppSettingsUpdateInput): AppSettings {
+    return this.updateAppSettingsMock(raw);
+  }
+  createThread(raw: ThreadsCreateInput): ThreadsUpdateResult {
+    return this.createThreadMock(raw);
+  }
+  updateThreadTerminalState(raw: ThreadsUpdateTerminalStateInput): ThreadsUpdateResult {
+    return this.updateThreadTerminalStateMock(raw);
+  }
+  updateThreadModel(raw: ThreadsUpdateModelInput): ThreadsUpdateResult {
+    return this.updateThreadModelMock(raw);
+  }
+  updateThreadTitle(raw: ThreadsUpdateTitleInput): ThreadsUpdateResult {
+    return this.updateThreadTitleMock(raw);
+  }
+  updateThreadBranch(raw: ThreadsUpdateBranchInput): ThreadsUpdateResult {
+    return this.updateThreadBranchMock(raw);
+  }
+  markThreadVisited(raw: ThreadsMarkVisitedInput): ThreadsUpdateResult {
+    return this.markThreadVisitedMock(raw);
+  }
+  deleteThread(raw: ThreadsDeleteInput): void {
+    this.deleteThreadMock(raw);
+  }
+  listProjects(): ProjectListResult {
+    return this.listProjectsMock();
+  }
+  addProject(raw: ProjectAddInput): ProjectAddResult {
+    return this.addProjectMock(raw);
+  }
+  removeProject(raw: ProjectRemoveInput): void {
+    this.removeProjectMock(raw);
+  }
+  updateProjectScripts(raw: ProjectUpdateScriptsInput): ProjectUpdateScriptsResult {
+    return this.updateProjectScriptsMock(raw);
+  }
+  applyCheckpointRevert(input: ApplyCheckpointRevertInput): void {
+    this.applyCheckpointRevertMock(input);
+  }
+  close(): void {
+    this.closeMock();
+  }
+}
+
+function makeMirrorStub(input: {
+  snapshot: StateBootstrapResult;
+  catchUp: StateCatchUpResult;
+  listMessages: StateListMessagesResult;
+}): LiveStoreStateMirror {
+  return {
+    mirrorStateEvent: vi.fn(async () => undefined),
+    dispose: vi.fn(async () => undefined),
+    debugReadSnapshot: vi.fn(() => input.snapshot),
+    debugCatchUp: vi.fn(() => input.catchUp),
+    debugListMessages: vi.fn(() => input.listMessages),
+  } as unknown as LiveStoreStateMirror;
+}
+
+describe("LiveStoreReadPilotStateSyncEngine", () => {
+  it("serves bootstrap/catchUp/listMessages from mirror when available", () => {
+    const delegate = new MockDelegateStateSyncEngine();
+    const mirrorSnapshot: StateBootstrapResult = {
+      projects: [],
+      threads: [],
+      lastStateSeq: 5,
+    };
+    const mirrorCatchUp: StateCatchUpResult = {
+      events: [],
+      lastStateSeq: 5,
+    };
+    const mirrorList: StateListMessagesResult = {
+      messages: [],
+      total: 0,
+      nextOffset: null,
+    };
+    const mirror = makeMirrorStub({
+      snapshot: mirrorSnapshot,
+      catchUp: mirrorCatchUp,
+      listMessages: mirrorList,
+    });
+    const engine = new LiveStoreReadPilotStateSyncEngine({
+      delegate,
+      mirror,
+    });
+
+    try {
+      expect(engine.loadSnapshot()).toEqual(mirrorSnapshot);
+      expect(engine.catchUp({ afterSeq: 0 })).toEqual(mirrorCatchUp);
+      expect(engine.listMessages({ threadId: "thread-1", offset: 0, limit: 10 })).toEqual(mirrorList);
+      expect(delegate.loadSnapshotMock).not.toHaveBeenCalled();
+      expect(delegate.catchUpMock).not.toHaveBeenCalled();
+      expect(delegate.listMessagesMock).not.toHaveBeenCalled();
+    } finally {
+      engine.close();
+    }
+  });
+
+  it("falls back to delegate reads when mirror throws", () => {
+    const delegate = new MockDelegateStateSyncEngine();
+    const mirror = makeMirrorStub({
+      snapshot: {
+        projects: [],
+        threads: [],
+        lastStateSeq: 2,
+      },
+      catchUp: {
+        events: [],
+        lastStateSeq: 2,
+      },
+      listMessages: {
+        messages: [],
+        total: 0,
+        nextOffset: null,
+      },
+    });
+    vi.mocked(mirror.debugReadSnapshot).mockImplementationOnce(() => {
+      throw new Error("mirror bootstrap failure");
+    });
+    vi.mocked(mirror.debugCatchUp).mockImplementationOnce(() => {
+      throw new Error("mirror catch-up failure");
+    });
+    vi.mocked(mirror.debugListMessages).mockImplementationOnce(() => {
+      throw new Error("mirror list failure");
+    });
+
+    const engine = new LiveStoreReadPilotStateSyncEngine({
+      delegate,
+      mirror,
+    });
+
+    try {
+      expect(engine.loadSnapshot()).toEqual({
+        projects: [],
+        threads: [],
+        lastStateSeq: 1,
+      });
+      expect(engine.catchUp({ afterSeq: 0 })).toEqual({
+        events: [],
+        lastStateSeq: 1,
+      });
+      expect(engine.listMessages({ threadId: "thread-1", offset: 0, limit: 10 })).toEqual({
+        messages: [],
+        total: 0,
+        nextOffset: null,
+      });
+      expect(delegate.loadSnapshotMock).toHaveBeenCalledTimes(1);
+      expect(delegate.catchUpMock).toHaveBeenCalledTimes(1);
+      expect(delegate.listMessagesMock).toHaveBeenCalledTimes(1);
+    } finally {
+      engine.close();
+    }
+  });
+});
