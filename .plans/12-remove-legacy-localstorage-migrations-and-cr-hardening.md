@@ -90,7 +90,7 @@ This plan intentionally removes migration code instead of improving it. The targ
   - Replace always-true catch-up sequence assertion with monotonic/defined sequence checks.
 - Update/add tests for Group A/B/C behavior changes.
 
-## Workstream 3: Review Thread Triage/Closure Strategy
+## Workstream 3: Review Thread Triage/Closure Strategy [COMPLETE]
 
 ### Threads closed by deletion (Workstream 1)
 - Legacy renderer import flow/race concerns in root route.
@@ -102,6 +102,56 @@ This plan intentionally removes migration code instead of improving it. The targ
 
 ### Threads closed with rationale (no change)
 - Keep concise “not adopted” notes only where behavior is intentional and safe.
+
+### Disposition Matrix (Ready for PR Thread Closure)
+- `superseded-by-deletion`
+  - Legacy renderer-state import path comments (root-route import race, legacy import RPC/schema/service concerns).
+  - Rationale: Workstream 1 deleted the entire runtime migration pathway and removed related contracts/callers/handlers.
+- `fixed`
+  - `listMessages` pagination progress now advances by fetched row count.
+  - `withTransaction` post-commit event emission no longer surfaces listener exceptions as write failures.
+  - `checkpointTurnCount = 0` is preserved in summary merge logic.
+  - Out-of-order `item/started` no longer clobbers accumulated assistant text.
+  - Provider checkpoint revert no longer returns failure when persistence follow-up write fails.
+  - Generic `threads.update` is explicitly unsupported; canonical path is `threads.updateTerminalState`.
+  - `wsServer.stop()` now closes persistence only when internally owned.
+  - `StateDb` closes DB on migration failure and preserves original transaction error if rollback also fails.
+  - `sqliteAdapter` now emits explicit guidance when `node:sqlite` is unavailable.
+  - `appSettings` hydration now guards against overwriting optimistic writes.
+  - `thread.upsert` reducer path now safely defaults missing terminal arrays.
+  - Sidebar no-API fallback now creates a local thread.
+  - Duplicate `updateBranch` write path removed from `BranchToolbar`; canonical write remains in `ChatView` effect.
+- `declined-with-rationale`
+  - None in this workstream. No remaining high/medium CR findings required intentional non-adoption.
+
+### Evidence Anchors for Thread Replies
+- Server behavior fixes:
+  - `apps/server/src/persistenceService.ts`
+  - `apps/server/src/wsServer.ts`
+  - `apps/server/src/stateDb.ts`
+  - `apps/server/src/sqliteAdapter.ts`
+- Web/contracts fixes:
+  - `packages/contracts/src/ws.ts`
+  - `packages/contracts/src/ipc.ts`
+  - `apps/web/src/wsNativeApi.ts`
+  - `apps/web/src/appSettings.ts`
+  - `apps/web/src/store.ts`
+  - `apps/web/src/components/Sidebar.tsx`
+  - `apps/web/src/components/BranchToolbar.tsx`
+- Regression coverage:
+  - `apps/server/src/persistenceService.test.ts`
+  - `apps/server/src/wsServer.test.ts`
+  - `apps/server/src/stateDb.test.ts`
+  - `apps/server/src/sqliteAdapter.test.ts`
+  - `apps/web/src/appSettings.test.ts`
+  - `apps/web/src/store.test.ts`
+  - `apps/web/src/components/Sidebar.logic.test.ts`
+  - `packages/contracts/src/ws.test.ts`
+
+### Suggested Reply Templates
+- `superseded-by-deletion`: "Superseded by Workstream 1 removal of legacy renderer-state migration path; related RPC/schema/client callsites were deleted."
+- `fixed`: "Fixed in Workstream 2 with tests added; see referenced file(s) and regression coverage."
+- `declined-with-rationale`: "Intentional behavior retained; safe by design and documented here with rationale and test coverage."
 
 ## Execution Order
 1. Contracts + protocol deletions (Workstream 1.1).
