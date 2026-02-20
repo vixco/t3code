@@ -74,6 +74,13 @@ import {
   type DocumentRow,
 } from "./persistence/documentsRepo";
 import {
+  insertProviderEvent as insertProviderEventEffect,
+  listCompletedItemEventsBySessionTurn as listCompletedItemEventsBySessionTurnEffect,
+  listCompletedItemEventsByThreadTurn as listCompletedItemEventsByThreadTurnEffect,
+  listCompletedItemEventsByTurn as listCompletedItemEventsByTurnEffect,
+  type CompletedProviderItemRow,
+} from "./persistence/providerEventsRepo";
+import {
   appendStateEvent as appendStateEventEffect,
   listStateEventsAfterSeq as listStateEventsAfterSeqEffect,
   readLastStateSeq as readLastStateSeqEffect,
@@ -1570,38 +1577,55 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
     sessionId?: string;
     runtimeThreadId?: string | null;
   }): string | undefined {
-    const queries: Array<{ sql: string; params: unknown[] }> = [];
+    const rowGroups: CompletedProviderItemRow[][] = [];
     if (input.sessionId) {
-      queries.push({
-        sql: `SELECT item_id, payload_json
-              FROM provider_events
-              WHERE session_id = ? AND turn_id = ? AND method = 'item/completed'
-              ORDER BY created_at DESC;`,
-        params: [input.sessionId, input.turnId],
-      });
+      rowGroups.push(
+        this.runWithEffectSql(
+          listCompletedItemEventsBySessionTurnEffect({
+            sessionId: input.sessionId,
+            turnId: input.turnId,
+          }),
+          () =>
+            this.db.prepare(
+              `SELECT item_id, payload_json
+               FROM provider_events
+               WHERE session_id = ? AND turn_id = ? AND method = 'item/completed'
+               ORDER BY created_at DESC;`,
+            ).all(input.sessionId, input.turnId) as CompletedProviderItemRow[],
+        ),
+      );
     }
     if (input.runtimeThreadId) {
-      queries.push({
-        sql: `SELECT item_id, payload_json
-              FROM provider_events
-              WHERE thread_id = ? AND turn_id = ? AND method = 'item/completed'
-              ORDER BY created_at DESC;`,
-        params: [input.runtimeThreadId, input.turnId],
-      });
+      rowGroups.push(
+        this.runWithEffectSql(
+          listCompletedItemEventsByThreadTurnEffect({
+            runtimeThreadId: input.runtimeThreadId,
+            turnId: input.turnId,
+          }),
+          () =>
+            this.db.prepare(
+              `SELECT item_id, payload_json
+               FROM provider_events
+               WHERE thread_id = ? AND turn_id = ? AND method = 'item/completed'
+               ORDER BY created_at DESC;`,
+            ).all(input.runtimeThreadId, input.turnId) as CompletedProviderItemRow[],
+        ),
+      );
     }
-    queries.push({
-      sql: `SELECT item_id, payload_json
-            FROM provider_events
-            WHERE turn_id = ? AND method = 'item/completed'
-            ORDER BY created_at DESC;`,
-      params: [input.turnId],
-    });
+    rowGroups.push(
+      this.runWithEffectSql(
+        listCompletedItemEventsByTurnEffect(input.turnId),
+        () =>
+          this.db.prepare(
+            `SELECT item_id, payload_json
+             FROM provider_events
+             WHERE turn_id = ? AND method = 'item/completed'
+             ORDER BY created_at DESC;`,
+          ).all(input.turnId) as CompletedProviderItemRow[],
+      ),
+    );
 
-    for (const query of queries) {
-      const rows = this.db.prepare(query.sql).all(...query.params) as Array<{
-        item_id: string | null;
-        payload_json: string | null;
-      }>;
+    for (const rows of rowGroups) {
       for (const row of rows) {
         const payload = row.payload_json ? this.tryParseJson(row.payload_json) : null;
         const item = asObject(asObject(payload)?.item);
@@ -1774,43 +1798,64 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
   private insertProviderEvent(event: ProviderEvent): ProviderEventInsertResult {
     const runtimeThreadId = event.threadId ?? parseThreadIdFromEventPayload(event.payload);
     const payloadJson = event.payload === undefined ? null : JSON.stringify(event.payload);
-    const result = this.db
-      .prepare(
-        `INSERT OR IGNORE INTO provider_events (
-          id,
-          session_id,
-          provider,
-          kind,
-          method,
-          thread_id,
-          turn_id,
-          item_id,
-          request_id,
-          request_kind,
-          text_delta,
-          message,
-          payload_json,
-          created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-      )
-      .run(
-        event.id,
-        event.sessionId,
-        event.provider,
-        event.kind,
-        event.method,
-        runtimeThreadId,
-        event.turnId ?? null,
-        event.itemId ?? null,
-        event.requestId ?? null,
-        event.requestKind ?? null,
-        event.textDelta ?? null,
-        event.message ?? null,
+    const changes = this.runWithEffectSql(
+      insertProviderEventEffect({
+        id: event.id,
+        sessionId: event.sessionId,
+        provider: event.provider,
+        kind: event.kind,
+        method: event.method,
+        runtimeThreadId: runtimeThreadId ?? null,
+        turnId: event.turnId ?? null,
+        itemId: event.itemId ?? null,
+        requestId: event.requestId ?? null,
+        requestKind: event.requestKind ?? null,
+        textDelta: event.textDelta ?? null,
+        message: event.message ?? null,
         payloadJson,
-        event.createdAt,
-      ) as { changes?: number | bigint };
+        createdAt: event.createdAt,
+      }),
+      () => {
+        const result = this.db
+          .prepare(
+            `INSERT OR IGNORE INTO provider_events (
+              id,
+              session_id,
+              provider,
+              kind,
+              method,
+              thread_id,
+              turn_id,
+              item_id,
+              request_id,
+              request_kind,
+              text_delta,
+              message,
+              payload_json,
+              created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+          )
+          .run(
+            event.id,
+            event.sessionId,
+            event.provider,
+            event.kind,
+            event.method,
+            runtimeThreadId,
+            event.turnId ?? null,
+            event.itemId ?? null,
+            event.requestId ?? null,
+            event.requestKind ?? null,
+            event.textDelta ?? null,
+            event.message ?? null,
+            payloadJson,
+            event.createdAt,
+          ) as { changes?: number | bigint };
+        return toSafeInteger(result.changes, 0);
+      },
+    );
     return {
-      inserted: toSafeInteger(result.changes, 0) > 0,
+      inserted: changes > 0,
       runtimeThreadId: runtimeThreadId ?? null,
     };
   }
