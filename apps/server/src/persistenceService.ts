@@ -68,9 +68,18 @@ import {
 
 import { StateDb } from "./stateDb";
 import {
+  countMessagesForThread as countMessagesForThreadEffect,
+  deleteDocumentByIdAndKind as deleteDocumentByIdAndKindEffect,
+  deleteDocumentsByProjectId as deleteDocumentsByProjectIdEffect,
+  deleteDocumentsByThreadId as deleteDocumentsByThreadIdEffect,
+  findThreadPayloadByRuntimeThreadId as findThreadPayloadByRuntimeThreadIdEffect,
   getDocumentRowById as getDocumentRowByIdEffect,
+  listPaginatedMessagePayloadsForThread as listPaginatedMessagePayloadsForThreadEffect,
+  listProjectPayloads as listProjectPayloadsEffect,
   listMessagePayloadsForThread as listMessagePayloadsForThreadEffect,
   listMessagePayloadsForThreadDesc as listMessagePayloadsForThreadDescEffect,
+  listThreadPayloads as listThreadPayloadsEffect,
+  listThreadPayloadsByProject as listThreadPayloadsByProjectEffect,
   listTurnSummaryPayloadsForThread as listTurnSummaryPayloadsForThreadEffect,
   readNextSortKey as readNextSortKeyEffect,
   upsertDocument as upsertDocumentEffect,
@@ -495,15 +504,18 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
   }
 
   listProjects(): ProjectListResult {
-    const rows = this.db
-      .prepare(
-        "SELECT data_json FROM documents WHERE kind = 'project' ORDER BY updated_at DESC, created_at DESC;",
-      )
-      .all() as Array<{ data_json: string }>;
+    const payloads = this.runWithEffectSql(listProjectPayloadsEffect(), () => {
+      const rows = this.db
+        .prepare(
+          "SELECT data_json FROM documents WHERE kind = 'project' ORDER BY updated_at DESC, created_at DESC;",
+        )
+        .all() as Array<{ data_json: string }>;
+      return rows.map((row) => row.data_json);
+    });
 
     const projects: StateProject[] = [];
-    for (const row of rows) {
-      const parsed = this.parseJson(row.data_json, stateProjectSchema);
+    for (const payload of payloads) {
+      const parsed = this.parseJson(payload, stateProjectSchema);
       if (parsed) {
         projects.push(parsed);
       }
@@ -549,18 +561,23 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
     }
 
     this.withTransaction((pendingEvents) => {
-      const threadRows = this.db
-        .prepare("SELECT data_json FROM documents WHERE kind = 'thread' AND project_id = ?;")
-        .all(input.id) as Array<{ data_json: string }>;
+      const threadPayloads = this.runWithEffectSql(listThreadPayloadsByProjectEffect(input.id), () => {
+        const threadRows = this.db
+          .prepare("SELECT data_json FROM documents WHERE kind = 'thread' AND project_id = ?;")
+          .all(input.id) as Array<{ data_json: string }>;
+        return threadRows.map((row) => row.data_json);
+      });
       const threadIds: string[] = [];
-      for (const row of threadRows) {
-        const parsed = this.parseJson(row.data_json, stateThreadSchema);
+      for (const payload of threadPayloads) {
+        const parsed = this.parseJson(payload, stateThreadSchema);
         if (parsed) {
           threadIds.push(parsed.id);
         }
       }
 
-      this.db.prepare("DELETE FROM documents WHERE project_id = ?;").run(input.id);
+      this.runWithEffectSql(deleteDocumentsByProjectIdEffect(input.id), () => {
+        this.db.prepare("DELETE FROM documents WHERE project_id = ?;").run(input.id);
+      });
 
       const eventTime = nowIso();
       for (const threadId of threadIds) {
@@ -709,25 +726,32 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
     }
 
     this.withTransaction((pendingEvents) => {
-      this.db.prepare("DELETE FROM documents WHERE thread_id = ?;").run(thread.id);
-      this.db
-        .prepare("DELETE FROM documents WHERE id = ? AND kind = 'thread';")
-        .run(threadDocId(thread.id));
+      this.runWithEffectSql(deleteDocumentsByThreadIdEffect(thread.id), () => {
+        this.db.prepare("DELETE FROM documents WHERE thread_id = ?;").run(thread.id);
+      });
+      this.runWithEffectSql(deleteDocumentByIdAndKindEffect(threadDocId(thread.id), "thread"), () => {
+        this.db
+          .prepare("DELETE FROM documents WHERE id = ? AND kind = 'thread';")
+          .run(threadDocId(thread.id));
+      });
       this.appendStateEvent(pendingEvents, "thread.delete", thread.id, { threadId: thread.id }, nowIso());
     });
   }
 
   loadSnapshot(): StateBootstrapResult {
     const projects = this.listProjects();
-    const threadRows = this.db
-      .prepare(
-        "SELECT data_json FROM documents WHERE kind = 'thread' ORDER BY updated_at DESC, created_at DESC;",
-      )
-      .all() as Array<{ data_json: string }>;
+    const threadPayloads = this.runWithEffectSql(listThreadPayloadsEffect(), () => {
+      const threadRows = this.db
+        .prepare(
+          "SELECT data_json FROM documents WHERE kind = 'thread' ORDER BY updated_at DESC, created_at DESC;",
+        )
+        .all() as Array<{ data_json: string }>;
+      return threadRows.map((row) => row.data_json);
+    });
 
     const threads: StateBootstrapThread[] = [];
-    for (const row of threadRows) {
-      const parsedThread = this.parseJson(row.data_json, stateThreadSchema);
+    for (const payload of threadPayloads) {
+      const parsedThread = this.parseJson(payload, stateThreadSchema);
       if (!parsedThread) continue;
       const messages = this.listMessagesForThread(parsedThread.id);
       const turnDiffSummaries = this.listTurnSummariesForThread(parsedThread.id).map((summary) => {
@@ -797,25 +821,37 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
 
   listMessages(raw: StateListMessagesInput): StateListMessagesResult {
     const input = stateListMessagesInputSchema.parse(raw);
-    const rows = this.db
-      .prepare(
-        "SELECT data_json FROM documents WHERE kind = 'message' AND thread_id = ? ORDER BY sort_key ASC LIMIT ? OFFSET ?;",
-      )
-      .all(input.threadId, input.limit, input.offset) as Array<{ data_json: string }>;
-    const totalRow = this.db
-      .prepare("SELECT COUNT(1) AS total FROM documents WHERE kind = 'message' AND thread_id = ?;")
-      .get(input.threadId) as { total: number } | undefined;
-    const total = totalRow?.total ?? 0;
+    const payloads = this.runWithEffectSql(
+      listPaginatedMessagePayloadsForThreadEffect({
+        threadId: input.threadId,
+        limit: input.limit,
+        offset: input.offset,
+      }),
+      () => {
+        const rows = this.db
+          .prepare(
+            "SELECT data_json FROM documents WHERE kind = 'message' AND thread_id = ? ORDER BY sort_key ASC LIMIT ? OFFSET ?;",
+          )
+          .all(input.threadId, input.limit, input.offset) as Array<{ data_json: string }>;
+        return rows.map((row) => row.data_json);
+      },
+    );
+    const total = this.runWithEffectSql(countMessagesForThreadEffect(input.threadId), () => {
+      const totalRow = this.db
+        .prepare("SELECT COUNT(1) AS total FROM documents WHERE kind = 'message' AND thread_id = ?;")
+        .get(input.threadId) as { total: number } | undefined;
+      return totalRow?.total ?? 0;
+    });
 
     const messages: StateMessage[] = [];
-    for (const row of rows) {
-      const parsed = this.parseJson(row.data_json, stateMessageSchema);
+    for (const payload of payloads) {
+      const parsed = this.parseJson(payload, stateMessageSchema);
       if (parsed) {
         messages.push(parsed);
       }
     }
 
-    const nextOffset = input.offset + rows.length;
+    const nextOffset = input.offset + payloads.length;
     return stateListMessagesResultSchema.parse({
       messages,
       total,
@@ -1242,9 +1278,14 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
         for (let index = input.messageCount; index < messages.length; index += 1) {
           const message = messages[index];
           if (!message) continue;
-          this.db
-            .prepare("DELETE FROM documents WHERE id = ? AND kind = 'message';")
-            .run(messageDocId(thread.id, message.id));
+          this.runWithEffectSql(
+            deleteDocumentByIdAndKindEffect(messageDocId(thread.id, message.id), "message"),
+            () => {
+              this.db
+                .prepare("DELETE FROM documents WHERE id = ? AND kind = 'message';")
+                .run(messageDocId(thread.id, message.id));
+            },
+          );
           this.appendStateEvent(
             pendingEvents,
             "message.delete",
@@ -1261,9 +1302,14 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
           typeof summary.checkpointTurnCount === "number" &&
           summary.checkpointTurnCount > input.turnCount
         ) {
-          this.db
-            .prepare("DELETE FROM documents WHERE id = ? AND kind = 'turn_summary';")
-            .run(turnSummaryDocId(thread.id, summary.turnId));
+          this.runWithEffectSql(
+            deleteDocumentByIdAndKindEffect(turnSummaryDocId(thread.id, summary.turnId), "turn_summary"),
+            () => {
+              this.db
+                .prepare("DELETE FROM documents WHERE id = ? AND kind = 'turn_summary';")
+                .run(turnSummaryDocId(thread.id, summary.turnId));
+            },
+          );
           this.appendStateEvent(
             pendingEvents,
             "turn_summary.delete",
@@ -1553,13 +1599,16 @@ export class PersistenceService extends EventEmitter<PersistenceServiceEvents> {
   }
 
   private findThreadByRuntimeThreadId(runtimeThreadId: string): StateThread | null {
-    const row = this.db
-      .prepare(
-        "SELECT data_json FROM documents WHERE kind = 'thread' AND json_extract(data_json, '$.codexThreadId') = ? LIMIT 1;",
-      )
-      .get(runtimeThreadId) as { data_json: string } | undefined;
-    if (!row) return null;
-    const parsed = this.parseJson(row.data_json, stateThreadSchema);
+    const payload = this.runWithEffectSql(findThreadPayloadByRuntimeThreadIdEffect(runtimeThreadId), () => {
+      const row = this.db
+        .prepare(
+          "SELECT data_json FROM documents WHERE kind = 'thread' AND json_extract(data_json, '$.codexThreadId') = ? LIMIT 1;",
+        )
+        .get(runtimeThreadId) as { data_json: string } | undefined;
+      return row?.data_json ?? null;
+    });
+    if (!payload) return null;
+    const parsed = this.parseJson(payload, stateThreadSchema);
     return parsed ? normalizeThread(parsed) : null;
   }
 
