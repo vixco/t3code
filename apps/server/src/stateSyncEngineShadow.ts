@@ -34,6 +34,8 @@ interface StateSyncEngineShadowEvents {
 export interface StateEventMirror {
   mirrorStateEvent(event: StateEvent): Promise<void>;
   debugReadSnapshot?(): StateBootstrapResult;
+  debugCatchUp?(afterSeq: number): StateCatchUpResult;
+  debugListMessages?(raw: StateListMessagesInput): StateListMessagesResult;
   dispose(): Promise<void> | void;
 }
 
@@ -41,6 +43,8 @@ export interface ShadowStateSyncEngineOptions {
   delegate: StateSyncEngine;
   mirror: StateEventMirror;
   enableBootstrapParityCheck?: boolean;
+  enableCatchUpParityCheck?: boolean;
+  enableListMessagesParityCheck?: boolean;
 }
 
 export class ShadowStateSyncEngine
@@ -50,16 +54,22 @@ export class ShadowStateSyncEngine
   private readonly delegate: StateSyncEngine;
   private readonly mirror: StateEventMirror;
   private readonly enableBootstrapParityCheck: boolean;
+  private readonly enableCatchUpParityCheck: boolean;
+  private readonly enableListMessagesParityCheck: boolean;
   private readonly logger = createLogger("shadow-sync-engine");
   private readonly unsubscribeDelegate: () => void;
   private closed = false;
   private bootstrapParityState: "unknown" | "in-parity" | "drift" = "unknown";
+  private catchUpParityState: "unknown" | "in-parity" | "drift" = "unknown";
+  private listMessagesParityState: "unknown" | "in-parity" | "drift" = "unknown";
 
   constructor(options: ShadowStateSyncEngineOptions) {
     super();
     this.delegate = options.delegate;
     this.mirror = options.mirror;
     this.enableBootstrapParityCheck = options.enableBootstrapParityCheck ?? false;
+    this.enableCatchUpParityCheck = options.enableCatchUpParityCheck ?? false;
+    this.enableListMessagesParityCheck = options.enableListMessagesParityCheck ?? false;
     this.unsubscribeDelegate = this.delegate.onStateEvent((event) => {
       this.emit("stateEvent", event);
       void this.mirror.mirrorStateEvent(event).catch((error) => {
@@ -117,11 +127,96 @@ export class ShadowStateSyncEngine
   }
 
   listMessages(raw: StateListMessagesInput): StateListMessagesResult {
-    return this.delegate.listMessages(raw);
+    const result = this.delegate.listMessages(raw);
+    if (this.enableListMessagesParityCheck) {
+      this.checkListMessagesParity(raw, result);
+    }
+    return result;
   }
 
   catchUp(raw: StateCatchUpInput): StateCatchUpResult {
-    return this.delegate.catchUp(raw);
+    const result = this.delegate.catchUp(raw);
+    if (this.enableCatchUpParityCheck) {
+      this.checkCatchUpParity(raw, result);
+    }
+    return result;
+  }
+
+  private checkCatchUpParity(raw: StateCatchUpInput, delegateResult: StateCatchUpResult): void {
+    if (typeof this.mirror.debugCatchUp !== "function") {
+      return;
+    }
+
+    const afterSeq = raw.afterSeq ?? 0;
+    let mirrorResult: StateCatchUpResult;
+    try {
+      mirrorResult = this.mirror.debugCatchUp(afterSeq);
+    } catch (error) {
+      this.logger.warn("shadow catch-up parity check failed to read mirror catch-up", { error });
+      return;
+    }
+
+    const diffs = diffCatchUpResults(delegateResult, mirrorResult);
+    if (diffs.length === 0) {
+      if (this.catchUpParityState !== "in-parity") {
+        this.catchUpParityState = "in-parity";
+        this.logger.info("shadow catch-up parity check passed", {
+          afterSeq,
+          lastStateSeq: delegateResult.lastStateSeq,
+        });
+      }
+      return;
+    }
+
+    this.catchUpParityState = "drift";
+    this.logger.warn("shadow catch-up parity drift detected", {
+      afterSeq,
+      diffCount: diffs.length,
+      sampleDiffs: diffs.slice(0, 5),
+      delegateLastStateSeq: delegateResult.lastStateSeq,
+      mirrorLastStateSeq: mirrorResult.lastStateSeq,
+    });
+  }
+
+  private checkListMessagesParity(
+    raw: StateListMessagesInput,
+    delegateResult: StateListMessagesResult,
+  ): void {
+    if (typeof this.mirror.debugListMessages !== "function") {
+      return;
+    }
+
+    let mirrorResult: StateListMessagesResult;
+    try {
+      mirrorResult = this.mirror.debugListMessages(raw);
+    } catch (error) {
+      this.logger.warn("shadow list-messages parity check failed to read mirror listMessages", {
+        error,
+      });
+      return;
+    }
+
+    const diffs = diffListMessagesResults(delegateResult, mirrorResult);
+    if (diffs.length === 0) {
+      if (this.listMessagesParityState !== "in-parity") {
+        this.listMessagesParityState = "in-parity";
+        this.logger.info("shadow list-messages parity check passed", {
+          threadId: raw.threadId,
+          offset: raw.offset ?? 0,
+          limit: raw.limit ?? 200,
+        });
+      }
+      return;
+    }
+
+    this.listMessagesParityState = "drift";
+    this.logger.warn("shadow list-messages parity drift detected", {
+      threadId: raw.threadId,
+      offset: raw.offset ?? 0,
+      limit: raw.limit ?? 200,
+      diffCount: diffs.length,
+      sampleDiffs: diffs.slice(0, 5),
+    });
   }
 
   getAppSettings(): AppSettings {
@@ -189,4 +284,84 @@ export class ShadowStateSyncEngine
     this.removeAllListeners();
     void this.mirror.dispose();
   }
+}
+
+function diffCatchUpResults(expected: StateCatchUpResult, actual: StateCatchUpResult): string[] {
+  const diffs: string[] = [];
+
+  if (expected.lastStateSeq !== actual.lastStateSeq) {
+    diffs.push(
+      `lastStateSeq mismatch: expected=${expected.lastStateSeq} actual=${actual.lastStateSeq}`,
+    );
+  }
+
+  if (expected.events.length !== actual.events.length) {
+    diffs.push(`events.length mismatch: expected=${expected.events.length} actual=${actual.events.length}`);
+  }
+
+  const minLength = Math.min(expected.events.length, actual.events.length);
+  for (let index = 0; index < minLength; index += 1) {
+    const expectedEvent = expected.events[index];
+    const actualEvent = actual.events[index];
+    if (!expectedEvent || !actualEvent) {
+      continue;
+    }
+    if (expectedEvent.seq !== actualEvent.seq) {
+      diffs.push(`events[${index}].seq mismatch: expected=${expectedEvent.seq} actual=${actualEvent.seq}`);
+    }
+    if (expectedEvent.eventType !== actualEvent.eventType) {
+      diffs.push(
+        `events[${index}].eventType mismatch: expected=${expectedEvent.eventType} actual=${actualEvent.eventType}`,
+      );
+    }
+    if (expectedEvent.entityId !== actualEvent.entityId) {
+      diffs.push(
+        `events[${index}].entityId mismatch: expected=${expectedEvent.entityId} actual=${actualEvent.entityId}`,
+      );
+    }
+    const expectedPayload = JSON.stringify(expectedEvent.payload);
+    const actualPayload = JSON.stringify(actualEvent.payload);
+    if (expectedPayload !== actualPayload) {
+      diffs.push(`events[${index}].payload mismatch`);
+    }
+  }
+
+  return diffs;
+}
+
+function diffListMessagesResults(
+  expected: StateListMessagesResult,
+  actual: StateListMessagesResult,
+): string[] {
+  const diffs: string[] = [];
+
+  if (expected.total !== actual.total) {
+    diffs.push(`total mismatch: expected=${expected.total} actual=${actual.total}`);
+  }
+  if (expected.nextOffset !== actual.nextOffset) {
+    diffs.push(
+      `nextOffset mismatch: expected=${String(expected.nextOffset)} actual=${String(actual.nextOffset)}`,
+    );
+  }
+  if (expected.messages.length !== actual.messages.length) {
+    diffs.push(
+      `messages.length mismatch: expected=${expected.messages.length} actual=${actual.messages.length}`,
+    );
+  }
+
+  const minLength = Math.min(expected.messages.length, actual.messages.length);
+  for (let index = 0; index < minLength; index += 1) {
+    const expectedMessage = expected.messages[index];
+    const actualMessage = actual.messages[index];
+    if (!expectedMessage || !actualMessage) {
+      continue;
+    }
+    const expectedSerialized = JSON.stringify(expectedMessage);
+    const actualSerialized = JSON.stringify(actualMessage);
+    if (expectedSerialized !== actualSerialized) {
+      diffs.push(`messages[${index}] mismatch`);
+    }
+  }
+
+  return diffs;
 }

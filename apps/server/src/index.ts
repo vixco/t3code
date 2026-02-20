@@ -124,6 +124,10 @@ async function main() {
     parseBooleanEnv(process.env.T3CODE_LIVESTORE_LIST_MESSAGES_PARITY_CHECK) ?? false;
   const enableLiveStoreShadowBootstrapParityCheck =
     parseBooleanEnv(process.env.T3CODE_LIVESTORE_SHADOW_BOOTSTRAP_PARITY_CHECK) ?? false;
+  const enableLiveStoreShadowCatchUpParityCheck =
+    parseBooleanEnv(process.env.T3CODE_LIVESTORE_SHADOW_CATCHUP_PARITY_CHECK) ?? false;
+  const enableLiveStoreShadowListMessagesParityCheck =
+    parseBooleanEnv(process.env.T3CODE_LIVESTORE_SHADOW_LIST_MESSAGES_PARITY_CHECK) ?? false;
   const disableLiveStoreDelegateReadFallback =
     parseBooleanEnv(process.env.T3CODE_LIVESTORE_DISABLE_READ_FALLBACK) ?? false;
   const persistenceService = new PersistenceService({
@@ -140,6 +144,8 @@ async function main() {
           delegate: legacyStateSyncEngine,
           mirror: liveStoreMirror,
           enableBootstrapParityCheck: enableLiveStoreShadowBootstrapParityCheck,
+          enableCatchUpParityCheck: enableLiveStoreShadowCatchUpParityCheck,
+          enableListMessagesParityCheck: enableLiveStoreShadowListMessagesParityCheck,
         })
       : syncEngineMode === "livestore-read-pilot"
         ? new LiveStoreReadPilotStateSyncEngine({
@@ -187,6 +193,8 @@ async function main() {
     liveStoreCatchUpParityCheck: enableLiveStoreCatchUpParityCheck,
     liveStoreListMessagesParityCheck: enableLiveStoreListMessagesParityCheck,
     liveStoreShadowBootstrapParityCheck: enableLiveStoreShadowBootstrapParityCheck,
+    liveStoreShadowCatchUpParityCheck: enableLiveStoreShadowCatchUpParityCheck,
+    liveStoreShadowListMessagesParityCheck: enableLiveStoreShadowListMessagesParityCheck,
     liveStoreDisableReadFallback: disableLiveStoreDelegateReadFallback,
     authEnabled: Boolean(authToken),
   });

@@ -20,6 +20,10 @@ Server mode is controlled by `T3CODE_SYNC_ENGINE_MODE`:
   - In read-pilot mode, compares `state.listMessages` mirror output against delegate output.
 - `T3CODE_LIVESTORE_SHADOW_BOOTSTRAP_PARITY_CHECK=1`
   - In shadow mode, compares `state.bootstrap` mirror output against delegate output.
+- `T3CODE_LIVESTORE_SHADOW_CATCHUP_PARITY_CHECK=1`
+  - In shadow mode, compares `state.catchUp` mirror output against delegate output.
+- `T3CODE_LIVESTORE_SHADOW_LIST_MESSAGES_PARITY_CHECK=1`
+  - In shadow mode, compares `state.listMessages` mirror output against delegate output.
 - `T3CODE_LIVESTORE_DISABLE_READ_FALLBACK=1`
   - In read-pilot mode, disables delegate read fallback for strict mirror-read canary validation.
 - `VITE_T3CODE_STATE_SOURCE_MODE=legacy-api|livestore-read-pilot`

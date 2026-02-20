@@ -211,4 +211,63 @@ describe("ShadowStateSyncEngine", () => {
       service.close();
     }
   });
+
+  it("can run optional catch-up and list-messages parity diagnostics", () => {
+    const stateDir = makeTempDir("t3code-shadow-parity-diagnostics-reads-state-");
+    const projectDir = makeTempDir("t3code-shadow-parity-diagnostics-reads-project-");
+    const service = new PersistenceService({
+      dbPath: path.join(stateDir, "state.sqlite"),
+    });
+    const legacy = new LegacyStateSyncEngine({ persistenceService: service });
+    const debugCatchUp = vi.fn((afterSeq: number) => ({
+      events: [],
+      lastStateSeq: afterSeq,
+    }));
+    const debugListMessages = vi.fn(() => ({
+      messages: [],
+      total: 0,
+      nextOffset: null,
+    }));
+    const mirror: StateEventMirror = {
+      mirrorStateEvent: async () => undefined,
+      debugCatchUp,
+      debugListMessages,
+      dispose: async () => undefined,
+    };
+    const shadow = new ShadowStateSyncEngine({
+      delegate: legacy,
+      mirror,
+      enableCatchUpParityCheck: true,
+      enableListMessagesParityCheck: true,
+    });
+
+    try {
+      const project = shadow.addProject({ cwd: projectDir }).project;
+      const thread = shadow.createThread({
+        projectId: project.id,
+        title: "Shadow parity read diagnostics thread",
+      }).thread;
+
+      const catchUp = shadow.catchUp({ afterSeq: 0 });
+      expect(catchUp.events.length).toBeGreaterThan(0);
+      const listed = shadow.listMessages({ threadId: thread.id, offset: 0, limit: 10 });
+      expect(listed).toEqual({
+        messages: [],
+        total: 0,
+        nextOffset: null,
+      });
+
+      expect(debugCatchUp).toHaveBeenCalledTimes(1);
+      expect(debugCatchUp).toHaveBeenCalledWith(0);
+      expect(debugListMessages).toHaveBeenCalledTimes(1);
+      expect(debugListMessages).toHaveBeenCalledWith({
+        threadId: thread.id,
+        offset: 0,
+        limit: 10,
+      });
+    } finally {
+      shadow.close();
+      service.close();
+    }
+  });
 });

@@ -123,6 +123,10 @@ Optional diagnostics:
   - In `livestore-read-pilot` mode, compares LiveStore vs legacy `state.listMessages` responses and logs drift diagnostics.
 - `T3CODE_LIVESTORE_SHADOW_BOOTSTRAP_PARITY_CHECK=1`
   - In `shadow` mode, compares mirror vs delegate `state.bootstrap` snapshots and logs drift diagnostics.
+- `T3CODE_LIVESTORE_SHADOW_CATCHUP_PARITY_CHECK=1`
+  - In `shadow` mode, compares mirror vs delegate `state.catchUp` responses and logs drift diagnostics.
+- `T3CODE_LIVESTORE_SHADOW_LIST_MESSAGES_PARITY_CHECK=1`
+  - In `shadow` mode, compares mirror vs delegate `state.listMessages` responses and logs drift diagnostics.
 - `T3CODE_LIVESTORE_DISABLE_READ_FALLBACK=1`
   - In `livestore-read-pilot` mode, disables delegate read fallback and fails requests when mirror reads fail (strict canary mode).
 
