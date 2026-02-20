@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { serverConfigSchema } from "./server";
 
 describe("serverConfigSchema", () => {
-  it("defaults syncEngineMode to legacy when omitted", () => {
+  it("defaults syncEngineMode to livestore when omitted", () => {
     expect(
       serverConfigSchema.parse({
         cwd: "/workspace",
@@ -10,7 +10,7 @@ describe("serverConfigSchema", () => {
       }),
     ).toEqual({
       cwd: "/workspace",
-      syncEngineMode: "legacy",
+      syncEngineMode: "livestore",
       keybindings: [],
     });
   });

@@ -5,7 +5,7 @@ export const serverConfigSchema = z.object({
   cwd: z.string().min(1),
   syncEngineMode: z
     .enum(["legacy", "shadow", "livestore-read-pilot", "livestore"])
-    .default("legacy"),
+    .default("livestore"),
   keybindings: resolvedKeybindingsConfigSchema.default([]),
 });
 
