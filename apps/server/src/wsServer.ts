@@ -33,6 +33,8 @@ import { TerminalManager } from "./terminalManager";
 import { loadResolvedKeybindingsConfig, upsertKeybindingRule } from "./keybindings";
 import { searchWorkspaceEntries } from "./workspaceEntries";
 import { PersistenceService } from "./persistenceService";
+import type { StateSyncEngine } from "./stateSyncEngine";
+import { LegacyStateSyncEngine } from "./stateSyncEngineLegacy";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -57,6 +59,7 @@ export interface ServerOptions {
   devUrl?: string | undefined;
   logWebSocketEvents?: boolean | undefined;
   persistenceService?: PersistenceService | undefined;
+  stateSyncEngine?: StateSyncEngine | undefined;
   stateDbPath?: string | undefined;
   gitManager?: GitManager | undefined;
   terminalManager?: TerminalManager | undefined;
@@ -80,6 +83,7 @@ export function createServer(options: ServerOptions) {
     devUrl,
     logWebSocketEvents: explicitLogWsEvents,
     persistenceService: providedPersistenceService,
+    stateSyncEngine: providedStateSyncEngine,
     stateDbPath,
     gitManager: providedGitManager,
     terminalManager: providedTerminalManager,
@@ -91,6 +95,9 @@ export function createServer(options: ServerOptions) {
       dbPath: stateDbPath ?? path.join(os.homedir(), ".t3", "state.sqlite"),
     });
   const ownsPersistenceService = providedPersistenceService === undefined;
+  const stateSyncEngine =
+    providedStateSyncEngine ?? new LegacyStateSyncEngine({ persistenceService });
+  const ownsStateSyncEngine = providedStateSyncEngine === undefined;
   const providerManager = new ProviderManager({ persistenceService });
   const terminalManager = providedTerminalManager ?? new TerminalManager();
   const gitManager = providedGitManager ?? new GitManager();
@@ -143,7 +150,7 @@ export function createServer(options: ServerOptions) {
     }
     logOutgoingPush(push, recipients);
   };
-  persistenceService.on("stateEvent", onStateEvent);
+  const unsubscribeStateEvents = stateSyncEngine.onStateEvent(onStateEvent);
 
   const onTerminalEvent = (event: TerminalEvent) => {
     const push: WsPush = {
@@ -348,7 +355,7 @@ export function createServer(options: ServerOptions) {
           };
           const result = await providerManager.revertToCheckpoint(params as never);
           try {
-            persistenceService.applyCheckpointRevert({
+            stateSyncEngine.applyCheckpointRevert({
               sessionId: params.sessionId,
               runtimeThreadId: result.threadId,
               turnCount: result.turnCount,
@@ -365,22 +372,22 @@ export function createServer(options: ServerOptions) {
         }
 
       case WS_METHODS.stateBootstrap:
-        return persistenceService.loadSnapshot();
+        return stateSyncEngine.loadSnapshot();
 
       case WS_METHODS.stateListMessages:
-        return persistenceService.listMessages(request.params as never);
+        return stateSyncEngine.listMessages(request.params as never);
 
       case WS_METHODS.stateCatchUp:
-        return persistenceService.catchUp(request.params as never);
+        return stateSyncEngine.catchUp(request.params as never);
 
       case WS_METHODS.appSettingsGet:
-        return persistenceService.getAppSettings();
+        return stateSyncEngine.getAppSettings();
 
       case WS_METHODS.appSettingsUpdate:
-        return persistenceService.updateAppSettings((request.params ?? {}) as never);
+        return stateSyncEngine.updateAppSettings((request.params ?? {}) as never);
 
       case WS_METHODS.threadsCreate:
-        return persistenceService.createThread(request.params as never);
+        return stateSyncEngine.createThread(request.params as never);
 
       case "threads.update":
         throw new Error(
@@ -388,38 +395,38 @@ export function createServer(options: ServerOptions) {
         );
 
       case WS_METHODS.threadsUpdateTerminalState:
-        return persistenceService.updateThreadTerminalState(request.params as never);
+        return stateSyncEngine.updateThreadTerminalState(request.params as never);
 
       case WS_METHODS.threadsDelete:
-        persistenceService.deleteThread(request.params as never);
+        stateSyncEngine.deleteThread(request.params as never);
         return undefined;
 
       case WS_METHODS.threadsMarkVisited:
-        return persistenceService.markThreadVisited(request.params as never);
+        return stateSyncEngine.markThreadVisited(request.params as never);
 
       case WS_METHODS.threadsUpdateModel:
-        return persistenceService.updateThreadModel(request.params as never);
+        return stateSyncEngine.updateThreadModel(request.params as never);
 
       case WS_METHODS.threadsUpdateTitle:
-        return persistenceService.updateThreadTitle(request.params as never);
+        return stateSyncEngine.updateThreadTitle(request.params as never);
 
       case WS_METHODS.threadsUpdateBranch:
-        return persistenceService.updateThreadBranch(request.params as never);
+        return stateSyncEngine.updateThreadBranch(request.params as never);
 
       case WS_METHODS.projectsList:
-        return persistenceService.listProjects();
+        return stateSyncEngine.listProjects();
 
       case WS_METHODS.projectsAdd:
-        return persistenceService.addProject(request.params as never);
+        return stateSyncEngine.addProject(request.params as never);
 
       case WS_METHODS.projectsRemove:
-        persistenceService.removeProject(request.params as never);
+        stateSyncEngine.removeProject(request.params as never);
         return undefined;
 
       case WS_METHODS.projectsSearchEntries:
         return searchWorkspaceEntries(request.params as never);
       case WS_METHODS.projectsUpdateScripts:
-        return persistenceService.updateProjectScripts(request.params as never);
+        return stateSyncEngine.updateProjectScripts(request.params as never);
 
       case WS_METHODS.shellOpenInEditor: {
         const params = request.params as {
@@ -551,10 +558,13 @@ export function createServer(options: ServerOptions) {
 
   async function stop(): Promise<void> {
     terminalManager.off("event", onTerminalEvent);
-    persistenceService.off("stateEvent", onStateEvent);
+    unsubscribeStateEvents();
     providerManager.stopAll();
     providerManager.dispose();
     terminalManager.dispose();
+    if (ownsStateSyncEngine) {
+      stateSyncEngine.close();
+    }
     if (ownsPersistenceService) {
       persistenceService.close();
     }

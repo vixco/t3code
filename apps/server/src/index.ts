@@ -6,7 +6,10 @@ import { fileURLToPath } from "node:url";
 
 import { fixPath } from "./fixPath";
 import { createLogger } from "./logger";
+import { LiveStoreStateMirror } from "./livestore/liveStoreEngine";
 import { PersistenceService } from "./persistenceService";
+import { LegacyStateSyncEngine } from "./stateSyncEngineLegacy";
+import { ShadowStateSyncEngine } from "./stateSyncEngineShadow";
 import { createServer } from "./wsServer";
 
 fixPath();
@@ -16,6 +19,7 @@ const cwd = process.cwd();
 const logger = createLogger("server");
 
 type RuntimeMode = "web" | "desktop";
+type SyncEngineMode = "legacy" | "shadow";
 
 function parseBooleanEnv(value: string | undefined): boolean | undefined {
   if (value === undefined) return undefined;
@@ -32,6 +36,19 @@ function parsePort(value: string | undefined): number | undefined {
     throw new Error(`Invalid T3CODE_PORT: ${value}`);
   }
   return parsed;
+}
+
+function resolveSyncEngineMode(raw: string | undefined): SyncEngineMode {
+  if (!raw || raw.trim().length === 0) {
+    return "legacy";
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "legacy" || normalized === "shadow") {
+    return normalized;
+  }
+  throw new Error(
+    `Invalid T3CODE_SYNC_ENGINE_MODE: ${raw}. Expected "legacy" or "shadow".`,
+  );
 }
 
 function expandHomePath(input: string): string {
@@ -110,10 +127,21 @@ async function main() {
     requestedPort ?? (mode === "desktop" ? DEFAULT_PORT : await findAvailablePort(DEFAULT_PORT));
   const legacyStateDir = resolveStateDir(process.env.T3CODE_STATE_DIR);
   const stateDbPath = resolveStateDbPath(process.env.T3CODE_STATE_DB_PATH);
+  const syncEngineMode = resolveSyncEngineMode(process.env.T3CODE_SYNC_ENGINE_MODE);
   const persistenceService = new PersistenceService({
     dbPath: stateDbPath,
     legacyProjectsJsonPath: path.join(legacyStateDir, "projects.json"),
   });
+  const legacyStateSyncEngine = new LegacyStateSyncEngine({ persistenceService });
+  const stateSyncEngine =
+    syncEngineMode === "shadow"
+      ? new ShadowStateSyncEngine({
+          delegate: legacyStateSyncEngine,
+          mirror: new LiveStoreStateMirror({
+            storeId: `t3-shadow-${mode}`,
+          }),
+        })
+      : legacyStateSyncEngine;
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   const noBrowser = parseBooleanEnv(process.env.T3CODE_NO_BROWSER) ?? mode === "desktop";
   const authToken = process.env.T3CODE_AUTH_TOKEN;
@@ -132,6 +160,7 @@ async function main() {
     staticDir,
     devUrl,
     persistenceService,
+    stateSyncEngine,
     authToken,
   });
   await server.start();
@@ -143,6 +172,7 @@ async function main() {
     mode,
     stateDbPath,
     legacyStateDir,
+    syncEngineMode,
     authEnabled: Boolean(authToken),
   });
 
