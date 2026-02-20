@@ -125,7 +125,7 @@ import { PersistenceInitializationError } from "./persistence/errors";
 import { runPersistenceMigrations } from "./persistence/migrator";
 import { runWithSqlClient } from "./persistence/runtime";
 import { openPersistenceSqliteDatabase } from "./persistence/sqliteLayer";
-import type { SqliteDatabase } from "./sqliteAdapter";
+import type { SqliteDatabase } from "./persistence/sqliteAdapter";
 
 const METADATA_KEY_PROJECTS_JSON_IMPORTED = "migration.projects_json_imported";
 const METADATA_KEY_APP_SETTINGS = "app.settings.v1";

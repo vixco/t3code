@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
-import { PersistenceInitializationError } from "./persistence/errors";
-import { applyStateDbPragmas, runStateMigrations } from "./stateMigrations";
+import { PersistenceInitializationError } from "./errors";
+import { applyStateDbPragmas, runPersistenceMigrations } from "./migrator";
 import type { SqliteDatabase, SqliteStatement } from "./sqliteAdapter";
 
 class MockStatement implements SqliteStatement {
@@ -32,7 +32,7 @@ class MockSqliteDatabase implements SqliteDatabase {
   }
 }
 
-describe("stateMigrations", () => {
+describe("persistence migrator", () => {
   test("applies sqlite pragmas in order", () => {
     const db = new MockSqliteDatabase();
     applyStateDbPragmas(db);
@@ -46,7 +46,7 @@ describe("stateMigrations", () => {
 
   test("throws when database adapter is not Effect-backed", () => {
     const db = new MockSqliteDatabase();
-    expect(() => runStateMigrations(db)).toThrow(PersistenceInitializationError);
+    expect(() => runPersistenceMigrations(db)).toThrow(PersistenceInitializationError);
     expect(db.statements).toEqual([
       "PRAGMA journal_mode=WAL;",
       "PRAGMA synchronous=FULL;",

@@ -1,7 +1,7 @@
 import type * as Effect from "effect/Effect";
 import type * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import type { EffectSqliteDatabaseAdapter, SqliteDatabase } from "../sqliteAdapter";
+import type { EffectSqliteDatabaseAdapter, SqliteDatabase } from "./sqliteAdapter";
 import { PersistenceInitializationError } from "./errors";
 
 function isEffectSqliteDatabase(db: SqliteDatabase): db is EffectSqliteDatabaseAdapter {
