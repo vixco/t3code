@@ -46,6 +46,10 @@ export const WS_METHODS = {
   // Server meta
   serverGetConfig: "server.getConfig",
   serverUpsertKeybinding: "server.upsertKeybinding",
+
+  // Core event-sourced views
+  coreGetSnapshot: "core.getSnapshot",
+  coreDispatch: "core.dispatch",
 } as const;
 
 // ── Push Event Channels ──────────────────────────────────────────────
@@ -54,6 +58,7 @@ export const WS_CHANNELS = {
   providerEvent: "providers.event",
   terminalEvent: "terminal.event",
   serverWelcome: "server.welcome",
+  coreViewDelta: "core.viewDelta",
 } as const;
 
 // ── Client → Server (request) ────────────────────────────────────────

@@ -1709,6 +1709,18 @@ export default function ChatView({ threadId }: ChatViewProps) {
           newBranch,
         });
         sessionCwd = result.worktree.path;
+        void api.core.dispatch({
+          command: {
+            kind: "SetThreadBranch",
+            commandId: crypto.randomUUID(),
+            issuedAt: new Date().toISOString(),
+            payload: {
+              threadId: activeThread.id,
+              branch: result.worktree.branch,
+              worktreePath: result.worktree.path,
+            },
+          },
+        });
         dispatch({
           type: "SET_THREAD_BRANCH",
           threadId: activeThread.id,
@@ -1763,6 +1775,19 @@ export default function ChatView({ threadId }: ChatViewProps) {
       id: crypto.randomUUID(),
       text: trimmed,
       ...(messageAttachments.length > 0 ? { attachments: messageAttachments } : {}),
+    });
+    void api.core.dispatch({
+      command: {
+        kind: "AppendUserMessage",
+        commandId: crypto.randomUUID(),
+        issuedAt: new Date().toISOString(),
+        payload: {
+          threadId: activeThread.id,
+          messageId: crypto.randomUUID(),
+          text: trimmed,
+          createdAt: new Date().toISOString(),
+        },
+      },
     });
     const previousMessages = activeThread.messages;
     promptRef.current = "";

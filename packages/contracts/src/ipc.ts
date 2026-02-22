@@ -1,5 +1,12 @@
 import type { AgentConfig, AgentExit, OutputChunk } from "./agent";
 import type {
+  CoreDispatchInput,
+  CoreDispatchResult,
+  CoreGetSnapshotInput,
+  CoreReadModelSnapshot,
+  CoreViewDelta,
+} from "./core";
+import type {
   GitCheckoutInput,
   GitCreateBranchInput,
   GitCreateWorktreeInput,
@@ -139,5 +146,10 @@ export interface NativeApi {
   server: {
     getConfig: () => Promise<ServerConfig>;
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
+  };
+  core: {
+    getSnapshot: (input?: CoreGetSnapshotInput) => Promise<CoreReadModelSnapshot>;
+    dispatch: (input: CoreDispatchInput) => Promise<CoreDispatchResult>;
+    onViewDelta: (callback: (delta: CoreViewDelta) => void) => () => void;
   };
 }

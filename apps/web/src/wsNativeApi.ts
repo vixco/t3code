@@ -149,6 +149,12 @@ export function createWsNativeApi(): NativeApi {
       getConfig: () => transport.request(WS_METHODS.serverGetConfig),
       upsertKeybinding: (input) => transport.request(WS_METHODS.serverUpsertKeybinding, input),
     },
+    core: {
+      getSnapshot: (input) => transport.request(WS_METHODS.coreGetSnapshot, input),
+      dispatch: (input) => transport.request(WS_METHODS.coreDispatch, input),
+      onViewDelta: (callback) =>
+        transport.subscribe(WS_CHANNELS.coreViewDelta, callback as (data: unknown) => void),
+    },
   };
 
   instance = { api, transport };

@@ -152,6 +152,20 @@ export default function Sidebar() {
         branch: options?.branch ?? null,
         worktreePath: options?.worktreePath ?? null,
       });
+      void api?.core.dispatch({
+        command: {
+          kind: "CreateThread",
+          commandId: crypto.randomUUID(),
+          issuedAt: new Date().toISOString(),
+          payload: {
+            id: thread.id,
+            projectId: thread.projectId,
+            title: thread.title,
+            model: thread.model,
+            createdAt: thread.createdAt,
+          },
+        },
+      });
       dispatch({
         type: "ADD_THREAD",
         thread,
@@ -228,6 +242,19 @@ export default function Sidebar() {
             expanded: true,
             scripts: [],
           };
+          await api?.core.dispatch({
+            command: {
+              kind: "CreateProject",
+              commandId: crypto.randomUUID(),
+              issuedAt: new Date().toISOString(),
+              payload: {
+                id: project.id,
+                name: project.name,
+                cwd: project.cwd,
+                model: project.model,
+              },
+            },
+          });
           dispatch({ type: "ADD_PROJECT", project });
           handleNewThread(project.id);
         }

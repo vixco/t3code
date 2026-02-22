@@ -126,7 +126,6 @@ function EventRouter() {
   const api = useNativeApi();
   const { dispatch } = useStore();
   const queryClient = useQueryClient();
-  const activeAssistantItemRef = useRef<string | null>(null);
   const activeThreadId = useParams({
     strict: false,
     select: (params) => params.threadId,
@@ -134,30 +133,27 @@ function EventRouter() {
 
   useEffect(() => {
     if (!api) return;
-    return api.providers.onEvent((event) => {
-      if (event.method === "turn/completed") {
+    let cancelled = false;
+    void api.core
+      .getSnapshot()
+      .then((snapshot) => {
+        if (cancelled) return;
+        dispatch({ type: "APPLY_CORE_SNAPSHOT", snapshot });
+      })
+      .catch(() => {
+        // Keep existing UI state if snapshot bootstrap fails.
+      });
+    const unsubscribeCore = api.core.onViewDelta((delta) => {
+      dispatch({ type: "APPLY_CORE_DELTA", delta });
+      if (delta.kind === "gitStatusUpsert") {
         void invalidateGitQueries(queryClient);
       }
-      if (event.method === "checkpoint/captured") {
-        const payload = event.payload as { turnCount?: number } | undefined;
-        const turnCount = payload?.turnCount;
-        void queryClient.invalidateQueries({
-          queryKey: ["providers", "checkpointDiff"] as const,
-          predicate: (query) => {
-            if (typeof turnCount !== "number") return true;
-            return query.queryKey[5] === turnCount;
-          },
-        });
-      }
-      if (!activeThreadId) return;
-      dispatch({
-        type: "APPLY_EVENT",
-        event,
-        activeAssistantItemRef,
-        activeThreadId,
-      });
     });
-  }, [activeThreadId, api, dispatch, queryClient]);
+    return () => {
+      cancelled = true;
+      unsubscribeCore();
+    };
+  }, [api, dispatch, queryClient]);
 
   useEffect(() => {
     if (!activeThreadId) return;
@@ -167,16 +163,6 @@ function EventRouter() {
       visitedAt: new Date().toISOString(),
     });
   }, [activeThreadId, dispatch]);
-
-  useEffect(() => {
-    if (!api) return;
-    return api.terminal.onEvent((event) => {
-      dispatch({
-        type: "APPLY_TERMINAL_EVENT",
-        event,
-      });
-    });
-  }, [api, dispatch]);
 
   return null;
 }

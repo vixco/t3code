@@ -7,8 +7,13 @@ import type { Duplex } from "node:stream";
 
 import {
   EDITORS,
+  coreDispatchInputSchema,
+  coreGetSnapshotInputSchema,
+  gitStatusResultSchema,
   WS_CHANNELS,
   WS_METHODS,
+  type CoreDispatchInput,
+  type CoreViewDelta,
   type TerminalEvent,
   type WsPush,
   type WsRequest,
@@ -33,6 +38,8 @@ import {
 import { TerminalManager } from "./terminalManager";
 import { loadResolvedKeybindingsConfig, upsertKeybindingRule } from "./keybindings";
 import { searchWorkspaceEntries } from "./workspaceEntries";
+import { CoreEngine } from "./effect/coreEngine";
+import { SqliteEventStore } from "./effect/eventStore";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -53,6 +60,7 @@ export interface ServerOptions {
   port: number;
   host?: string | undefined;
   cwd: string;
+  stateDir?: string | undefined;
   staticDir?: string | undefined;
   devUrl?: string | undefined;
   logWebSocketEvents?: boolean | undefined;
@@ -75,6 +83,7 @@ export function createServer(options: ServerOptions) {
     port,
     host,
     cwd,
+    stateDir,
     staticDir,
     devUrl,
     logWebSocketEvents: explicitLogWsEvents,
@@ -88,6 +97,24 @@ export function createServer(options: ServerOptions) {
   const projectRegistry =
     providedRegistry ?? new ProjectRegistry(path.join(os.homedir(), ".t3", "userdata"));
   const gitManager = providedGitManager ?? new GitManager();
+  const eventStore = new SqliteEventStore(
+    path.join(stateDir ?? path.join(os.homedir(), ".t3", "userdata"), "event-core.sqlite"),
+  );
+  const coreEngine = new CoreEngine({
+    eventStore,
+    probeGitStatus: async (probeCwd) => {
+      const status = await gitManager.status({ cwd: probeCwd });
+      const parsed = gitStatusResultSchema.parse(status);
+      return {
+        cwd: probeCwd,
+        branch: parsed.branch,
+        hasWorkingTreeChanges: parsed.hasWorkingTreeChanges,
+        aheadCount: parsed.aheadCount,
+        behindCount: parsed.behindCount,
+        observedAt: new Date().toISOString(),
+      };
+    },
+  });
   const clients = new Set<WebSocket>();
   const logger = createLogger("ws");
   const logWebSocketEvents =
@@ -103,13 +130,7 @@ export function createServer(options: ServerOptions) {
     });
   }
 
-  // Forward provider events to all connected WebSocket clients
-  providerManager.on("event", (event) => {
-    const push: WsPush = {
-      type: "push",
-      channel: WS_CHANNELS.providerEvent,
-      data: event,
-    };
+  function broadcastPush(push: WsPush): void {
     const message = JSON.stringify(push);
     let recipients = 0;
     for (const client of clients) {
@@ -119,6 +140,36 @@ export function createServer(options: ServerOptions) {
       }
     }
     logOutgoingPush(push, recipients);
+  }
+
+  // Forward provider events to all connected WebSocket clients
+  providerManager.on("event", (event) => {
+    const push: WsPush = {
+      type: "push",
+      channel: WS_CHANNELS.providerEvent,
+      data: event,
+    };
+    broadcastPush(push);
+    if (
+      event.threadId &&
+      typeof event.message === "string" &&
+      event.message.trim().length > 0 &&
+      (event.kind === "notification" || event.method === "turn/completed")
+    ) {
+      void coreEngine.dispatch({
+        command: {
+          kind: "AppendAssistantMessage",
+          commandId: crypto.randomUUID(),
+          issuedAt: new Date().toISOString(),
+          payload: {
+            threadId: event.threadId,
+            messageId: event.itemId ?? crypto.randomUUID(),
+            text: event.message,
+            createdAt: event.createdAt,
+          },
+        },
+      });
+    }
   });
 
   const onTerminalEvent = (event: TerminalEvent) => {
@@ -127,17 +178,11 @@ export function createServer(options: ServerOptions) {
       channel: WS_CHANNELS.terminalEvent,
       data: event,
     };
-    const message = JSON.stringify(push);
-    let recipients = 0;
-    for (const client of clients) {
-      if (client.readyState === client.OPEN) {
-        client.send(message);
-        recipients += 1;
-      }
-    }
-    logOutgoingPush(push, recipients);
+    broadcastPush(push);
   };
   terminalManager.on("event", onTerminalEvent);
+
+  let unsubscribeCoreDelta: (() => void) | null = null;
 
   // HTTP server — serves static files or redirects to Vite dev server
   const httpServer = http.createServer((req, res) => {
@@ -323,7 +368,24 @@ export function createServer(options: ServerOptions) {
         return projectRegistry.list();
 
       case WS_METHODS.projectsAdd:
-        return projectRegistry.add(request.params as never);
+        return (async () => {
+          const result = projectRegistry.add(request.params as never);
+          const command: CoreDispatchInput = {
+            command: {
+              kind: "CreateProject",
+              commandId: crypto.randomUUID(),
+              issuedAt: new Date().toISOString(),
+              payload: {
+                id: result.project.id,
+                name: result.project.name,
+                cwd: result.project.cwd,
+                model: "gpt-5",
+              },
+            },
+          };
+          await coreEngine.dispatch(command);
+          return result;
+        })();
 
       case WS_METHODS.projectsRemove:
         projectRegistry.remove(request.params as never);
@@ -382,27 +444,128 @@ export function createServer(options: ServerOptions) {
         return gitManager.status(request.params as never);
 
       case WS_METHODS.gitPull:
-        return pullGitBranch(request.params as never);
+        return pullGitBranch(request.params as never).then(async (result) => {
+          const input = request.params as { cwd: string };
+          await coreEngine.dispatch({
+            command: {
+              kind: "GitWorkflow",
+              commandId: crypto.randomUUID(),
+              issuedAt: new Date().toISOString(),
+              payload: {
+                workflow: "stacked_action",
+                cwd: input.cwd,
+                metadata: { source: "git.pull", result },
+              },
+            },
+          });
+          return result;
+        });
 
       case WS_METHODS.gitRunStackedAction:
-        return gitManager.runStackedAction(request.params as never);
+        return gitManager.runStackedAction(request.params as never).then(async (result) => {
+          const input = request.params as { cwd: string; action: string };
+          await coreEngine.dispatch({
+            command: {
+              kind: "GitWorkflow",
+              commandId: crypto.randomUUID(),
+              issuedAt: new Date().toISOString(),
+              payload: {
+                workflow: "stacked_action",
+                cwd: input.cwd,
+                metadata: { source: "git.runStackedAction", action: input.action, result },
+              },
+            },
+          });
+          return result;
+        });
       case WS_METHODS.gitListBranches:
         return listGitBranches(request.params as never);
 
       case WS_METHODS.gitCreateWorktree:
-        return createGitWorktree(request.params as never);
+        return createGitWorktree(request.params as never).then(async (result) => {
+          const input = request.params as { cwd: string; branch: string; newBranch: string };
+          await coreEngine.dispatch({
+            command: {
+              kind: "GitWorkflow",
+              commandId: crypto.randomUUID(),
+              issuedAt: new Date().toISOString(),
+              payload: {
+                workflow: "create_worktree",
+                cwd: input.cwd,
+                metadata: {
+                  branch: input.branch,
+                  newBranch: input.newBranch,
+                  result,
+                },
+              },
+            },
+          });
+          return result;
+        });
 
       case WS_METHODS.gitRemoveWorktree:
-        return removeGitWorktree(request.params as never);
+        return removeGitWorktree(request.params as never).then(async () => {
+          const input = request.params as { cwd: string; path: string };
+          await coreEngine.dispatch({
+            command: {
+              kind: "GitWorkflow",
+              commandId: crypto.randomUUID(),
+              issuedAt: new Date().toISOString(),
+              payload: {
+                workflow: "remove_worktree",
+                cwd: input.cwd,
+                metadata: { path: input.path },
+              },
+            },
+          });
+        });
 
       case WS_METHODS.gitCreateBranch:
-        return createGitBranch(request.params as never);
+        return createGitBranch(request.params as never).then(async () => {
+          const input = request.params as { cwd: string; branch: string };
+          await coreEngine.dispatch({
+            command: {
+              kind: "GitWorkflow",
+              commandId: crypto.randomUUID(),
+              issuedAt: new Date().toISOString(),
+              payload: {
+                workflow: "create_branch",
+                cwd: input.cwd,
+                metadata: { branch: input.branch },
+              },
+            },
+          });
+        });
 
       case WS_METHODS.gitCheckout:
-        return checkoutGitBranch(request.params as never);
+        return checkoutGitBranch(request.params as never).then(async () => {
+          const input = request.params as { cwd: string; branch: string };
+          await coreEngine.dispatch({
+            command: {
+              kind: "GitWorkflow",
+              commandId: crypto.randomUUID(),
+              issuedAt: new Date().toISOString(),
+              payload: {
+                workflow: "checkout",
+                cwd: input.cwd,
+                metadata: { branch: input.branch },
+              },
+            },
+          });
+        });
 
       case WS_METHODS.gitInit:
-        return initGitRepo(request.params as never);
+        return initGitRepo(request.params as never).then(async () => {
+          const input = request.params as { cwd: string };
+          await coreEngine.dispatch({
+            command: {
+              kind: "GitProbe",
+              commandId: crypto.randomUUID(),
+              issuedAt: new Date().toISOString(),
+              payload: { cwd: input.cwd },
+            },
+          });
+        });
 
       case WS_METHODS.terminalOpen:
         return terminalManager.open(request.params as never);
@@ -438,35 +601,61 @@ export function createServer(options: ServerOptions) {
           keybindings: keybindingsConfig,
         };
 
+      case WS_METHODS.coreGetSnapshot:
+        coreGetSnapshotInputSchema.parse(request.params ?? {});
+        return coreEngine.getSnapshot();
+
+      case WS_METHODS.coreDispatch: {
+        const input = coreDispatchInputSchema.parse(request.params);
+        return coreEngine.dispatch(input);
+      }
+
       default:
         throw new Error(`Unknown method: ${request.method}`);
     }
   }
 
   function start() {
-    return new Promise<void>((resolve, reject) => {
-      const onError = (error: Error) => {
-        httpServer.off("error", onError);
-        reject(error);
-      };
-      httpServer.once("error", onError);
-      const onListening = () => {
-        httpServer.off("error", onError);
-        resolve();
-      };
-      if (host) {
-        httpServer.listen(port, host, onListening);
-        return;
-      }
-      httpServer.listen(port, onListening);
-    });
+    return coreEngine.start().then(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          const onError = (error: Error) => {
+            httpServer.off("error", onError);
+            reject(error);
+          };
+          httpServer.once("error", onError);
+          const onListening = () => {
+            httpServer.off("error", onError);
+            unsubscribeCoreDelta = coreEngine.subscribe((delta: CoreViewDelta) => {
+              const push: WsPush = {
+                type: "push",
+                channel: WS_CHANNELS.coreViewDelta,
+                data: delta,
+              };
+              broadcastPush(push);
+            });
+            resolve();
+          };
+          if (host) {
+            httpServer.listen(port, host, onListening);
+            return;
+          }
+          httpServer.listen(port, onListening);
+        }),
+    );
   }
 
   async function stop(): Promise<void> {
+    if (unsubscribeCoreDelta) {
+      unsubscribeCoreDelta();
+      unsubscribeCoreDelta = null;
+    }
     terminalManager.off("event", onTerminalEvent);
     providerManager.stopAll();
     providerManager.dispose();
     terminalManager.dispose();
+    await coreEngine.stop();
+    eventStore.close();
 
     for (const client of clients) {
       client.close();
