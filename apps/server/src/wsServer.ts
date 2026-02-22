@@ -151,25 +151,32 @@ export function createServer(options: ServerOptions) {
       data: event,
     };
     broadcastPush(push);
-    if (
-      event.threadId &&
-      typeof event.message === "string" &&
-      event.message.trim().length > 0 &&
-      (event.kind === "notification" || event.method === "turn/completed")
-    ) {
-      void coreEngine.dispatch({
-        command: {
-          kind: "AppendAssistantMessage",
-          commandId: crypto.randomUUID(),
-          issuedAt: new Date().toISOString(),
-          payload: {
-            threadId: event.threadId,
-            messageId: event.itemId ?? crypto.randomUUID(),
-            text: event.message,
-            createdAt: event.createdAt,
-          },
-        },
-      });
+    if (event.threadId && event.kind === "notification" && event.method === "item/completed") {
+      const pl = event.payload as Record<string, unknown> | undefined;
+      const item = pl && typeof pl === "object" ? (pl as Record<string, unknown>).item : undefined;
+      if (item && typeof item === "object") {
+        const rec = item as Record<string, unknown>;
+        if (rec.type === "agentMessage" && typeof rec.text === "string") {
+          const text = rec.text as string;
+          if (text.trim().length > 0) {
+            const messageId =
+              typeof rec.id === "string" ? rec.id : (event.itemId ?? crypto.randomUUID());
+            void coreEngine.dispatch({
+              command: {
+                kind: "AppendAssistantMessage",
+                commandId: crypto.randomUUID(),
+                issuedAt: new Date().toISOString(),
+                payload: {
+                  threadId: event.threadId,
+                  messageId,
+                  text,
+                  createdAt: event.createdAt,
+                },
+              },
+            });
+          }
+        }
+      }
     }
   });
 
