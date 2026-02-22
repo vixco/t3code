@@ -153,6 +153,7 @@ function AutoProjectBootstrap() {
     // Browser mode bootstraps from server welcome.
     // Electron bootstraps from persisted projects via DesktopProjectBootstrap.
     if (isElectron) return;
+    if (!state.threadsHydrated) return;
 
     return onServerWelcome((payload) => {
       if (bootstrappedRef.current) return;
@@ -161,7 +162,6 @@ function AutoProjectBootstrap() {
       const existing = state.projects.find((project) => project.cwd === payload.cwd);
       if (existing) {
         bootstrappedRef.current = true;
-        dispatch({ type: "SET_THREADS_HYDRATED", hydrated: true });
         return;
       }
 
@@ -194,7 +194,7 @@ function AutoProjectBootstrap() {
         )
         .catch(() => undefined);
     });
-  }, [api, state.projects, dispatch]);
+  }, [api, state.projects, state.threadsHydrated, dispatch]);
 
   return null;
 }

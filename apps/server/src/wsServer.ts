@@ -176,6 +176,8 @@ export function createServer(options: ServerOptions) {
     });
   }
 
+  const streamingTextBuffers = new Map<string, string>();
+
   // Forward provider events to all connected WebSocket clients
   providerManager.on("event", (event) => {
     void (async () => {
@@ -197,7 +199,7 @@ export function createServer(options: ServerOptions) {
             sessionId: event.sessionId,
             provider: event.provider,
             status: event.method === "turn/started" ? "running" : "ready",
-            threadId: thread.id,
+            threadId: event.threadId ?? thread.session?.threadId ?? thread.id,
             activeTurnId: event.method === "turn/started" ? (event.turnId ?? null) : null,
             createdAt: thread.session?.createdAt ?? now,
             updatedAt: now,
@@ -208,7 +210,9 @@ export function createServer(options: ServerOptions) {
       }
       if (event.textDelta && event.textDelta.length > 0) {
         const assistantMessageId = `assistant:${event.turnId ?? event.itemId ?? event.sessionId}`;
-        await orchestrationEngine.dispatch({
+        const current = streamingTextBuffers.get(assistantMessageId) ?? "";
+        streamingTextBuffers.set(assistantMessageId, current + event.textDelta);
+        await orchestrationEngine.dispatchVolatile({
           type: "message.send",
           commandId: crypto.randomUUID(),
           threadId: thread.id,
@@ -221,13 +225,15 @@ export function createServer(options: ServerOptions) {
       }
       if (event.method === "turn/completed") {
         const assistantMessageId = `assistant:${event.turnId ?? event.itemId ?? event.sessionId}`;
+        const accumulatedText = streamingTextBuffers.get(assistantMessageId) ?? "";
+        streamingTextBuffers.delete(assistantMessageId);
         await orchestrationEngine.dispatch({
           type: "message.send",
           commandId: crypto.randomUUID(),
           threadId: thread.id,
           messageId: assistantMessageId,
           role: "assistant",
-          text: "",
+          text: accumulatedText,
           streaming: false,
           createdAt: now,
         });
@@ -261,7 +267,7 @@ export function createServer(options: ServerOptions) {
             sessionId: event.sessionId,
             provider: event.provider,
             status: "error",
-            threadId: thread.id,
+            threadId: event.threadId ?? thread.session?.threadId ?? thread.id,
             activeTurnId: event.turnId ?? null,
             createdAt: thread.session?.createdAt ?? now,
             updatedAt: now,

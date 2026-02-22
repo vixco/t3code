@@ -181,7 +181,7 @@ export function reduceEvent(
           (asString(sessionPayload.status) as OrchestrationSession["status"] | null) ?? "connecting",
         provider:
           (asString(sessionPayload.provider) as OrchestrationSession["provider"] | null) ?? "codex",
-        threadId,
+        threadId: asString(sessionPayload.threadId) ?? threadId,
         activeTurnId: asString(sessionPayload.activeTurnId),
         createdAt: asString(sessionPayload.createdAt) ?? event.occurredAt,
         updatedAt: asString(sessionPayload.updatedAt) ?? event.occurredAt,

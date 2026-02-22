@@ -25,6 +25,7 @@ import { UI_ENTITY_CONTRACTS } from "./uiContractInventory";
 type CommandEnvelope = {
   command: OrchestrationCommand;
   result: Deferred.Deferred<{ sequence: number }, Error>;
+  volatile?: boolean;
 };
 
 function asError(error: unknown, fallbackMessage: string): Error {
@@ -225,21 +226,32 @@ export class OrchestrationEngine {
   private processEnvelope(envelope: CommandEnvelope): Effect.Effect<void> {
     return Effect.gen(this, function* () {
       const eventBase = mapCommandToEvent(envelope.command);
-      const savedEvent = yield* this.eventStore.append(eventBase);
+
+      let savedEvent: OrchestrationEvent;
+      if (envelope.volatile) {
+        savedEvent = { ...eventBase, sequence: this.readModel.sequence };
+      } else {
+        savedEvent = yield* this.eventStore.append(eventBase);
+      }
 
       yield* Effect.sync(() => {
         this.readModel = reduceEvent(this.readModel, savedEvent);
       });
 
       const snapshot = this.readModel;
-      yield* Effect.all([
-        PubSub.publish(this.eventPubSub, savedEvent),
-        PubSub.publish(this.readModelPubSub, snapshot),
-      ]);
+
+      if (!envelope.volatile) {
+        yield* Effect.all([
+          PubSub.publish(this.eventPubSub, savedEvent),
+          PubSub.publish(this.readModelPubSub, snapshot),
+        ]);
+      }
 
       yield* Effect.sync(() => {
-        for (const listener of this.domainEventListeners) {
-          listener(savedEvent);
+        if (!envelope.volatile) {
+          for (const listener of this.domainEventListeners) {
+            listener(savedEvent);
+          }
         }
         for (const listener of this.readModelListeners) {
           listener(snapshot);
@@ -325,6 +337,17 @@ export class OrchestrationEngine {
     const program = Effect.gen(this, function* () {
       const result = yield* Deferred.make<{ sequence: number }, Error>();
       yield* Queue.offer(this.commandQueue, { command, result });
+      return yield* Deferred.await(result);
+    });
+    return Runtime.runPromise(this.runtime)(program).catch((error) => {
+      throw asError(error, "Queue offer failed");
+    });
+  }
+
+  async dispatchVolatile(command: OrchestrationCommand): Promise<{ sequence: number }> {
+    const program = Effect.gen(this, function* () {
+      const result = yield* Deferred.make<{ sequence: number }, Error>();
+      yield* Queue.offer(this.commandQueue, { command, result, volatile: true });
       return yield* Deferred.await(result);
     });
     return Runtime.runPromise(this.runtime)(program).catch((error) => {

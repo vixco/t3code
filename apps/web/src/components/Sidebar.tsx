@@ -395,14 +395,14 @@ export default function Sidebar() {
           });
           return;
         }
+      } else {
+        await api.orchestration.dispatchCommand({
+          type: "project.delete",
+          commandId: crypto.randomUUID(),
+          projectId,
+          createdAt: new Date().toISOString(),
+        });
       }
-
-      await api.orchestration.dispatchCommand({
-        type: "project.delete",
-        commandId: crypto.randomUUID(),
-        projectId,
-        createdAt: new Date().toISOString(),
-      });
     },
     [api, dispatch, state.projects, state.threads],
   );
