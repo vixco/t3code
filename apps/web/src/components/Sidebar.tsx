@@ -10,7 +10,7 @@ import { DEFAULT_MODEL } from "../model-logic";
 import { derivePendingApprovals } from "../session-logic";
 import { useStore } from "../store";
 import { isChatNewLocalShortcut, isChatNewShortcut } from "../keybindings";
-import { type Project, type Thread } from "../types";
+import { type Thread } from "../types";
 import { useNativeApi } from "../hooks/useNativeApi";
 import { gitRemoveWorktreeMutationOptions } from "../lib/gitReactQuery";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
@@ -140,7 +140,7 @@ export default function Sidebar() {
   }, [state.threads]);
 
   const handleNewThread = useCallback(
-    (
+    async (
       projectId: string,
       options?: {
         branch?: string | null;
@@ -152,16 +152,21 @@ export default function Sidebar() {
         branch: options?.branch ?? null,
         worktreePath: options?.worktreePath ?? null,
       });
-      dispatch({
-        type: "ADD_THREAD",
-        thread,
+      await api?.state.createThread({
+        id: thread.id,
+        projectId: thread.projectId,
+        title: thread.title,
+        model: thread.model,
+        createdAt: thread.createdAt,
+        branch: thread.branch,
+        worktreePath: thread.worktreePath,
       });
       void navigate({
         to: "/$threadId",
         params: { threadId: thread.id },
       });
     },
-    [dispatch, navigate, state.projects],
+    [api, navigate, state.projects],
   );
 
   const focusMostRecentThreadForProject = useCallback(
@@ -192,23 +197,11 @@ export default function Sidebar() {
       try {
         if (isElectron && api) {
           const result = await api.projects.add({ cwd });
-          const project: Project = {
-            id: result.project.id,
-            name: result.project.name,
-            cwd: result.project.cwd,
-            model: DEFAULT_MODEL,
-            expanded: true,
-            scripts: result.project.scripts,
-          };
-          const existingById = state.projects.find((p) => p.id === project.id);
-          const existingByCwd = state.projects.find((p) => p.cwd === project.cwd);
-          if (!existingById && !existingByCwd) {
-            dispatch({ type: "ADD_PROJECT", project });
-          }
-          const resolvedProjectId = existingByCwd?.id ?? project.id;
+          const existingByCwd = state.projects.find((p) => p.cwd === result.project.cwd);
+          const resolvedProjectId = existingByCwd?.id ?? result.project.id;
 
           if (result.created) {
-            handleNewThread(resolvedProjectId);
+            await handleNewThread(resolvedProjectId);
           } else {
             focusMostRecentThreadForProject(resolvedProjectId);
           }
@@ -218,18 +211,9 @@ export default function Sidebar() {
             focusMostRecentThreadForProject(existing.id);
             return;
           }
-
-          const name = inferProjectName(cwd);
-          const project: Project = {
-            id: crypto.randomUUID(),
-            name,
-            cwd,
-            model: DEFAULT_MODEL,
-            expanded: true,
-            scripts: [],
-          };
-          dispatch({ type: "ADD_PROJECT", project });
-          handleNewThread(project.id);
+          if (!api) return;
+          const result = await api.projects.add({ cwd });
+          await handleNewThread(result.project.id);
         }
       } finally {
         setIsAddingProject(false);
@@ -321,7 +305,7 @@ export default function Sidebar() {
 
       const shouldNavigateToFallback = routeThreadId === threadId;
       const fallbackThreadId = state.threads.find((entry) => entry.id !== threadId)?.id ?? null;
-      dispatch({ type: "DELETE_THREAD", threadId });
+      await api.state.deleteThread({ id: threadId });
       if (shouldNavigateToFallback) {
         if (fallbackThreadId) {
           void navigate({
@@ -411,7 +395,6 @@ export default function Sidebar() {
         }
       }
 
-      dispatch({ type: "DELETE_PROJECT", projectId });
     },
     [api, dispatch, state.projects, state.threads],
   );
@@ -472,7 +455,7 @@ export default function Sidebar() {
               return;
             }
             const firstProject = state.projects[0];
-            if (firstProject) handleNewThread(firstProject.id);
+            if (firstProject) void handleNewThread(firstProject.id);
           }}
         >
           <span className="text-foreground">+</span>
@@ -587,7 +570,9 @@ export default function Sidebar() {
                   <button
                     type="button"
                     className="flex w-full items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground/60 transition-colors duration-150 hover:text-muted-foreground/80"
-                    onClick={() => handleNewThread(project.id)}
+                    onClick={() => {
+                      void handleNewThread(project.id);
+                    }}
                   >
                     <span>+</span> New thread
                   </button>

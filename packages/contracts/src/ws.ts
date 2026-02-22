@@ -46,6 +46,13 @@ export const WS_METHODS = {
   // Server meta
   serverGetConfig: "server.getConfig",
   serverUpsertKeybinding: "server.upsertKeybinding",
+
+  // Server-authoritative state
+  stateGetSnapshot: "state.getSnapshot",
+  stateCreateThread: "state.createThread",
+  stateDeleteThread: "state.deleteThread",
+  stateMarkThreadVisited: "state.markThreadVisited",
+  stateSetRuntimeMode: "state.setRuntimeMode",
 } as const;
 
 // ── Push Event Channels ──────────────────────────────────────────────
@@ -54,6 +61,7 @@ export const WS_CHANNELS = {
   providerEvent: "providers.event",
   terminalEvent: "terminal.event",
   serverWelcome: "server.welcome",
+  stateUpdated: "state.updated",
 } as const;
 
 // ── Client → Server (request) ────────────────────────────────────────

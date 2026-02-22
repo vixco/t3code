@@ -42,6 +42,7 @@ import type {
   ProjectUpdateScriptsResult,
 } from "./project";
 import type { ServerConfig } from "./server";
+type RuntimeMode = "approval-required" | "full-access";
 import type {
   TerminalClearInput,
   TerminalCloseInput,
@@ -139,5 +140,20 @@ export interface NativeApi {
   server: {
     getConfig: () => Promise<ServerConfig>;
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
+  };
+  state: {
+    getSnapshot: () => Promise<unknown>;
+    createThread: (input: {
+      id: string;
+      projectId: string;
+      title: string;
+      model: string;
+      createdAt: string;
+      branch: string | null;
+      worktreePath: string | null;
+    }) => Promise<unknown>;
+    deleteThread: (input: { id: string }) => Promise<unknown>;
+    markThreadVisited: (input: { threadId: string; visitedAt?: string }) => Promise<unknown>;
+    setRuntimeMode: (input: { mode: RuntimeMode }) => Promise<unknown>;
   };
 }

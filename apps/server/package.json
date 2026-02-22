@@ -17,6 +17,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@t3tools/core": "workspace:*",
+    "@t3tools/infra-sqlite": "workspace:*",
+    "effect": "^3.18.4",
     "node-pty": "^1.1.0",
     "open": "^10.1.0",
     "ws": "^8.18.0"

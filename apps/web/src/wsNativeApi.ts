@@ -5,7 +5,9 @@ import { WsTransport } from "./wsTransport";
 
 let instance: { api: NativeApi; transport: WsTransport } | null = null;
 const welcomeListeners = new Set<(payload: WsWelcomePayload) => void>();
+const stateListeners = new Set<(state: unknown) => void>();
 let lastWelcome: WsWelcomePayload | null = null;
+let lastStateSnapshot: unknown = null;
 
 /**
  * Subscribe to the server welcome message. If a welcome was already received
@@ -29,6 +31,20 @@ export function onServerWelcome(listener: (payload: WsWelcomePayload) => void): 
   };
 }
 
+export function onServerStateUpdate(listener: (state: unknown) => void): () => void {
+  stateListeners.add(listener);
+  if (lastStateSnapshot) {
+    try {
+      listener(lastStateSnapshot);
+    } catch {
+      // Swallow listener errors
+    }
+  }
+  return () => {
+    stateListeners.delete(listener);
+  };
+}
+
 export function createWsNativeApi(): NativeApi {
   if (instance) return instance.api;
 
@@ -42,6 +58,16 @@ export function createWsNativeApi(): NativeApi {
     for (const listener of welcomeListeners) {
       try {
         listener(payload);
+      } catch {
+        // Swallow listener errors
+      }
+    }
+  });
+  transport.subscribe(WS_CHANNELS.stateUpdated, (data) => {
+    lastStateSnapshot = data;
+    for (const listener of stateListeners) {
+      try {
+        listener(data);
       } catch {
         // Swallow listener errors
       }
@@ -95,8 +121,7 @@ export function createWsNativeApi(): NativeApi {
       getCheckpointDiff: (input) => transport.request(WS_METHODS.providersGetCheckpointDiff, input),
       revertToCheckpoint: (input) =>
         transport.request(WS_METHODS.providersRevertToCheckpoint, input),
-      onEvent: (callback) =>
-        transport.subscribe(WS_CHANNELS.providerEvent, callback as (data: unknown) => void),
+      onEvent: () => () => {},
     },
     projects: {
       list: () => transport.request(WS_METHODS.projectsList),
@@ -148,6 +173,13 @@ export function createWsNativeApi(): NativeApi {
     server: {
       getConfig: () => transport.request(WS_METHODS.serverGetConfig),
       upsertKeybinding: (input) => transport.request(WS_METHODS.serverUpsertKeybinding, input),
+    },
+    state: {
+      getSnapshot: () => transport.request(WS_METHODS.stateGetSnapshot),
+      createThread: (input) => transport.request(WS_METHODS.stateCreateThread, input),
+      deleteThread: (input) => transport.request(WS_METHODS.stateDeleteThread, input),
+      markThreadVisited: (input) => transport.request(WS_METHODS.stateMarkThreadVisited, input),
+      setRuntimeMode: (input) => transport.request(WS_METHODS.stateSetRuntimeMode, input),
     },
   };
 

@@ -1074,6 +1074,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     dispatch({ type: "SET_RUNTIME_MODE", mode });
     scheduleComposerFocus();
     if (!api) return;
+    await api.state.setRuntimeMode({ mode });
 
     const sessionIds = state.threads
       .map((t) => t.session)
@@ -1524,6 +1525,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       setIsConnecting(true);
       try {
         const session = await api.providers.startSession({
+          uiThreadId: activeThread.id,
           provider: "codex",
           cwd: cwdOverride ?? activeThread.worktreePath ?? activeProject.cwd,
           model: selectedModel || undefined,
@@ -1799,6 +1801,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           ).text
         : trimmed || undefined;
       await api.providers.sendTurn({
+        uiThreadId: activeThread.id,
         sessionId: sessionInfo.sessionId,
         ...(input ? { input } : {}),
         ...(turnAttachments.length > 0 ? { attachments: turnAttachments } : {}),

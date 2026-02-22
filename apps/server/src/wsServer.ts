@@ -3,6 +3,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 import type { Duplex } from "node:stream";
 
 import {
@@ -33,6 +34,7 @@ import {
 import { TerminalManager } from "./terminalManager";
 import { loadResolvedKeybindingsConfig, upsertKeybindingRule } from "./keybindings";
 import { searchWorkspaceEntries } from "./workspaceEntries";
+import { CoreRuntime } from "./coreRuntime";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -57,6 +59,7 @@ export interface ServerOptions {
   devUrl?: string | undefined;
   logWebSocketEvents?: boolean | undefined;
   projectRegistry?: ProjectRegistry | undefined;
+  stateDir?: string | undefined;
   gitManager?: GitManager | undefined;
   terminalManager?: TerminalManager | undefined;
   authToken?: string | undefined;
@@ -79,6 +82,7 @@ export function createServer(options: ServerOptions) {
     devUrl,
     logWebSocketEvents: explicitLogWsEvents,
     projectRegistry: providedRegistry,
+    stateDir,
     gitManager: providedGitManager,
     terminalManager: providedTerminalManager,
     authToken,
@@ -88,8 +92,12 @@ export function createServer(options: ServerOptions) {
   const projectRegistry =
     providedRegistry ?? new ProjectRegistry(path.join(os.homedir(), ".t3", "userdata"));
   const gitManager = providedGitManager ?? new GitManager();
+  const runtimeStateDir = stateDir ?? path.join(os.homedir(), ".t3", "userdata");
+  const coreRuntime = new CoreRuntime(runtimeStateDir);
   const clients = new Set<WebSocket>();
   const logger = createLogger("ws");
+  const segments = cwd.split(/[/\\]/).filter(Boolean);
+  const projectName = segments[segments.length - 1] ?? "project";
   const logWebSocketEvents =
     explicitLogWsEvents ?? parseBooleanEnv(process.env.T3CODE_LOG_WS_EVENTS) ?? Boolean(devUrl);
   let keybindingsConfig = loadResolvedKeybindingsConfig(logger);
@@ -103,13 +111,7 @@ export function createServer(options: ServerOptions) {
     });
   }
 
-  // Forward provider events to all connected WebSocket clients
-  providerManager.on("event", (event) => {
-    const push: WsPush = {
-      type: "push",
-      channel: WS_CHANNELS.providerEvent,
-      data: event,
-    };
+  function broadcastPush(push: WsPush): void {
     const message = JSON.stringify(push);
     let recipients = 0;
     for (const client of clients) {
@@ -119,25 +121,31 @@ export function createServer(options: ServerOptions) {
       }
     }
     logOutgoingPush(push, recipients);
-  });
+  }
 
   const onTerminalEvent = (event: TerminalEvent) => {
-    const push: WsPush = {
+    broadcastPush({
       type: "push",
       channel: WS_CHANNELS.terminalEvent,
       data: event,
-    };
-    const message = JSON.stringify(push);
-    let recipients = 0;
-    for (const client of clients) {
-      if (client.readyState === client.OPEN) {
-        client.send(message);
-        recipients += 1;
-      }
+    });
+    if (event.type === "activity" || event.type === "exited" || event.type === "error") {
+      void coreRuntime.dispatch({
+        id: crypto.randomUUID(),
+        type: "thread.setTerminalActivity",
+        issuedAt: event.createdAt,
+        payload: {
+          threadId: event.threadId,
+          terminalId: event.terminalId,
+          running: event.type === "activity" ? event.hasRunningSubprocess : false,
+        },
+      });
     }
-    logOutgoingPush(push, recipients);
   };
   terminalManager.on("event", onTerminalEvent);
+  coreRuntime.bindProviderEvents(providerManager);
+  let stateStreamStopped = false;
+  let stateStreamTask: Promise<void> | null = null;
 
   // HTTP server — serves static files or redirects to Vite dev server
   const httpServer = http.createServer((req, res) => {
@@ -235,10 +243,6 @@ export function createServer(options: ServerOptions) {
   wss.on("connection", (ws) => {
     clients.add(ws);
 
-    // Send welcome message with project info
-    const segments = cwd.split(/[/\\]/).filter(Boolean);
-    const projectName = segments[segments.length - 1] ?? "project";
-
     const welcome: WsPush = {
       type: "push",
       channel: WS_CHANNELS.serverWelcome,
@@ -289,12 +293,44 @@ export function createServer(options: ServerOptions) {
   }
 
   async function routeRequest(request: WsRequest): Promise<unknown> {
-    switch (request.method) {
-      case WS_METHODS.providersStartSession:
-        return providerManager.startSession(request.params as never);
+    const requestNow = new Date().toISOString();
+    const paramsObj = (request.params ?? {}) as Record<string, unknown>;
+    const state = await coreRuntime.state();
+    const findThreadBySessionId = (sessionId: string | undefined) =>
+      sessionId
+        ? state.threads.find((thread) => thread.session?.sessionId === sessionId)
+        : undefined;
 
-      case WS_METHODS.providersSendTurn:
+    switch (request.method) {
+      case WS_METHODS.providersStartSession: {
+        const session = await providerManager.startSession(request.params as never);
+        const uiThreadId = typeof paramsObj.uiThreadId === "string" ? paramsObj.uiThreadId : undefined;
+        if (uiThreadId) {
+          await coreRuntime.bindProviderSession(uiThreadId, session);
+        }
+        return session;
+      }
+
+      case WS_METHODS.providersSendTurn: {
+        const sessionId = typeof paramsObj.sessionId === "string" ? paramsObj.sessionId : undefined;
+        const uiThreadId = typeof paramsObj.uiThreadId === "string" ? paramsObj.uiThreadId : undefined;
+        const targetThread = uiThreadId ? state.threads.find((thread) => thread.id === uiThreadId) : findThreadBySessionId(sessionId);
+        const inputText = typeof paramsObj.input === "string" ? paramsObj.input : undefined;
+        if (targetThread && inputText && inputText.trim().length > 0) {
+          await coreRuntime.dispatch({
+            id: crypto.randomUUID(),
+            type: "thread.addUserMessage",
+            issuedAt: requestNow,
+            payload: {
+              threadId: targetThread.id,
+              messageId: crypto.randomUUID(),
+              text: inputText,
+              createdAt: requestNow,
+            },
+          });
+        }
         return providerManager.sendTurn(request.params as never);
+      }
 
       case WS_METHODS.providersInterruptTurn:
         return providerManager.interruptTurn(request.params as never);
@@ -303,7 +339,12 @@ export function createServer(options: ServerOptions) {
         return providerManager.respondToRequest(request.params as never);
 
       case WS_METHODS.providersStopSession: {
+        const sessionId = typeof paramsObj.sessionId === "string" ? paramsObj.sessionId : undefined;
+        const boundThread = findThreadBySessionId(sessionId);
         providerManager.stopSession(request.params as never);
+        if (boundThread) {
+          await coreRuntime.clearProviderSession(boundThread.id);
+        }
         return undefined;
       }
 
@@ -323,16 +364,51 @@ export function createServer(options: ServerOptions) {
         return projectRegistry.list();
 
       case WS_METHODS.projectsAdd:
-        return projectRegistry.add(request.params as never);
+        {
+          const result = projectRegistry.add(request.params as never);
+          await coreRuntime.dispatch({
+            id: crypto.randomUUID(),
+            type: "project.add",
+            issuedAt: requestNow,
+            payload: {
+              id: result.project.id,
+              name: result.project.name,
+              cwd: result.project.cwd,
+              model: "gpt-5-codex",
+              scripts: result.project.scripts,
+            },
+          });
+          return result;
+        }
 
       case WS_METHODS.projectsRemove:
+        {
+          const projectId = typeof paramsObj.id === "string" ? paramsObj.id : undefined;
+          if (projectId) {
+            await coreRuntime.dispatch({
+              id: crypto.randomUUID(),
+              type: "project.remove",
+              issuedAt: requestNow,
+              payload: { id: projectId },
+            });
+          }
         projectRegistry.remove(request.params as never);
         return undefined;
+        }
 
       case WS_METHODS.projectsSearchEntries:
         return searchWorkspaceEntries(request.params as never);
       case WS_METHODS.projectsUpdateScripts:
-        return projectRegistry.updateScripts(request.params as never);
+        {
+          const result = projectRegistry.updateScripts(request.params as never);
+          await coreRuntime.dispatch({
+            id: crypto.randomUUID(),
+            type: "project.updateScripts",
+            issuedAt: requestNow,
+            payload: { id: result.project.id, scripts: result.project.scripts },
+          });
+          return result;
+        }
 
       case WS_METHODS.shellOpenInEditor: {
         const params = request.params as {
@@ -438,6 +514,61 @@ export function createServer(options: ServerOptions) {
           keybindings: keybindingsConfig,
         };
 
+      case WS_METHODS.stateGetSnapshot:
+        return coreRuntime.state();
+
+      case WS_METHODS.stateCreateThread: {
+        const params = request.params as {
+          id: string;
+          projectId: string;
+          title: string;
+          model: string;
+          createdAt: string;
+          branch: string | null;
+          worktreePath: string | null;
+        };
+        await coreRuntime.dispatch({
+          id: crypto.randomUUID(),
+          type: "thread.create",
+          issuedAt: requestNow,
+          payload: params,
+        });
+        return coreRuntime.state();
+      }
+
+      case WS_METHODS.stateDeleteThread: {
+        const params = request.params as { id: string };
+        await coreRuntime.dispatch({
+          id: crypto.randomUUID(),
+          type: "thread.delete",
+          issuedAt: requestNow,
+          payload: params,
+        });
+        return coreRuntime.state();
+      }
+
+      case WS_METHODS.stateMarkThreadVisited: {
+        const params = request.params as { threadId: string; visitedAt?: string };
+        await coreRuntime.dispatch({
+          id: crypto.randomUUID(),
+          type: "thread.markVisited",
+          issuedAt: requestNow,
+          payload: { threadId: params.threadId, visitedAt: params.visitedAt ?? requestNow },
+        });
+        return undefined;
+      }
+
+      case WS_METHODS.stateSetRuntimeMode: {
+        const params = request.params as { mode: "approval-required" | "full-access" };
+        await coreRuntime.dispatch({
+          id: crypto.randomUUID(),
+          type: "runtime.setMode",
+          issuedAt: requestNow,
+          payload: { mode: params.mode },
+        });
+        return coreRuntime.state();
+      }
+
       default:
         throw new Error(`Unknown method: ${request.method}`);
     }
@@ -452,7 +583,26 @@ export function createServer(options: ServerOptions) {
       httpServer.once("error", onError);
       const onListening = () => {
         httpServer.off("error", onError);
-        resolve();
+        void (async () => {
+          try {
+            await coreRuntime.start(cwd, projectName);
+            stateStreamStopped = false;
+            stateStreamTask = (async () => {
+              const iterable = await coreRuntime.subscribe();
+              for await (const update of iterable) {
+                if (stateStreamStopped) break;
+                broadcastPush({
+                  type: "push",
+                  channel: WS_CHANNELS.stateUpdated,
+                  data: update.state,
+                });
+              }
+            })();
+            resolve();
+          } catch (error) {
+            reject(error as Error);
+          }
+        })();
       };
       if (host) {
         httpServer.listen(port, host, onListening);
@@ -463,6 +613,7 @@ export function createServer(options: ServerOptions) {
   }
 
   async function stop(): Promise<void> {
+    stateStreamStopped = true;
     terminalManager.off("event", onTerminalEvent);
     providerManager.stopAll();
     providerManager.dispose();
@@ -502,6 +653,10 @@ export function createServer(options: ServerOptions) {
       });
     });
 
+    if (stateStreamTask) {
+      await Promise.race([stateStreamTask, Promise.resolve()]);
+    }
+    await coreRuntime.stop();
     await Promise.all([closeWebSocketServer, closeHttpServer]);
   }
 

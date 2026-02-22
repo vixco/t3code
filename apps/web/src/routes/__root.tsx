@@ -4,18 +4,16 @@ import {
   type ErrorComponentProps,
   useParams,
 } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
-import { QueryClient, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { QueryClient } from "@tanstack/react-query";
 
 import { APP_DISPLAY_NAME } from "../branding";
 import { Button } from "../components/ui/button";
 import { AnchoredToastProvider, ToastProvider } from "../components/ui/toast";
 import { isElectron } from "../env";
 import { useNativeApi } from "../hooks/useNativeApi";
-import { invalidateGitQueries } from "../lib/gitReactQuery";
-import { DEFAULT_MODEL } from "../model-logic";
-import { useStore } from "../store";
-import { onServerWelcome } from "../wsNativeApi";
+import { type AppState, useStore } from "../store";
+import { onServerStateUpdate, onServerWelcome } from "../wsNativeApi";
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -125,8 +123,6 @@ function errorDetails(error: unknown): string {
 function EventRouter() {
   const api = useNativeApi();
   const { dispatch } = useStore();
-  const queryClient = useQueryClient();
-  const activeAssistantItemRef = useRef<string | null>(null);
   const activeThreadId = useParams({
     strict: false,
     select: (params) => params.threadId,
@@ -134,91 +130,41 @@ function EventRouter() {
 
   useEffect(() => {
     if (!api) return;
-    return api.providers.onEvent((event) => {
-      if (event.method === "turn/completed") {
-        void invalidateGitQueries(queryClient);
-      }
-      if (event.method === "checkpoint/captured") {
-        const payload = event.payload as { turnCount?: number } | undefined;
-        const turnCount = payload?.turnCount;
-        void queryClient.invalidateQueries({
-          queryKey: ["providers", "checkpointDiff"] as const,
-          predicate: (query) => {
-            if (typeof turnCount !== "number") return true;
-            return query.queryKey[5] === turnCount;
-          },
-        });
-      }
-      if (!activeThreadId) return;
-      dispatch({
-        type: "APPLY_EVENT",
-        event,
-        activeAssistantItemRef,
-        activeThreadId,
-      });
+    let mounted = true;
+    void api.state.getSnapshot().then((snapshot) => {
+      if (!mounted) return;
+      dispatch({ type: "SET_SERVER_STATE", state: snapshot as AppState });
     });
-  }, [activeThreadId, api, dispatch, queryClient]);
+    return () => {
+      mounted = false;
+    };
+  }, [api, dispatch]);
+
+  useEffect(() => {
+    return onServerStateUpdate((snapshot) => {
+      dispatch({ type: "SET_SERVER_STATE", state: snapshot as AppState });
+    });
+  }, [dispatch]);
 
   useEffect(() => {
     if (!activeThreadId) return;
-    dispatch({
-      type: "MARK_THREAD_VISITED",
-      threadId: activeThreadId,
-      visitedAt: new Date().toISOString(),
-    });
-  }, [activeThreadId, dispatch]);
-
-  useEffect(() => {
+    const visitedAt = new Date().toISOString();
     if (!api) return;
-    return api.terminal.onEvent((event) => {
-      dispatch({
-        type: "APPLY_TERMINAL_EVENT",
-        event,
-      });
-    });
-  }, [api, dispatch]);
+    void api.state.markThreadVisited({ threadId: activeThreadId, visitedAt });
+  }, [activeThreadId, api]);
 
   return null;
 }
 
 function AutoProjectBootstrap() {
-  const { state, dispatch } = useStore();
-  const bootstrappedRef = useRef(false);
+  const { dispatch } = useStore();
 
   useEffect(() => {
-    // Browser mode bootstraps from server welcome.
-    // Electron bootstraps from persisted projects via DesktopProjectBootstrap.
     if (isElectron) return;
-
-    return onServerWelcome((payload) => {
-      if (bootstrappedRef.current) return;
-
-      // Don't create duplicate projects for the same cwd
-      const existing = state.projects.find((project) => project.cwd === payload.cwd);
-      if (existing) {
-        bootstrappedRef.current = true;
-        dispatch({ type: "SET_THREADS_HYDRATED", hydrated: true });
-        return;
-      }
-
-      bootstrappedRef.current = true;
-
-      // Create project + thread from server cwd
-      const projectId = crypto.randomUUID();
-      dispatch({
-        type: "ADD_PROJECT",
-        project: {
-          id: projectId,
-          name: payload.projectName,
-          cwd: payload.cwd,
-          model: DEFAULT_MODEL,
-          expanded: true,
-          scripts: [],
-        },
-      });
+    return onServerWelcome(() => {
       dispatch({ type: "SET_THREADS_HYDRATED", hydrated: true });
     });
-  }, [state.projects, dispatch]);
+  }, [dispatch]);
 
   return null;
 }
@@ -226,50 +172,10 @@ function AutoProjectBootstrap() {
 function DesktopProjectBootstrap() {
   const api = useNativeApi();
   const { dispatch } = useStore();
-  const bootstrappedRef = useRef(false);
 
   useEffect(() => {
-    if (!isElectron || !api || bootstrappedRef.current) return;
-
-    let disposed = false;
-    let retryDelayMs = 500;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const attemptBootstrap = async () => {
-      try {
-        const projects = await api.projects.list();
-        if (disposed) return;
-        dispatch({
-          type: "SYNC_PROJECTS",
-          projects: projects.map((project) => ({
-            id: project.id,
-            name: project.name,
-            cwd: project.cwd,
-            model: DEFAULT_MODEL,
-            expanded: true,
-            scripts: project.scripts,
-          })),
-        });
-        dispatch({ type: "SET_THREADS_HYDRATED", hydrated: true });
-        bootstrappedRef.current = true;
-      } catch {
-        if (disposed) return;
-        retryTimer = setTimeout(() => {
-          retryTimer = null;
-          void attemptBootstrap();
-        }, retryDelayMs);
-        retryDelayMs = Math.min(retryDelayMs * 2, 5_000);
-      }
-    };
-
-    void attemptBootstrap();
-
-    return () => {
-      disposed = true;
-      if (retryTimer) {
-        clearTimeout(retryTimer);
-      }
-    };
+    if (!isElectron || !api) return;
+    dispatch({ type: "SET_THREADS_HYDRATED", hydrated: true });
   }, [api, dispatch]);
 
   return null;

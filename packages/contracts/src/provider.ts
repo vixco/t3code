@@ -46,6 +46,7 @@ export const providerSessionSchema = z.object({
 });
 
 export const providerSessionStartInputSchema = z.object({
+  uiThreadId: z.string().trim().min(1).optional(),
   provider: providerKindSchema.default("codex"),
   cwd: z.string().min(1).optional(),
   model: z.string().trim().min(1).optional(),
@@ -80,6 +81,7 @@ export const providerSendTurnAttachmentInputSchema = z.discriminatedUnion("type"
 
 export const providerSendTurnInputSchema = z
   .object({
+    uiThreadId: z.string().trim().min(1).optional(),
     sessionId: z.string().min(1),
     input: z.string().trim().min(1).max(PROVIDER_SEND_TURN_MAX_INPUT_CHARS).optional(),
     attachments: z

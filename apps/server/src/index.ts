@@ -121,6 +121,7 @@ async function main() {
     staticDir,
     devUrl,
     projectRegistry,
+    stateDir,
     authToken,
   });
   await server.start();
