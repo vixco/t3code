@@ -19,6 +19,7 @@ import {
   type WsRequest,
   type WsResponse,
   wsRequestSchema,
+  DEFAULT_MODEL,
 } from "@t3tools/contracts";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -379,7 +380,7 @@ export function createServer(options: ServerOptions) {
                 id: result.project.id,
                 name: result.project.name,
                 cwd: result.project.cwd,
-                model: "gpt-5",
+                model: DEFAULT_MODEL,
               },
             },
           };

@@ -513,6 +513,8 @@ export function reducer(state: AppState, action: Action): AppState {
         }
         case "gitStatusUpsert":
           return state;
+        default:
+          return state;
       }
     }
 

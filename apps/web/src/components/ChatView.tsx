@@ -1769,10 +1769,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
       sizeBytes: image.sizeBytes,
       previewUrl: image.previewUrl,
     }));
+    const messageId = crypto.randomUUID();
     dispatch({
       type: "PUSH_USER_MESSAGE",
       threadId: activeThread.id,
-      id: crypto.randomUUID(),
+      id: messageId,
       text: trimmed,
       ...(messageAttachments.length > 0 ? { attachments: messageAttachments } : {}),
     });
@@ -1783,7 +1784,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         issuedAt: new Date().toISOString(),
         payload: {
           threadId: activeThread.id,
-          messageId: crypto.randomUUID(),
+          messageId,
           text: trimmed,
           createdAt: new Date().toISOString(),
         },
