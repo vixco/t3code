@@ -6,7 +6,7 @@ import type {
   OrchestrationReadModel,
 } from "@t3tools/contracts";
 import { OrchestrationCommandSchema } from "@t3tools/contracts";
-import { PubSub, Queue, Schema, Stream, Effect, Fiber, Runtime, Either } from "effect";
+import { Queue, Schema, Stream, Effect, Fiber, Runtime, Either } from "effect";
 
 import { createLogger } from "../logger";
 import { SqliteEventStore } from "./eventStore";
@@ -194,8 +194,6 @@ export class OrchestrationEngine {
 
   private readModel: OrchestrationReadModel;
   private commandQueue: Queue.Queue<CommandEnvelope>;
-  private readModelPubSub: PubSub.PubSub<OrchestrationReadModel>;
-  private eventPubSub: PubSub.PubSub<OrchestrationEvent>;
   private workerFiber: Fiber.RuntimeFiber<void, unknown> | null = null;
   private readonly readModelListeners = new Set<(snapshot: OrchestrationReadModel) => void>();
   private readonly domainEventListeners = new Set<(event: OrchestrationEvent) => void>();
@@ -205,10 +203,6 @@ export class OrchestrationEngine {
     this.eventStore = new SqliteEventStore(dbPath);
     this.readModel = createEmptyReadModel(new Date().toISOString());
     this.commandQueue = Runtime.runSync(this.runtime)(Queue.unbounded<CommandEnvelope>());
-    this.readModelPubSub = Runtime.runSync(this.runtime)(
-      PubSub.unbounded<OrchestrationReadModel>(),
-    );
-    this.eventPubSub = Runtime.runSync(this.runtime)(PubSub.unbounded<OrchestrationEvent>());
   }
 
   async start(): Promise<void> {
@@ -226,12 +220,6 @@ export class OrchestrationEngine {
               this.eventStore.append(eventBase),
             );
             this.readModel = reduceEvent(this.readModel, savedEvent);
-            await Promise.all([
-              Runtime.runPromise(this.runtime)(PubSub.publish(this.eventPubSub, savedEvent)),
-              Runtime.runPromise(this.runtime)(
-                PubSub.publish(this.readModelPubSub, this.readModel),
-              ),
-            ]);
             for (const listener of this.domainEventListeners) {
               listener(savedEvent);
             }

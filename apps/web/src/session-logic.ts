@@ -116,13 +116,31 @@ export function deriveTurnDiffFilesFromUnifiedDiff(diff: string): TurnDiffFileCh
 export function inferCheckpointTurnCountByTurnId(
   summaries: TurnDiffSummary[],
 ): Record<string, number> {
-  const sorted = [...summaries].sort((a, b) => a.completedAt.localeCompare(b.completedAt));
-  const result: Record<string, number> = {};
-  for (let index = 0; index < sorted.length; index += 1) {
-    const summary = sorted[index];
-    if (!summary) continue;
-    result[summary.turnId] = index + 1;
+  if (summaries.length === 0) {
+    return {};
   }
+
+  const sorted = [...summaries].sort((a, b) => {
+    const aTime = Date.parse(a.completedAt);
+    const bTime = Date.parse(b.completedAt);
+    if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
+      return a.completedAt.localeCompare(b.completedAt);
+    }
+    return aTime - bTime;
+  });
+
+  const result: Record<string, number> = {};
+  let fallbackTurnCount = 1;
+  for (const summary of sorted) {
+    if (typeof summary.checkpointTurnCount === "number") {
+      result[summary.turnId] = summary.checkpointTurnCount;
+      fallbackTurnCount = Math.max(fallbackTurnCount, summary.checkpointTurnCount + 1);
+      continue;
+    }
+    result[summary.turnId] = fallbackTurnCount;
+    fallbackTurnCount += 1;
+  }
+
   return result;
 }
 

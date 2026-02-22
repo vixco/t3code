@@ -414,8 +414,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const dragDepthRef = useRef(0);
   const terminalOpenByThreadRef = useRef<Record<string, boolean>>({});
   const checkpointHydrationSessionRequestRef = useRef(new Set<string>());
-  const checkpointTurnCountSyncFingerprintRef = useRef(new Map<string, string>());
-
   const activeThread = state.threads.find((t) => t.id === threadId);
   const diffSearch = useMemo(
     () => parseDiffRouteSearch(rawSearch as Record<string, unknown>),
@@ -1405,39 +1403,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
     focusComposer();
   };
 
-  const syncCheckpointTurnCounts = useCallback(
-    async (input: {
-      threadId: string;
-      sessionId: string;
-      threadRuntimeId: string | null;
-    }): Promise<void> => {
-      if (!api || turnDiffSummaries.length === 0) {
-        return;
-      }
-
-      const turnIds = turnDiffSummaries.map((summary) => summary.turnId);
-      if (turnIds.length === 0) {
-        return;
-      }
-
-      const syncKey = `${input.threadId}:${input.sessionId}:${input.threadRuntimeId ?? "none"}`;
-      const turnFingerprint = turnIds.join(",");
-      if (checkpointTurnCountSyncFingerprintRef.current.get(syncKey) === turnFingerprint) {
-        return;
-      }
-      checkpointTurnCountSyncFingerprintRef.current.set(syncKey, turnFingerprint);
-
-      try {
-        await api.providers.listCheckpoints({
-          sessionId: input.sessionId,
-        });
-      } catch {
-        checkpointTurnCountSyncFingerprintRef.current.delete(syncKey);
-      }
-    },
-    [api, turnDiffSummaries],
-  );
-
   const ensureSession = useCallback(
     async (cwdOverride?: string): Promise<EnsuredSessionInfo | null> => {
       if (!api || !activeThread || !activeProject) return null;
@@ -1449,11 +1414,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
             : sessionThreadId === activeThread.codexThreadId
               ? "resumed"
               : "fallback_new";
-        await syncCheckpointTurnCounts({
-          threadId: activeThread.id,
-          sessionId: activeThread.session.sessionId,
-          threadRuntimeId: sessionThreadId,
-        });
         return {
           sessionId: activeThread.session.sessionId,
           resolvedThreadId: sessionThreadId,
@@ -1497,11 +1457,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
             : resolvedThreadId === priorCodexThreadId
               ? "resumed"
               : "fallback_new";
-        await syncCheckpointTurnCounts({
-          threadId: activeThread.id,
-          sessionId: session.sessionId,
-          threadRuntimeId: resolvedThreadId,
-        });
         return {
           sessionId: session.sessionId,
           resolvedThreadId,
@@ -1527,7 +1482,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
       runtimeApprovalPolicy,
       runtimeSandboxMode,
       selectedModel,
-      syncCheckpointTurnCounts,
     ],
   );
 

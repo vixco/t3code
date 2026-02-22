@@ -676,21 +676,17 @@ export function createServer(options: ServerOptions) {
     }
   }
 
-  function start() {
-    return new Promise<void>((resolve, reject) => {
+  async function start() {
+    await orchestrationEngine.start();
+    await new Promise<void>((resolve, reject) => {
       const onError = (error: Error) => {
         httpServer.off("error", onError);
         reject(error);
       };
       httpServer.once("error", onError);
-      const onListening = async () => {
+      const onListening = () => {
         httpServer.off("error", onError);
-        try {
-          await orchestrationEngine.start();
-          resolve();
-        } catch (error) {
-          reject(error instanceof Error ? error : new Error("Failed to start orchestration engine"));
-        }
+        resolve();
       };
       if (host) {
         httpServer.listen(port, host, onListening);
