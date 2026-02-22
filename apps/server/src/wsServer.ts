@@ -157,6 +157,19 @@ export function createServer(options: ServerOptions) {
       if (!thread) return;
       const now = event.createdAt;
       if (event.method === "turn/started" || event.method === "turn/completed") {
+        let turnStatus: "running" | "ready" | "error" = "ready";
+        let lastError: string | null = null;
+        if (event.method === "turn/started") {
+          turnStatus = "running";
+        } else {
+          const payload = event.payload as Record<string, unknown> | undefined;
+          const turn = payload?.turn as Record<string, unknown> | undefined;
+          if (typeof turn?.status === "string" && turn.status === "failed") {
+            turnStatus = "error";
+            const turnError = turn.error as Record<string, unknown> | undefined;
+            lastError = typeof turnError?.message === "string" ? turnError.message : null;
+          }
+        }
         await orchestrationEngine.dispatch({
           type: "thread.session",
           commandId: crypto.randomUUID(),
@@ -164,12 +177,12 @@ export function createServer(options: ServerOptions) {
           session: {
             sessionId: event.sessionId,
             provider: event.provider,
-            status: event.method === "turn/started" ? "running" : "ready",
+            status: turnStatus,
             threadId: thread.id,
             activeTurnId: event.method === "turn/started" ? (event.turnId ?? null) : null,
             createdAt: thread.session?.createdAt ?? now,
             updatedAt: now,
-            lastError: null,
+            lastError,
           },
           createdAt: now,
         });
@@ -197,6 +210,27 @@ export function createServer(options: ServerOptions) {
           role: "assistant",
           text: "",
           streaming: false,
+          createdAt: now,
+        });
+      }
+      if (
+        event.kind === "session" &&
+        (event.method === "session/closed" || event.method === "session/exited")
+      ) {
+        await orchestrationEngine.dispatch({
+          type: "thread.session",
+          commandId: crypto.randomUUID(),
+          threadId: thread.id,
+          session: {
+            sessionId: event.sessionId,
+            provider: event.provider,
+            status: "closed",
+            threadId: thread.id,
+            activeTurnId: null,
+            createdAt: thread.session?.createdAt ?? now,
+            updatedAt: now,
+            lastError: event.message ?? null,
+          },
           createdAt: now,
         });
       }
@@ -347,12 +381,13 @@ export function createServer(options: ServerOptions) {
     logOutgoingPush(welcome, 1);
     ws.send(JSON.stringify(welcome));
 
+    const initialSnapshot = orchestrationEngine.getSnapshot();
     const snapshotPush: WsPush = {
       type: "push",
       channel: ORCHESTRATION_WS_CHANNELS.readModel,
       data: {
-        sequence: orchestrationEngine.getSnapshot().sequence,
-        snapshot: orchestrationEngine.getSnapshot(),
+        sequence: initialSnapshot.sequence,
+        snapshot: initialSnapshot,
       } satisfies OrchestrationReadModelPush,
     };
     logOutgoingPush(snapshotPush, 1);

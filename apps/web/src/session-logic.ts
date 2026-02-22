@@ -86,13 +86,13 @@ export function deriveTimelineEntries(
   workEntries: WorkLogEntry[],
 ): TimelineEntry[] {
   const messageRows: TimelineEntry[] = messages.map((message) => ({
-    id: message.id,
+    id: `message:${message.id}`,
     kind: "message",
     createdAt: message.createdAt,
     message,
   }));
   const workRows: TimelineEntry[] = workEntries.map((entry) => ({
-    id: entry.id,
+    id: `work:${entry.id}`,
     kind: "work",
     createdAt: entry.createdAt,
     entry,

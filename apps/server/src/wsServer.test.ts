@@ -249,6 +249,7 @@ describe("WebSocket Server", () => {
     return createServer({
       port: 0,
       cwd: options.cwd ?? "/test/project",
+      stateDir,
       ...(options.devUrl ? { devUrl: options.devUrl } : {}),
       ...(options.authToken ? { authToken: options.authToken } : {}),
       projectRegistry: new ProjectRegistry(stateDir),

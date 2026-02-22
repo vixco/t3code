@@ -132,7 +132,7 @@ export default function Sidebar() {
   const pendingApprovalByThreadId = useMemo(() => new Map<string, boolean>(), []);
 
   const handleNewThread = useCallback(
-    (
+    async (
       projectId: string,
       options?: {
         branch?: string | null;
@@ -143,7 +143,7 @@ export default function Sidebar() {
       const threadId = crypto.randomUUID();
       const createdAt = new Date().toISOString();
       const model = state.projects.find((project) => project.id === projectId)?.model ?? DEFAULT_MODEL;
-      void api.orchestration.dispatchCommand({
+      await api.orchestration.dispatchCommand({
         type: "thread.create",
         commandId: crypto.randomUUID(),
         threadId,
@@ -195,23 +195,25 @@ export default function Sidebar() {
           return;
         }
 
-        const projectId = crypto.randomUUID();
-        const now = new Date().toISOString();
-        const name = inferProjectName(cwd);
+        let projectId: string;
         if (isElectron) {
-          // Keep project registry in sync for desktop integrations.
-          await api.projects.add({ cwd });
+          const result = await api.projects.add({ cwd });
+          projectId = result.project.id;
+        } else {
+          projectId = crypto.randomUUID();
+          const now = new Date().toISOString();
+          const name = inferProjectName(cwd);
+          await api.orchestration.dispatchCommand({
+            type: "project.create",
+            commandId: crypto.randomUUID(),
+            projectId,
+            name,
+            cwd,
+            model: DEFAULT_MODEL,
+            createdAt: now,
+          });
         }
-        await api.orchestration.dispatchCommand({
-          type: "project.create",
-          commandId: crypto.randomUUID(),
-          projectId,
-          name,
-          cwd,
-          model: DEFAULT_MODEL,
-          createdAt: now,
-        });
-        handleNewThread(projectId);
+        await handleNewThread(projectId);
       } finally {
         setIsAddingProject(false);
         setNewCwd("");
@@ -416,7 +418,7 @@ export default function Sidebar() {
         const projectId = activeThread?.projectId ?? state.projects[0]?.id;
         if (!projectId) return;
         event.preventDefault();
-        handleNewThread(projectId);
+        void handleNewThread(projectId);
         return;
       }
 
@@ -424,7 +426,7 @@ export default function Sidebar() {
       const projectId = activeThread?.projectId ?? state.projects[0]?.id;
       if (!projectId) return;
       event.preventDefault();
-      handleNewThread(projectId, {
+      void handleNewThread(projectId, {
         branch: activeThread?.branch ?? null,
         worktreePath: activeThread?.worktreePath ?? null,
       });
@@ -463,7 +465,7 @@ export default function Sidebar() {
               return;
             }
             const firstProject = state.projects[0];
-            if (firstProject) handleNewThread(firstProject.id);
+            if (firstProject) void handleNewThread(firstProject.id);
           }}
         >
           <span className="text-foreground">+</span>
@@ -578,7 +580,7 @@ export default function Sidebar() {
                   <button
                     type="button"
                     className="flex w-full items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground/60 transition-colors duration-150 hover:text-muted-foreground/80"
-                    onClick={() => handleNewThread(project.id)}
+                    onClick={() => void handleNewThread(project.id)}
                   >
                     <span>+</span> New thread
                   </button>

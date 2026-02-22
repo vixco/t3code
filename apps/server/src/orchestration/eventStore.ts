@@ -99,4 +99,8 @@ export class SqliteEventStore {
   readAll(): Effect.Effect<OrchestrationEvent[]> {
     return this.readFromSequence(0, Number.MAX_SAFE_INTEGER);
   }
+
+  close(): void {
+    this.db.close();
+  }
 }

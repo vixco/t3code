@@ -219,6 +219,7 @@ export class OrchestrationEngine {
       await Runtime.runPromise(this.runtime)(Fiber.interrupt(this.workerFiber));
       this.workerFiber = null;
     }
+    this.eventStore.close();
   }
 
   getSnapshot(): OrchestrationReadModel {
