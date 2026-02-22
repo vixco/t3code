@@ -214,10 +214,21 @@ export function reduceEvent(
           return nextBase;
         }
 
-        const session: OrchestrationSession = yield* decodeSession({
-          ...payload.session,
-          threadId: payload.threadId,
-        });
+        const session: OrchestrationSession = yield* decodeSession(payload.session);
+
+        const turnTimingPatch: ThreadPatch =
+          session.status === "running" && session.activeTurnId
+            ? { latestTurnStartedAt: event.occurredAt, latestTurnDurationMs: null }
+            : session.status === "ready" && thread.latestTurnStartedAt
+              ? (() => {
+                  const startMs = Date.parse(thread.latestTurnStartedAt);
+                  const endMs = Date.parse(event.occurredAt);
+                  if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs >= startMs) {
+                    return { latestTurnDurationMs: endMs - startMs } as ThreadPatch;
+                  }
+                  return {};
+                })()
+              : {};
 
         return {
           ...nextBase,
@@ -225,6 +236,7 @@ export function reduceEvent(
             session,
             updatedAt: event.occurredAt,
             error: session.lastError,
+            ...turnTimingPatch,
           }),
         };
       });

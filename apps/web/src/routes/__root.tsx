@@ -147,6 +147,8 @@ function AutoProjectBootstrap() {
   const api = useNativeApi();
   const { state, dispatch } = useStore();
   const bootstrappedRef = useRef(false);
+  const threadsRef = useRef(state.threads);
+  threadsRef.current = state.threads;
 
   useEffect(() => {
     if (!api) return;
@@ -173,7 +175,9 @@ function AutoProjectBootstrap() {
           const projects = await api.projects.list();
           dispatch({ type: "SYNC_PROJECTS", projects });
 
-          const hasThread = state.threads.some((thread) => thread.projectId === result.project.id);
+          const hasThread = threadsRef.current.some(
+            (thread) => thread.projectId === result.project.id,
+          );
           if (hasThread) {
             return;
           }
