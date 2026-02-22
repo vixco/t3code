@@ -15,6 +15,7 @@ import {
   type TerminalEvent,
   type WsPush,
   type WsRequest,
+  type ProviderEvent,
   type WsResponse,
   wsRequestSchema,
 } from "@t3tools/contracts";
@@ -144,6 +145,9 @@ export function createServer(options: ServerOptions) {
   let keybindingsConfig = loadResolvedKeybindingsConfig(logger);
   let unsubscribeReadModel = noop;
   let unsubscribeDomainEvents = noop;
+  const pendingProviderEvents = new Map<string, ProviderEvent[]>();
+  const streamingAccumulators = new Map<string, Map<string, string>>();
+  const MAX_BUFFERED_PROVIDER_EVENTS = 200;
 
   function logOutgoingPush(push: WsPush, recipients: number) {
     if (!logWebSocketEvents) return;
@@ -193,6 +197,24 @@ export function createServer(options: ServerOptions) {
     });
 
     unsubscribeDomainEvents = orchestrationEngine.subscribeToDomainEvents((event) => {
+      if (event.type === "thread.session-set") {
+        const payload = event.payload as Record<string, unknown> | null;
+        const session = payload?.session as Record<string, unknown> | undefined;
+        const sessionId = typeof session?.sessionId === "string" ? session.sessionId : null;
+        if (sessionId) {
+          const buffered = pendingProviderEvents.get(sessionId);
+          if (buffered && buffered.length > 0) {
+            pendingProviderEvents.delete(sessionId);
+            void (async () => {
+              for (const bufferedEvent of buffered) {
+                // eslint-disable-next-line no-await-in-loop -- sequential processing preserves event ordering
+                await processProviderEvent(bufferedEvent);
+              }
+            })().catch(() => undefined);
+          }
+        }
+      }
+
       const push: WsPush = {
         type: "push",
         channel: ORCHESTRATION_WS_CHANNELS.domainEvent,
@@ -211,37 +233,56 @@ export function createServer(options: ServerOptions) {
   }
 
   // Forward provider events to all connected WebSocket clients
-  providerManager.on("event", (event) => {
-    void (async () => {
-      const liveOrchestrationEngine = orchestrationEngine;
-      if (!liveOrchestrationEngine) {
-        return;
+  async function processProviderEvent(event: ProviderEvent): Promise<void> {
+    const liveOrchestrationEngine = orchestrationEngine;
+    if (!liveOrchestrationEngine) {
+      return;
+    }
+    const snapshot = liveOrchestrationEngine.getSnapshot();
+    const thread = snapshot.threads.find((entry) => entry.session?.sessionId === event.sessionId);
+    if (!thread) {
+      const buffer = pendingProviderEvents.get(event.sessionId);
+      if (buffer) {
+        if (buffer.length < MAX_BUFFERED_PROVIDER_EVENTS) {
+          buffer.push(event);
+        }
+      } else {
+        pendingProviderEvents.set(event.sessionId, [event]);
       }
-      const snapshot = liveOrchestrationEngine.getSnapshot();
-      const thread = snapshot.threads.find((entry) => entry.session?.sessionId === event.sessionId);
-      if (!thread) return;
-      const now = event.createdAt;
-      if (event.method === "turn/started" || event.method === "turn/completed") {
-        await liveOrchestrationEngine.dispatch({
-          type: "thread.session",
-          commandId: crypto.randomUUID(),
+      return;
+    }
+    const now = event.createdAt;
+    if (event.method === "turn/started" || event.method === "turn/completed") {
+      await liveOrchestrationEngine.dispatch({
+        type: "thread.session",
+        commandId: crypto.randomUUID(),
+        threadId: thread.id,
+        session: {
+          sessionId: event.sessionId,
+          provider: event.provider,
+          status: event.method === "turn/started" ? "running" : "ready",
           threadId: thread.id,
-          session: {
-            sessionId: event.sessionId,
-            provider: event.provider,
-            status: event.method === "turn/started" ? "running" : "ready",
-            threadId: thread.id,
-            activeTurnId: event.method === "turn/started" ? (event.turnId ?? null) : null,
-            createdAt: thread.session?.createdAt ?? now,
-            updatedAt: now,
-            lastError: null,
-          },
-          createdAt: now,
-        });
+          activeTurnId: event.method === "turn/started" ? (event.turnId ?? null) : null,
+          createdAt: thread.session?.createdAt ?? now,
+          updatedAt: now,
+          lastError: null,
+        },
+        createdAt: now,
+      });
+    }
+    if (event.textDelta && event.textDelta.length > 0) {
+      const assistantMessageId = `assistant:${event.turnId ?? event.itemId ?? event.sessionId}`;
+      let sessionAccumulators = streamingAccumulators.get(event.sessionId);
+      if (!sessionAccumulators) {
+        sessionAccumulators = new Map();
+        streamingAccumulators.set(event.sessionId, sessionAccumulators);
       }
-      if (event.textDelta && event.textDelta.length > 0) {
-        const assistantMessageId = `assistant:${event.turnId ?? event.itemId ?? event.sessionId}`;
-        await liveOrchestrationEngine.dispatch({
+      sessionAccumulators.set(
+        assistantMessageId,
+        (sessionAccumulators.get(assistantMessageId) ?? "") + event.textDelta,
+      );
+      await liveOrchestrationEngine.dispatch(
+        {
           type: "message.send",
           commandId: crypto.randomUUID(),
           threadId: thread.id,
@@ -250,62 +291,73 @@ export function createServer(options: ServerOptions) {
           text: event.textDelta,
           streaming: true,
           createdAt: now,
-        });
+        },
+        { transient: true },
+      );
+    }
+    if (event.method === "turn/completed") {
+      const assistantMessageId = `assistant:${event.turnId ?? event.itemId ?? event.sessionId}`;
+      const sessionAccumulators = streamingAccumulators.get(event.sessionId);
+      const fullText = sessionAccumulators?.get(assistantMessageId) ?? "";
+      sessionAccumulators?.delete(assistantMessageId);
+      if (sessionAccumulators?.size === 0) {
+        streamingAccumulators.delete(event.sessionId);
       }
-      if (event.method === "turn/completed") {
-        const assistantMessageId = `assistant:${event.turnId ?? event.itemId ?? event.sessionId}`;
+      await liveOrchestrationEngine.dispatch({
+        type: "message.send",
+        commandId: crypto.randomUUID(),
+        threadId: thread.id,
+        messageId: assistantMessageId,
+        role: "assistant",
+        text: fullText,
+        streaming: false,
+        createdAt: now,
+      });
+    }
+    if (event.method === "checkpoint/captured") {
+      const payload = asObject(event.payload);
+      const turnId = event.turnId ?? asString(payload?.turnId);
+      if (turnId) {
         await liveOrchestrationEngine.dispatch({
-          type: "message.send",
+          type: "thread.turnDiff.complete",
           commandId: crypto.randomUUID(),
           threadId: thread.id,
-          messageId: assistantMessageId,
-          role: "assistant",
-          text: "",
-          streaming: false,
+          turnId,
+          completedAt: now,
+          ...(asString(payload?.status) !== null
+            ? { status: asString(payload?.status) ?? undefined }
+            : {}),
+          files: [],
+          assistantMessageId: `assistant:${turnId}`,
+          ...(asNumber(payload?.turnCount) !== null
+            ? { checkpointTurnCount: asNumber(payload?.turnCount) ?? undefined }
+            : {}),
           createdAt: now,
         });
       }
-      if (event.method === "checkpoint/captured") {
-        const payload = asObject(event.payload);
-        const turnId = event.turnId ?? asString(payload?.turnId);
-        if (turnId) {
-          await liveOrchestrationEngine.dispatch({
-            type: "thread.turnDiff.complete",
-            commandId: crypto.randomUUID(),
-            threadId: thread.id,
-            turnId,
-            completedAt: now,
-            ...(asString(payload?.status) !== null
-              ? { status: asString(payload?.status) ?? undefined }
-              : {}),
-            files: [],
-            assistantMessageId: `assistant:${turnId}`,
-            ...(asNumber(payload?.turnCount) !== null
-              ? { checkpointTurnCount: asNumber(payload?.turnCount) ?? undefined }
-              : {}),
-            createdAt: now,
-          });
-        }
-      }
-      if (event.kind === "error" && event.message) {
-        await liveOrchestrationEngine.dispatch({
-          type: "thread.session",
-          commandId: crypto.randomUUID(),
+    }
+    if (event.kind === "error" && event.message) {
+      await liveOrchestrationEngine.dispatch({
+        type: "thread.session",
+        commandId: crypto.randomUUID(),
+        threadId: thread.id,
+        session: {
+          sessionId: event.sessionId,
+          provider: event.provider,
+          status: "error",
           threadId: thread.id,
-          session: {
-            sessionId: event.sessionId,
-            provider: event.provider,
-            status: "error",
-            threadId: thread.id,
-            activeTurnId: event.turnId ?? null,
-            createdAt: thread.session?.createdAt ?? now,
-            updatedAt: now,
-            lastError: event.message,
-          },
-          createdAt: now,
-        });
-      }
-    })().catch(() => undefined);
+          activeTurnId: event.turnId ?? null,
+          createdAt: thread.session?.createdAt ?? now,
+          updatedAt: now,
+          lastError: event.message,
+        },
+        createdAt: now,
+      });
+    }
+  }
+
+  providerManager.on("event", (event) => {
+    void processProviderEvent(event).catch(() => undefined);
   });
 
   const onTerminalEvent = (event: TerminalEvent) => {
@@ -494,7 +546,12 @@ export function createServer(options: ServerOptions) {
         return providerManager.respondToRequest(request.params as never);
 
       case WS_METHODS.providersStopSession: {
+        const stopParams = request.params as { sessionId?: string };
         providerManager.stopSession(request.params as never);
+        if (typeof stopParams?.sessionId === "string") {
+          pendingProviderEvents.delete(stopParams.sessionId);
+          streamingAccumulators.delete(stopParams.sessionId);
+        }
         return undefined;
       }
 

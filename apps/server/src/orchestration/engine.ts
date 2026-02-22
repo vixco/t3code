@@ -24,6 +24,7 @@ import { createEmptyReadModel, reduceEvent } from "./reducer";
 type CommandEnvelope = {
   command: OrchestrationCommand;
   result: Deferred.Deferred<{ sequence: number }, Error>;
+  transient?: boolean | undefined;
 };
 
 function asError(error: unknown, fallbackMessage: string): Error {
@@ -194,17 +195,23 @@ export class OrchestrationEngine {
   private processEnvelope(envelope: CommandEnvelope): Effect.Effect<void> {
     return Effect.gen(this, function* () {
       const eventBase = mapCommandToEvent(envelope.command);
-      const savedEvent = yield* this.eventStore.append(eventBase);
+      let savedEvent: OrchestrationEvent;
+      if (envelope.transient) {
+        savedEvent = { ...eventBase, sequence: this.readModel.sequence } as OrchestrationEvent;
+      } else {
+        savedEvent = yield* this.eventStore.append(eventBase);
+      }
       this.readModel = yield* reduceEvent(this.readModel, savedEvent);
 
       const snapshot = this.readModel;
-      yield* Effect.all([
-        PubSub.publish(this.eventPubSub, savedEvent),
-        PubSub.publish(this.readModelPubSub, snapshot),
-      ]);
-
-      for (const listener of this.domainEventListeners) {
-        listener(savedEvent);
+      if (!envelope.transient) {
+        yield* Effect.all([
+          PubSub.publish(this.eventPubSub, savedEvent),
+          PubSub.publish(this.readModelPubSub, snapshot),
+        ]);
+        for (const listener of this.domainEventListeners) {
+          listener(savedEvent);
+        }
       }
       for (const listener of this.readModelListeners) {
         listener(snapshot);
@@ -282,10 +289,13 @@ export class OrchestrationEngine {
     return this.dispatch(decoded.right);
   }
 
-  async dispatch(command: OrchestrationCommand): Promise<{ sequence: number }> {
+  async dispatch(
+    command: OrchestrationCommand,
+    options?: { transient?: boolean },
+  ): Promise<{ sequence: number }> {
     const program = Effect.gen(this, function* () {
       const result = yield* Deferred.make<{ sequence: number }, Error>();
-      yield* Queue.offer(this.commandQueue, { command, result });
+      yield* Queue.offer(this.commandQueue, { command, result, transient: options?.transient });
       return yield* Deferred.await(result);
     });
     return Runtime.runPromise(this.runtime)(program).catch((error) => {

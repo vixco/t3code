@@ -153,6 +153,8 @@ export function reduceEvent(
           if (!thread) {
             return nextBase;
           }
+          const worktreeChanged =
+            payload.worktreePath !== undefined && payload.worktreePath !== thread.worktreePath;
           return {
             ...nextBase,
             threads: updateThread(nextBase.threads, payload.threadId, {
@@ -160,6 +162,7 @@ export function reduceEvent(
               ...(payload.model !== undefined ? { model: payload.model } : {}),
               ...(payload.branch !== undefined ? { branch: payload.branch } : {}),
               ...(payload.worktreePath !== undefined ? { worktreePath: payload.worktreePath } : {}),
+              ...(worktreeChanged ? { session: null } : {}),
               updatedAt: payload.updatedAt,
             }),
           };
