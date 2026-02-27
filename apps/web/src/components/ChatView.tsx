@@ -221,6 +221,7 @@ type ComposerCommandItem =
   | {
       id: string;
       type: "model";
+      provider: ProviderKind;
       model: ModelSlug;
       label: string;
       description: string;
@@ -452,16 +453,20 @@ export default function ChatView({ threadId }: ChatViewProps) {
     selectedProvider,
     activeThread?.model ?? activeProject?.model ?? getDefaultModel(selectedProvider) ?? DEFAULT_MODEL,
   );
-  const modelOptions = useMemo(() => getModelOptions(selectedProvider), [selectedProvider]);
   const searchableModelOptions = useMemo(
     () =>
-      modelOptions.map(({ slug, name }) => ({
-        slug,
-        name,
-        searchSlug: slug.toLowerCase(),
-        searchName: name.toLowerCase(),
-      })),
-    [modelOptions],
+      PROVIDER_OPTIONS.filter((option) => option.available).flatMap((option) =>
+        getModelOptions(option.value).map(({ slug, name }) => ({
+          provider: option.value,
+          providerLabel: option.label,
+          slug,
+          name,
+          searchSlug: slug.toLowerCase(),
+          searchName: name.toLowerCase(),
+          searchProvider: option.label.toLowerCase(),
+        })),
+      ),
+    [],
   );
   useEffect(() => {
     if (!activeThread?.id || !sessionProvider) return;
@@ -646,16 +651,17 @@ export default function ChatView({ threadId }: ChatViewProps) {
       ];
     }
 
-    return searchableModelOptions.filter(({ searchSlug, searchName }) => {
+    return searchableModelOptions.filter(({ searchSlug, searchName, searchProvider }) => {
       const query = composerTrigger.query.trim().toLowerCase();
       if (!query) return true;
-      return searchSlug.includes(query) || searchName.includes(query);
-    }).map(({ slug, name }) => ({
-      id: `model:${slug}`,
+      return searchSlug.includes(query) || searchName.includes(query) || searchProvider.includes(query);
+    }).map(({ provider, providerLabel, slug, name }) => ({
+      id: `model:${provider}:${slug}`,
       type: "model",
+      provider,
       model: slug,
       label: name,
-      description: slug,
+      description: `${providerLabel} · ${slug}`,
     }));
   }, [composerTrigger, searchableModelOptions, workspaceEntries]);
   const composerMenuOpen = Boolean(composerTrigger);
@@ -1692,22 +1698,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
     [activeThreadId, dispatch],
   );
 
-  const onModelSelect = useCallback(
-    (model: ModelSlug) => {
-      const api = readNativeApi();
-      if (!activeThread) return;
-      if (api) {
-        void api.orchestration.dispatchCommand({
-          type: "thread.meta.update",
-          commandId: newCommandId(),
-          threadId: activeThread.id,
-          model: resolveModelSlugForProvider(selectedProvider, model),
-        });
-      }
-      scheduleComposerFocus();
-    },
-    [activeThread, scheduleComposerFocus, selectedProvider],
-  );
   const onProviderModelSelect = useCallback(
     (provider: ProviderKind, model: ModelSlug) => {
       const api = readNativeApi();
@@ -1774,10 +1764,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
         applyPromptReplacement(composerTrigger.rangeStart, composerTrigger.rangeEnd, "/model ");
         return;
       }
-      onModelSelect(item.model);
+      onProviderModelSelect(item.provider, item.model);
       applyPromptReplacement(composerTrigger.rangeStart, composerTrigger.rangeEnd, "");
     },
-    [applyPromptReplacement, composerTrigger, onModelSelect],
+    [applyPromptReplacement, composerTrigger, onProviderModelSelect],
   );
   const onComposerMenuItemHighlighted = useCallback((itemId: string | null) => {
     setComposerHighlightedItemId(itemId);
