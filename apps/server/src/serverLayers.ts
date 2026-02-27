@@ -18,6 +18,7 @@ import { OrchestrationProjectionPipelineLive } from "./orchestration/Layers/Proj
 import { OrchestrationProjectionSnapshotQueryLive } from "./orchestration/Layers/ProjectionSnapshotQuery";
 import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRuntimeIngestion";
 import { ProviderUnsupportedError } from "./provider/Errors";
+import { makeClaudeCodeAdapterLive } from "./provider/Layers/ClaudeCodeAdapter";
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
 import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
@@ -45,7 +46,10 @@ export function makeServerProviderLayer(): Layer.Layer<
     const codexAdapterLayer = makeCodexAdapterLive({
       nativeEventLogPath: path.join(providerLogsDir, "provider-native.ndjson"),
     });
-    const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(Layer.provide(codexAdapterLayer));
+    const claudeAdapterLayer = makeClaudeCodeAdapterLive();
+    const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
+      Layer.provide(Layer.mergeAll(codexAdapterLayer, claudeAdapterLayer)),
+    );
     const providerSessionDirectoryLayer = ProviderSessionDirectoryLive.pipe(
       Layer.provide(ProviderSessionRuntimeRepositoryLive),
     );
