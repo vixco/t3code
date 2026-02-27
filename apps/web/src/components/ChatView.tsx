@@ -1416,44 +1416,43 @@ export default function ChatView({ threadId }: ChatViewProps) {
       return;
     }
 
-    sendInFlightRef.current = true;
-    setSendPhase(baseBranchForWorktree ? "preparing-worktree" : "sending-turn");
-
-    const composerImagesSnapshot = [...composerImages];
-    const messageIdForSend = newMessageId();
-    const messageCreatedAt = new Date().toISOString();
-    const optimisticAttachments = composerImagesSnapshot.map((image) => ({
-      type: "image" as const,
-      id: image.id,
-      name: image.name,
-      mimeType: image.mimeType,
-      sizeBytes: image.sizeBytes,
-      previewUrl: image.previewUrl,
-    }));
-    setOptimisticUserMessages((existing) => [
-      ...existing,
-      {
-        id: messageIdForSend,
-        role: "user",
-        text: trimmed,
-        ...(optimisticAttachments.length > 0 ? { attachments: optimisticAttachments } : {}),
-        createdAt: messageCreatedAt,
-        streaming: false,
-      },
-    ]);
-
-    setThreadError(threadIdForSend, null);
-    promptRef.current = "";
-    setPrompt("");
-    setComposerImages([]);
-    setComposerCursor(0);
-    setComposerHighlightedItemId(null);
-
     let attemptedTurnStart = false;
     try {
+      sendInFlightRef.current = true;
+      setSendPhase(baseBranchForWorktree ? "preparing-worktree" : "sending-turn");
+
+      const composerImagesSnapshot = [...composerImages];
+      const messageIdForSend = newMessageId();
+      const messageCreatedAt = new Date().toISOString();
+      const optimisticAttachments = composerImagesSnapshot.map((image) => ({
+        type: "image" as const,
+        id: image.id,
+        name: image.name,
+        mimeType: image.mimeType,
+        sizeBytes: image.sizeBytes,
+        previewUrl: image.previewUrl,
+      }));
+      setOptimisticUserMessages((existing) => [
+        ...existing,
+        {
+          id: messageIdForSend,
+          role: "user",
+          text: trimmed,
+          ...(optimisticAttachments.length > 0 ? { attachments: optimisticAttachments } : {}),
+          createdAt: messageCreatedAt,
+          streaming: false,
+        },
+      ]);
+
+      setThreadError(threadIdForSend, null);
+      promptRef.current = "";
+      setPrompt("");
+      setComposerImages([]);
+      setComposerCursor(0);
+      setComposerHighlightedItemId(null);
+
       // On first message: lock in branch + create worktree if needed.
       if (baseBranchForWorktree) {
-        setSendPhase("preparing-worktree");
         const newBranch = `codething/${crypto.randomUUID().slice(0, 8)}`;
         const result = await createWorktreeMutation.mutateAsync({
           cwd: activeProject.cwd,
