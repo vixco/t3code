@@ -75,13 +75,20 @@ describe("ProviderCommandReactor", () => {
     const runtimeSessions: Array<ProviderSession> = [];
     const startSession = vi.fn((_: unknown, input: unknown) => {
       const sessionIndex = nextSessionIndex++;
+      const provider =
+        typeof input === "object" &&
+        input !== null &&
+        "provider" in input &&
+        (input.provider === "codex" || input.provider === "claudeCode")
+          ? input.provider
+          : "codex";
       const resumeCursor =
         typeof input === "object" && input !== null && "resumeCursor" in input
           ? input.resumeCursor
           : undefined;
       const session: ProviderSession = {
         sessionId: asSessionId(`sess-${sessionIndex}`),
-        provider: "codex" as const,
+        provider,
         status: "ready" as const,
         threadId: ProviderThreadId.makeUnsafe(`provider-thread-${sessionIndex}`),
         resumeCursor: resumeCursor ?? { opaque: `cursor-${sessionIndex}` },
@@ -218,6 +225,44 @@ describe("ProviderCommandReactor", () => {
     expect(thread?.session?.sandboxMode).toBe("workspace-write");
   });
 
+  it("starts first turn with requested provider when provider is specified", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-provider-first"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-provider-first"),
+          role: "user",
+          text: "hello claude",
+          attachments: [],
+        },
+        provider: "claudeCode",
+        approvalPolicy: "on-request",
+        sandboxMode: "workspace-write",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
+      provider: "claudeCode",
+      cwd: "/tmp/provider-project",
+      model: "gpt-5-codex",
+      approvalPolicy: "on-request",
+      sandboxMode: "workspace-write",
+    });
+
+    const readModel = await Effect.runPromise(harness.engine.getReadModel());
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.makeUnsafe("thread-1"));
+    expect(thread?.session?.providerName).toBe("claudeCode");
+    expect(thread?.session?.providerSessionId).toBe("sess-1");
+  });
+
   it("reuses the same provider session when runtime mode is unchanged", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
@@ -322,6 +367,68 @@ describe("ProviderCommandReactor", () => {
     const readModel = await Effect.runPromise(harness.engine.getReadModel());
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.makeUnsafe("thread-1"));
     expect(thread?.session?.providerSessionId).toBe("sess-2");
+    expect(thread?.session?.approvalPolicy).toBe("on-request");
+    expect(thread?.session?.sandboxMode).toBe("workspace-write");
+  });
+
+  it("switches provider by restarting the session when turn request provider changes", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-provider-switch-1"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-provider-switch-1"),
+          role: "user",
+          text: "first",
+          attachments: [],
+        },
+        approvalPolicy: "on-request",
+        sandboxMode: "workspace-write",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-provider-switch-2"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-provider-switch-2"),
+          role: "user",
+          text: "second",
+          attachments: [],
+        },
+        provider: "claudeCode",
+        approvalPolicy: "on-request",
+        sandboxMode: "workspace-write",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.stopSession.mock.calls.length === 1);
+    await waitFor(() => harness.startSession.mock.calls.length === 2);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 2);
+
+    expect(harness.stopSession.mock.calls[0]?.[0]).toEqual({ sessionId: asSessionId("sess-1") });
+    expect(harness.startSession.mock.calls[1]?.[1]).toMatchObject({
+      provider: "claudeCode",
+      resumeCursor: { opaque: "cursor-1" },
+      approvalPolicy: "on-request",
+      sandboxMode: "workspace-write",
+    });
+
+    const readModel = await Effect.runPromise(harness.engine.getReadModel());
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.makeUnsafe("thread-1"));
+    expect(thread?.session?.providerSessionId).toBe("sess-2");
+    expect(thread?.session?.providerName).toBe("claudeCode");
     expect(thread?.session?.approvalPolicy).toBe("on-request");
     expect(thread?.session?.sandboxMode).toBe("workspace-write");
   });
