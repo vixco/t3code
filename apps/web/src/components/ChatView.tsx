@@ -1496,6 +1496,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
         ),
       );
       attemptedTurnStart = true;
+      const approvalPolicy = state.runtimeMode === "full-access" ? "never" : "on-request";
+      const sandboxMode =
+        state.runtimeMode === "full-access" ? "danger-full-access" : "workspace-write";
       await api.orchestration.dispatchCommand({
         type: "thread.turn.start",
         commandId: newCommandId(),
@@ -1509,6 +1512,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
         model: selectedModel || undefined,
         effort: selectedEffort || undefined,
         assistantDeliveryMode: settings.enableAssistantStreaming ? "streaming" : "buffered",
+        approvalPolicy,
+        sandboxMode,
         createdAt: messageCreatedAt,
       });
     } catch (err) {
