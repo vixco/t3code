@@ -3,17 +3,18 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Git tag to create/use for this release (example: v0.1.0)"
+      bump:
+        description: "Semantic version bump to apply before release"
         required: true
-        type: string
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
       release_name:
         description: "Display name for the GitHub release"
         required: false
-        type: string
-      version:
-        description: "Semver version injected into packaged artifacts (example: 0.1.0)"
-        required: true
         type: string
       draft:
         description: "Create release as draft"
@@ -30,7 +31,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ inputs.tag }}
+  group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -38,8 +39,8 @@ jobs:
     name: Bump versions, commit, and tag
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.meta.outputs.tag }}
-      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.bump-version.outputs.tag }}
+      version: ${{ steps.bump-version.outputs.version }}
     steps:
       - name: Ensure workflow runs from a branch
         run: |
@@ -59,43 +60,93 @@ jobs:
         with:
           node-version-file: package.json
 
-      - name: Set release metadata outputs
-        id: meta
-        run: |
-          echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-
-      - name: Validate tag does not already exist
-        run: |
-          if git rev-parse --verify --quiet "refs/tags/${{ inputs.tag }}"; then
-            echo "Tag ${{ inputs.tag }} already exists locally."
-            exit 1
-          fi
-          if git ls-remote --tags origin "${{ inputs.tag }}" | grep -q .; then
-            echo "Tag ${{ inputs.tag }} already exists on origin."
-            exit 1
-          fi
-
-      - name: Bump app versions
+      - name: Bump app versions and infer release tag
+        id: bump-version
         run: |
           node --input-type=module <<'EOF'
           import fs from "node:fs";
 
-          const version = process.env.RELEASE_VERSION;
+          const bump = process.env.RELEASE_BUMP;
           const files = [
             "apps/server/package.json",
             "apps/desktop/package.json",
             "apps/web/package.json",
           ];
+          const sourceVersionFile = "apps/server/package.json";
+
+          const semverRegex = /^(\d+)\.(\d+)\.(\d+)$/;
+          const versions = files.map((file) => {
+            const json = JSON.parse(fs.readFileSync(file, "utf8"));
+            return { file, version: json.version };
+          });
+
+          const source = versions.find((entry) => entry.file === sourceVersionFile);
+          if (!source) {
+            throw new Error(`Could not find source version file '${sourceVersionFile}'.`);
+          }
+          const outOfSync = versions.filter((entry) => entry.version !== source.version);
+          if (outOfSync.length > 0) {
+            const details = outOfSync.map((entry) => `${entry.file}=${entry.version}`).join(", ");
+            console.warn(
+              `Detected out-of-sync app versions. Using ${sourceVersionFile}=${source.version} as source of truth. Others: ${details}`,
+            );
+          }
+
+          const currentVersion = source.version;
+          const match = semverRegex.exec(currentVersion);
+          if (!match) {
+            throw new Error(
+              `Version '${currentVersion}' is not a supported plain semver (x.y.z).`,
+            );
+          }
+
+          let major = Number.parseInt(match[1], 10);
+          let minor = Number.parseInt(match[2], 10);
+          let patch = Number.parseInt(match[3], 10);
+
+          if (bump === "patch") {
+            patch += 1;
+          } else if (bump === "minor") {
+            minor += 1;
+            patch = 0;
+          } else if (bump === "major") {
+            major += 1;
+            minor = 0;
+            patch = 0;
+          } else {
+            throw new Error(`Unsupported bump type '${bump}'.`);
+          }
+
+          const version = `${major}.${minor}.${patch}`;
+          const tag = `v${version}`;
 
           for (const file of files) {
             const json = JSON.parse(fs.readFileSync(file, "utf8"));
             json.version = version;
             fs.writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`, "utf8");
           }
+
+          const outputPath = process.env.GITHUB_OUTPUT;
+          fs.appendFileSync(outputPath, `version=${version}\n`);
+          fs.appendFileSync(outputPath, `tag=${tag}\n`);
+
+          console.log(`Bumped version ${currentVersion} -> ${version}`);
+          console.log(`Inferred release tag: ${tag}`);
           EOF
         env:
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_BUMP: ${{ inputs.bump }}
+
+      - name: Validate inferred tag does not already exist
+        run: |
+          tag="${{ steps.bump-version.outputs.tag }}"
+          if git rev-parse --verify --quiet "refs/tags/${tag}"; then
+            echo "Tag ${tag} already exists locally."
+            exit 1
+          fi
+          if git ls-remote --tags origin "${tag}" | grep -q .; then
+            echo "Tag ${tag} already exists on origin."
+            exit 1
+          fi
 
       - name: Commit version bump
         run: |
@@ -106,15 +157,15 @@ jobs:
             echo "No version change detected; refusing to create empty release commit."
             exit 1
           fi
-          git commit -m "chore(release): bump app versions to ${{ inputs.version }}
+          git commit -m "chore(release): bump app versions to ${{ steps.bump-version.outputs.version }}
 
           Co-authored-by: codex <codex@users.noreply.github.com>"
 
       - name: Create and push release tag
         run: |
-          git tag -a "${{ inputs.tag }}" -m "Release ${{ inputs.tag }}"
+          git tag -a "${{ steps.bump-version.outputs.tag }}" -m "Release ${{ steps.bump-version.outputs.tag }}"
           git push origin "${{ github.ref_name }}"
-          git push origin "refs/tags/${{ inputs.tag }}"
+          git push origin "refs/tags/${{ steps.bump-version.outputs.tag }}"
 
   build-macos:
     name: Build and package macOS (${{ matrix.arch }})
