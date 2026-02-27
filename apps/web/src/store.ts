@@ -10,11 +10,14 @@ import {
 
 import {
   DEFAULT_MODEL,
+  getModelOptions,
+  normalizeModelSlug,
   ProviderSessionId,
   ThreadId,
   type OrchestrationReadModel,
   type OrchestrationSessionStatus,
   resolveModelSlug,
+  resolveModelSlugForProvider,
 } from "@t3tools/contracts";
 import {
   DEFAULT_THREAD_TERMINAL_HEIGHT,
@@ -190,6 +193,27 @@ function toLegacySessionStatus(
 
 function toLegacyProvider(providerName: string | null): "codex" | "claudeCode" {
   return providerName === "claudeCode" ? "claudeCode" : "codex";
+}
+
+const CODEX_MODEL_SLUGS = new Set(getModelOptions("codex").map((option) => option.slug));
+const CLAUDE_MODEL_SLUGS = new Set(getModelOptions("claudeCode").map((option) => option.slug));
+
+function inferProviderForThreadModel(input: {
+  readonly model: string;
+  readonly sessionProviderName: string | null;
+}): "codex" | "claudeCode" {
+  if (input.sessionProviderName === "codex" || input.sessionProviderName === "claudeCode") {
+    return input.sessionProviderName;
+  }
+  const normalizedClaude = normalizeModelSlug(input.model, "claudeCode");
+  if (normalizedClaude && CLAUDE_MODEL_SLUGS.has(normalizedClaude)) {
+    return "claudeCode";
+  }
+  const normalizedCodex = normalizeModelSlug(input.model, "codex");
+  if (normalizedCodex && CODEX_MODEL_SLUGS.has(normalizedCodex)) {
+    return "codex";
+  }
+  return input.model.trim().startsWith("claude-") ? "claudeCode" : "codex";
 }
 
 function resolveWsHttpOrigin(): string {
@@ -451,13 +475,17 @@ export function reducer(state: AppState, action: Action): AppState {
         .filter((thread) => thread.deletedAt === null)
         .map((thread) => {
           const existing = existingThreadById.get(thread.id);
+          const modelProvider = inferProviderForThreadModel({
+            model: thread.model,
+            sessionProviderName: thread.session?.providerName ?? null,
+          });
 
           return normalizeThreadTerminals({
             id: thread.id,
             codexThreadId: thread.session?.providerThreadId ?? null,
             projectId: thread.projectId,
             title: thread.title,
-            model: resolveModelSlug(thread.model),
+            model: resolveModelSlugForProvider(modelProvider, thread.model),
             terminalOpen: existing?.terminalOpen ?? false,
             terminalHeight: existing?.terminalHeight ?? DEFAULT_THREAD_TERMINAL_HEIGHT,
             terminalIds: existing?.terminalIds ?? [DEFAULT_THREAD_TERMINAL_ID],

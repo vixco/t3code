@@ -1,4 +1,4 @@
-import { ProjectId, ThreadId, TurnId } from "@t3tools/contracts";
+import { ProjectId, ThreadId, TurnId, type OrchestrationReadModel } from "@t3tools/contracts";
 import { describe, expect, it } from "vitest";
 
 import { reducer, type AppState } from "./store";
@@ -51,6 +51,46 @@ function makeState(thread: Thread): AppState {
     threads: [thread],
     threadsHydrated: true,
     runtimeMode: "full-access",
+  };
+}
+
+function makeReadModelThread(overrides: Partial<OrchestrationReadModel["threads"][number]>) {
+  return {
+    id: ThreadId.makeUnsafe("thread-1"),
+    projectId: ProjectId.makeUnsafe("project-1"),
+    title: "Thread",
+    model: "gpt-5.3-codex",
+    branch: null,
+    worktreePath: null,
+    latestTurn: null,
+    createdAt: "2026-02-27T00:00:00.000Z",
+    updatedAt: "2026-02-27T00:00:00.000Z",
+    deletedAt: null,
+    messages: [],
+    activities: [],
+    checkpoints: [],
+    session: null,
+    ...overrides,
+  } satisfies OrchestrationReadModel["threads"][number];
+}
+
+function makeReadModel(thread: OrchestrationReadModel["threads"][number]): OrchestrationReadModel {
+  return {
+    snapshotSequence: 1,
+    updatedAt: "2026-02-27T00:00:00.000Z",
+    projects: [
+      {
+        id: ProjectId.makeUnsafe("project-1"),
+        title: "Project",
+        workspaceRoot: "/tmp/project",
+        defaultModel: "gpt-5.3-codex",
+        createdAt: "2026-02-27T00:00:00.000Z",
+        updatedAt: "2026-02-27T00:00:00.000Z",
+        deletedAt: null,
+        scripts: [],
+      },
+    ],
+    threads: [thread],
   };
 }
 
@@ -157,5 +197,51 @@ describe("store terminal activity reducer", () => {
     });
 
     expect(next.threads[0]?.runningTerminalIds).toEqual([]);
+  });
+});
+
+describe("store read model sync", () => {
+  it("preserves claude model slugs without an active session", () => {
+    const initialState = makeState(makeThread());
+    const readModel = makeReadModel(
+      makeReadModelThread({
+        model: "claude-opus-4-6",
+      }),
+    );
+
+    const next = reducer(initialState, {
+      type: "SYNC_SERVER_READ_MODEL",
+      readModel,
+    });
+
+    expect(next.threads[0]?.model).toBe("claude-opus-4-6");
+  });
+
+  it("resolves claude aliases when session provider is claudeCode", () => {
+    const initialState = makeState(makeThread());
+    const readModel = makeReadModel(
+      makeReadModelThread({
+        model: "sonnet",
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-1"),
+          status: "ready",
+          providerName: "claudeCode",
+          providerSessionId: null,
+          providerThreadId: null,
+          approvalPolicy: "on-request",
+          sandboxMode: "workspace-write",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: "2026-02-27T00:00:00.000Z",
+        },
+      }),
+    );
+
+    const next = reducer(initialState, {
+      type: "SYNC_SERVER_READ_MODEL",
+      readModel,
+    });
+
+    expect(next.threads[0]?.model).toBe("claude-sonnet-4-6");
   });
 });
