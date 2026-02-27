@@ -34,9 +34,92 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare-release:
+    name: Bump versions, commit, and tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Ensure workflow runs from a branch
+        run: |
+          if [ "${GITHUB_REF_TYPE}" != "branch" ]; then
+            echo "workflow_dispatch must be run from a branch ref, got: ${GITHUB_REF_TYPE}"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - name: Set release metadata outputs
+        id: meta
+        run: |
+          echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate tag does not already exist
+        run: |
+          if git rev-parse --verify --quiet "refs/tags/${{ inputs.tag }}"; then
+            echo "Tag ${{ inputs.tag }} already exists locally."
+            exit 1
+          fi
+          if git ls-remote --tags origin "${{ inputs.tag }}" | grep -q .; then
+            echo "Tag ${{ inputs.tag }} already exists on origin."
+            exit 1
+          fi
+
+      - name: Bump app versions
+        run: |
+          node --input-type=module <<'EOF'
+          import fs from "node:fs";
+
+          const version = process.env.RELEASE_VERSION;
+          const files = [
+            "apps/server/package.json",
+            "apps/desktop/package.json",
+            "apps/web/package.json",
+          ];
+
+          for (const file of files) {
+            const json = JSON.parse(fs.readFileSync(file, "utf8"));
+            json.version = version;
+            fs.writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`, "utf8");
+          }
+          EOF
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/server/package.json apps/desktop/package.json apps/web/package.json
+          if git diff --cached --quiet; then
+            echo "No version change detected; refusing to create empty release commit."
+            exit 1
+          fi
+          git commit -m "chore(release): bump app versions to ${{ inputs.version }}
+
+          Co-authored-by: codex <codex@users.noreply.github.com>"
+
+      - name: Create and push release tag
+        run: |
+          git tag -a "${{ inputs.tag }}" -m "Release ${{ inputs.tag }}"
+          git push origin "${{ github.ref_name }}"
+          git push origin "refs/tags/${{ inputs.tag }}"
+
   build-macos:
     name: Build and package macOS (${{ matrix.arch }})
     runs-on: macos-14
+    needs: prepare-release
     strategy:
       fail-fast: false
       matrix:
@@ -48,6 +131,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -74,7 +160,7 @@ jobs:
 
       - name: Build and package macOS artifact
         run: |
-          bun run dist:desktop:dmg -- --arch "${{ matrix.arch }}" --version "${{ inputs.version }}"
+          bun run dist:desktop:dmg -- --arch "${{ matrix.arch }}" --version "${{ needs.prepare-release.outputs.version }}"
           ls -lah release
         # TODO: Add production macOS signing and notarization in CI:
         # - Import Developer ID Application certificate + private key into keychain.
@@ -83,34 +169,38 @@ jobs:
 
       - name: Generate SHA256 checksums
         run: |
-          find release -maxdepth 1 -type f ! -name "SHA256SUMS.txt" -print0 \
-            | xargs -0 shasum -a 256 > release/SHA256SUMS.txt
-          cat release/SHA256SUMS.txt
+          checksum_file="release/SHA256SUMS-${{ matrix.arch }}.txt"
+          find release -maxdepth 1 -type f ! -name "SHA256SUMS-*.txt" -print0 \
+            | xargs -0 shasum -a 256 > "$checksum_file"
+          cat "$checksum_file"
 
       - name: Upload packaged artifacts to workflow run
         uses: actions/upload-artifact@v4
         with:
-          name: release-assets-${{ inputs.tag }}-${{ matrix.arch }}
+          name: release-assets-${{ needs.prepare-release.outputs.tag }}-${{ matrix.arch }}
           path: release/*
           if-no-files-found: error
 
   publish-release:
     name: Create GitHub release
     runs-on: ubuntu-latest
-    needs: build-macos
+    needs:
+      - prepare-release
+      - build-macos
     steps:
       - name: Download packaged artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: release-assets-${{ inputs.tag }}-*
+          pattern: release-assets-${{ needs.prepare-release.outputs.tag }}-*
           merge-multiple: true
           path: release-assets
 
       - name: Create GitHub release and upload assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag }}
-          name: ${{ inputs.release_name != '' && inputs.release_name || inputs.tag }}
+          tag_name: ${{ needs.prepare-release.outputs.tag }}
+          target_commitish: ${{ needs.prepare-release.outputs.tag }}
+          name: ${{ inputs.release_name != '' && inputs.release_name || needs.prepare-release.outputs.tag }}
           draft: ${{ inputs.draft }}
           prerelease: ${{ inputs.prerelease }}
           generate_release_notes: true
