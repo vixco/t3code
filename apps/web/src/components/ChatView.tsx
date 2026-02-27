@@ -1509,14 +1509,14 @@ export default function ChatView({ threadId }: ChatViewProps) {
         createdAt: messageCreatedAt,
       });
     } catch (err) {
+      setOptimisticUserMessages((existing) =>
+        existing.filter((message) => message.id !== messageIdForSend),
+      );
       if (
         !attemptedTurnStart &&
         promptRef.current.length === 0 &&
         composerImagesRef.current.length === 0
       ) {
-        setOptimisticUserMessages((existing) =>
-          existing.filter((message) => message.id !== messageIdForSend),
-        );
         promptRef.current = trimmed;
         setPrompt(trimmed);
         setComposerImages(composerImagesSnapshot);
