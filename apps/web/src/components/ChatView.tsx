@@ -8,13 +8,13 @@ import {
   type MessageId,
   getDefaultModel,
   getModelOptions,
+  getReasoningOptions,
   type ProjectId,
   type ProjectEntry,
   type ProjectScript,
   ModelSlug,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
-  REASONING_OPTIONS,
   type ReasoningEffort,
   type ResolvedKeybindingsConfig,
   type ProviderApprovalDecision,
@@ -453,6 +453,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
     selectedProvider,
     activeThread?.model ?? activeProject?.model ?? getDefaultModel(selectedProvider) ?? DEFAULT_MODEL,
   );
+  const reasoningOptions = getReasoningOptions(selectedProvider);
+  const supportsReasoningEffort = reasoningOptions.length > 0;
   const searchableModelOptions = useMemo(
     () =>
       PROVIDER_OPTIONS.filter((option) => option.available).flatMap((option) =>
@@ -1627,7 +1629,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         },
         model: selectedModel || undefined,
         provider: selectedProvider,
-        effort: selectedEffort || undefined,
+        ...(supportsReasoningEffort ? { effort: selectedEffort } : {}),
         assistantDeliveryMode: settings.enableAssistantStreaming ? "streaming" : "buffered",
         approvalPolicy,
         sandboxMode,
@@ -2065,10 +2067,17 @@ export default function ChatView({ threadId }: ChatViewProps) {
                 <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
 
                 {/* Reasoning effort */}
-                <ReasoningEffortPicker effort={selectedEffort} onEffortChange={onEffortSelect} />
-
-                {/* Divider */}
-                <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
+                {supportsReasoningEffort ? (
+                  <>
+                    <ReasoningEffortPicker
+                      effort={selectedEffort}
+                      options={reasoningOptions}
+                      onEffortChange={onEffortSelect}
+                    />
+                    {/* Divider */}
+                    <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
+                  </>
+                ) : null}
 
                 {/* Runtime mode toggle */}
                 <Button
@@ -3044,6 +3053,7 @@ const ProviderModelPicker = memo(function ProviderModelPicker(props: {
 
 const ReasoningEffortPicker = memo(function ReasoningEffortPicker(props: {
   effort: ReasoningEffort;
+  options: ReadonlyArray<ReasoningEffort>;
   onEffortChange: (effort: ReasoningEffort) => void;
 }) {
   return (
@@ -3055,7 +3065,7 @@ const ReasoningEffortPicker = memo(function ReasoningEffortPicker(props: {
         <SelectValue />
       </SelectTrigger>
       <SelectPopup alignItemWithTrigger={false}>
-        {REASONING_OPTIONS.map((effort) => (
+        {props.options.map((effort) => (
           <SelectItem key={effort} value={effort}>
             {effort}
             {effort === DEFAULT_REASONING ? " (default)" : ""}
