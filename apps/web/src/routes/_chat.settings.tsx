@@ -263,7 +263,7 @@ function SettingsRouteView() {
                       spellCheck={false}
                     />
                     <span className="text-xs text-muted-foreground">
-                      Example: <code>gpt-5.4-codex-preview</code>
+                      Example: <code>gpt-6.7-codex-ultra-preview</code>
                     </span>
                   </label>
 
