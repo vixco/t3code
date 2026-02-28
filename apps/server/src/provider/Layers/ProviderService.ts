@@ -119,6 +119,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
     const routedSessionAliasesRef = yield* Ref.make<Map<ProviderSessionId, ProviderSessionId>>(
       new Map(),
     );
+    const sessionRuntimeSequenceRef = yield* Ref.make<Map<ProviderSessionId, number>>(new Map());
 
     const canonicalizeRuntimeEventSession = (
       event: ProviderRuntimeEvent,
@@ -139,6 +140,21 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
 
     const publishRuntimeEvent = (event: ProviderRuntimeEvent): Effect.Effect<void> =>
       canonicalizeRuntimeEventSession(event).pipe(
+        Effect.flatMap((canonicalEvent) =>
+          Ref.modify(sessionRuntimeSequenceRef, (current) => {
+            const next = new Map(current);
+            const currentSequence = next.get(canonicalEvent.sessionId) ?? 0;
+            const sessionSequence = currentSequence + 1;
+            next.set(canonicalEvent.sessionId, sessionSequence);
+            return [
+              {
+                ...canonicalEvent,
+                sessionSequence,
+              } satisfies ProviderRuntimeEvent,
+              next,
+            ] as const;
+          }),
+        ),
         Effect.tap((canonicalEvent) =>
           Effect.sync(() => {
             canonicalEventLogger?.write({
@@ -153,23 +169,16 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
 
     const upsertSessionBinding = (
       session: ProviderSession,
-      operation: string,
       threadId: ThreadId,
     ) =>
       Effect.gen(function* () {
         const providerThreadId = session.threadId;
-        if (!providerThreadId) {
-          return yield* toValidationError(
-            operation,
-            `Provider '${session.provider}' returned a session without threadId.`,
-          );
-        }
 
         yield* directory.upsert({
           sessionId: session.sessionId,
           provider: session.provider,
           threadId,
-          providerThreadId,
+          ...(providerThreadId !== undefined ? { providerThreadId } : {}),
           status: toRuntimeStatus(session),
           ...(session.resumeCursor !== undefined ? { resumeCursor: session.resumeCursor } : {}),
           runtimePayload: toRuntimePayloadFromSession(session),
@@ -200,6 +209,16 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           next.set(key, value);
         }
         return changed ? next : current;
+      });
+
+    const clearSessionSequence = (sessionId: ProviderSessionId) =>
+      Ref.update(sessionRuntimeSequenceRef, (current) => {
+        if (!current.has(sessionId)) {
+          return current;
+        }
+        const next = new Map(current);
+        next.delete(sessionId);
+        return next;
       });
 
     const setAlias = (staleSessionId: ProviderSessionId, liveSessionId: ProviderSessionId) =>
@@ -250,14 +269,15 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         if (existing) {
           const existingProviderThreadId = yield* upsertSessionBinding(
             existing,
-            `${input.operation}:upsertExistingSession`,
             input.binding.threadId,
           );
           yield* directory.upsert({
             sessionId: input.staleSessionId,
             provider: existing.provider,
             threadId: input.binding.threadId,
-            providerThreadId: existingProviderThreadId,
+            ...(existingProviderThreadId !== undefined
+              ? { providerThreadId: existingProviderThreadId }
+              : {}),
             ...(existing.resumeCursor !== undefined ? { resumeCursor: existing.resumeCursor } : {}),
           });
           if (existing.sessionId !== input.staleSessionId) {
@@ -295,7 +315,6 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
 
         const resumedProviderThreadId = yield* upsertSessionBinding(
           resumed,
-          `${input.operation}:upsertRecoveredSession`,
           input.binding.threadId,
         );
 
@@ -303,7 +322,9 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           sessionId: input.staleSessionId,
           provider: resumed.provider,
           threadId: input.binding.threadId,
-          providerThreadId: resumedProviderThreadId,
+          ...(resumedProviderThreadId !== undefined
+            ? { providerThreadId: resumedProviderThreadId }
+            : {}),
           ...(resumed.resumeCursor !== undefined ? { resumeCursor: resumed.resumeCursor } : {}),
         });
 
@@ -416,7 +437,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           );
         }
 
-        yield* upsertSessionBinding(session, "ProviderService.startSession", threadId);
+        yield* upsertSessionBinding(session, threadId);
 
         return session;
       });
@@ -461,7 +482,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           sessionId: input.sessionId,
           provider: routed.adapter.provider,
           threadId,
-          providerThreadId: turn.threadId,
+          ...(turn.threadId !== undefined ? { providerThreadId: turn.threadId } : {}),
           status: "running",
           ...(turn.resumeCursor !== undefined ? { resumeCursor: turn.resumeCursor } : {}),
           runtimePayload: {
@@ -521,9 +542,11 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         if (routed.sessionId !== input.sessionId) {
           yield* directory.remove(routed.sessionId);
           yield* clearAliasesReferencing(routed.sessionId);
+          yield* clearSessionSequence(routed.sessionId);
         }
         yield* directory.remove(input.sessionId);
         yield* clearAliasesReferencing(input.sessionId);
+        yield* clearSessionSequence(input.sessionId);
       });
 
     const listSessions: ProviderServiceShape["listSessions"] = () =>
@@ -572,6 +595,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         // Keep persisted session bindings so stale sessions can be resumed after
         // process restart via providerThreadId.
         yield* Ref.set(routedSessionAliasesRef, new Map());
+        yield* Ref.set(sessionRuntimeSequenceRef, new Map());
       });
 
     return {
