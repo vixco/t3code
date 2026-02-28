@@ -13,6 +13,7 @@
     "T3CODE_AUTH_TOKEN",
     "T3CODE_DESKTOP_WS_URL"
   ],
+  "globalPassThroughEnv": ["OPENAI_API_KEY"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
