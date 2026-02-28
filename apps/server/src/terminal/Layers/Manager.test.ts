@@ -639,6 +639,38 @@ describe("TerminalManager", () => {
     manager.dispose();
   });
 
+  it("silently drops write to exited terminal instead of throwing", async () => {
+    const { manager, ptyAdapter } = makeManager();
+    await manager.open(openInput());
+    const process = ptyAdapter.processes[0];
+    expect(process).toBeDefined();
+    if (!process) return;
+
+    process.emitExit({ exitCode: 0, signal: 0 });
+
+    await expect(
+      manager.write({ threadId: "thread-1", data: "hello\n" }),
+    ).resolves.toBeUndefined();
+
+    manager.dispose();
+  });
+
+  it("silently drops resize to exited terminal instead of throwing", async () => {
+    const { manager, ptyAdapter } = makeManager();
+    await manager.open(openInput());
+    const process = ptyAdapter.processes[0];
+    expect(process).toBeDefined();
+    if (!process) return;
+
+    process.emitExit({ exitCode: 0, signal: 0 });
+
+    await expect(
+      manager.resize({ threadId: "thread-1", cols: 200, rows: 50 }),
+    ).resolves.toBeUndefined();
+
+    manager.dispose();
+  });
+
   it("starts zsh with prompt spacer disabled to avoid `%` end markers", async () => {
     if (process.platform === "win32") return;
     const { manager, ptyAdapter } = makeManager(5, {

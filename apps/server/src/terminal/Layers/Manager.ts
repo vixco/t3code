@@ -438,25 +438,29 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     const input = decodeTerminalWriteInput(raw);
     const session = this.requireSession(input.threadId, input.terminalId);
     if (!session.process || session.status !== "running") {
-      throw new Error(
-        `Terminal is not running for thread: ${input.threadId}, terminal: ${input.terminalId}`,
-      );
+      return;
     }
-    session.process.write(input.data);
+    try {
+      session.process.write(input.data);
+    } catch {
+      // Process may have exited between the status check and the write call.
+    }
   }
 
   async resize(raw: TerminalResizeInput): Promise<void> {
     const input = decodeTerminalResizeInput(raw);
     const session = this.requireSession(input.threadId, input.terminalId);
     if (!session.process || session.status !== "running") {
-      throw new Error(
-        `Terminal is not running for thread: ${input.threadId}, terminal: ${input.terminalId}`,
-      );
+      return;
     }
     session.cols = input.cols;
     session.rows = input.rows;
     session.updatedAt = new Date().toISOString();
-    session.process.resize(input.cols, input.rows);
+    try {
+      session.process.resize(input.cols, input.rows);
+    } catch {
+      // Process may have exited between the status check and the resize call.
+    }
   }
 
   async clear(raw: TerminalClearInput): Promise<void> {
