@@ -2759,7 +2759,11 @@ const MessagesTimeline = memo(function MessagesTimeline({
                 </div>
               )}
               <div className="min-w-0 px-1 py-0.5">
-                <ChatMarkdown text={messageText} cwd={markdownCwd} />
+                <ChatMarkdown
+                  text={messageText}
+                  cwd={markdownCwd}
+                  isStreaming={Boolean(row.message.streaming)}
+                />
                 {(() => {
                   const turnSummary = turnDiffSummaryByAssistantMessageId.get(row.message.id);
                   if (!turnSummary) return null;
