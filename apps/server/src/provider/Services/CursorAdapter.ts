@@ -1,11 +1,11 @@
 /**
- * CursorAdapter - Cursor CLI implementation of the generic provider adapter contract.
+ * CursorAdapter - Cursor ACP (`agent acp`) implementation of the generic provider adapter contract.
  *
- * This service will own Cursor CLI (`agent`) process / stream-json semantics and emit
+ * This service owns Cursor ACP process / JSON-RPC 2.0 semantics and emits
  * canonical provider runtime events via the shared provider adapter contract.
  *
- * This file intentionally defines raw Cursor stream-json schemas up front so the future
- * layer implementation can decode/validate NDJSON lines in a single place.
+ * ACP schemas for decode/validation of JSON-RPC messages are defined here so
+ * the layer implementation can validate protocol boundary in a single place.
  *
  * @module CursorAdapter
  */
@@ -14,201 +14,101 @@ import { Schema, ServiceMap } from "effect";
 import type { ProviderAdapterError } from "../Errors.ts";
 import type { ProviderAdapterShape } from "./ProviderAdapter.ts";
 
-export const CursorCliSessionId = Schema.String.check(Schema.isNonEmpty());
-export type CursorCliSessionId = typeof CursorCliSessionId.Type;
+export const AcpSessionId = Schema.String.check(Schema.isNonEmpty());
+export type AcpSessionId = typeof AcpSessionId.Type;
 
-export const CursorCliTextContentPart = Schema.Struct({
+export const AcpTextContent = Schema.Struct({
   type: Schema.Literal("text"),
   text: Schema.String,
 });
-export type CursorCliTextContentPart = typeof CursorCliTextContentPart.Type;
+export type AcpTextContent = typeof AcpTextContent.Type;
 
-export const CursorCliContentPart = Schema.Union([
-  CursorCliTextContentPart,
-  Schema.Struct({
-    type: Schema.String,
-  }),
-]);
-export type CursorCliContentPart = typeof CursorCliContentPart.Type;
-
-export const CursorCliUserMessage = Schema.Struct({
-  role: Schema.Literal("user"),
-  content: Schema.Array(CursorCliContentPart),
-});
-export type CursorCliUserMessage = typeof CursorCliUserMessage.Type;
-
-export const CursorCliAssistantMessage = Schema.Struct({
-  role: Schema.Literal("assistant"),
-  content: Schema.Array(CursorCliContentPart),
-});
-export type CursorCliAssistantMessage = typeof CursorCliAssistantMessage.Type;
-
-export const CursorCliToolCallResult = Schema.Struct({
-  success: Schema.optional(Schema.Unknown),
-  failure: Schema.optional(Schema.Unknown),
-  rejected: Schema.optional(Schema.Unknown),
-});
-export type CursorCliToolCallResult = typeof CursorCliToolCallResult.Type;
-
-export const CursorCliToolCallEntry = Schema.Struct({
-  args: Schema.optional(Schema.Unknown),
-  result: Schema.optional(CursorCliToolCallResult),
-});
-export type CursorCliToolCallEntry = typeof CursorCliToolCallEntry.Type;
-
-export const CursorCliFunctionToolCall = Schema.Struct({
+export const AcpSessionMode = Schema.Struct({
+  id: Schema.String,
   name: Schema.String,
-  arguments: Schema.String,
-  result: Schema.optional(CursorCliToolCallResult),
+  description: Schema.optional(Schema.String),
 });
-export type CursorCliFunctionToolCall = typeof CursorCliFunctionToolCall.Type;
+export type AcpSessionMode = typeof AcpSessionMode.Type;
 
-export const CursorCliToolCallPayload = Schema.Struct({
-  readToolCall: Schema.optional(CursorCliToolCallEntry),
-  writeToolCall: Schema.optional(CursorCliToolCallEntry),
-  editToolCall: Schema.optional(CursorCliToolCallEntry),
-  shellToolCall: Schema.optional(CursorCliToolCallEntry),
-  grepToolCall: Schema.optional(CursorCliToolCallEntry),
-  globToolCall: Schema.optional(CursorCliToolCallEntry),
-  function: Schema.optional(CursorCliFunctionToolCall),
+export const AcpSessionModes = Schema.Struct({
+  currentModeId: Schema.String,
+  availableModes: Schema.Array(AcpSessionMode),
 });
-export type CursorCliToolCallPayload = typeof CursorCliToolCallPayload.Type;
+export type AcpSessionModes = typeof AcpSessionModes.Type;
 
-export const CursorCliTokenUsage = Schema.Struct({
-  inputTokens: Schema.optional(Schema.Number),
-  outputTokens: Schema.optional(Schema.Number),
-  cacheReadTokens: Schema.optional(Schema.Number),
-  cacheWriteTokens: Schema.optional(Schema.Number),
+export const AcpInitializeResult = Schema.Struct({
+  protocolVersion: Schema.Number,
+  agentCapabilities: Schema.optional(Schema.Unknown),
+  authMethods: Schema.optional(Schema.Array(Schema.Unknown)),
 });
-export type CursorCliTokenUsage = typeof CursorCliTokenUsage.Type;
+export type AcpInitializeResult = typeof AcpInitializeResult.Type;
 
-const CursorCliTimestampMs = {
-  timestamp_ms: Schema.optional(Schema.Number),
-} as const;
-
-export const CursorCliSystemInitEvent = Schema.Struct({
-  type: Schema.Literal("system"),
-  subtype: Schema.Literal("init"),
-  session_id: CursorCliSessionId,
-  apiKeySource: Schema.optional(Schema.String),
-  cwd: Schema.optional(Schema.String),
-  model: Schema.optional(Schema.String),
-  permissionMode: Schema.optional(Schema.String),
-  ...CursorCliTimestampMs,
+export const AcpSessionNewResult = Schema.Struct({
+  sessionId: AcpSessionId,
+  modes: Schema.optional(AcpSessionModes),
 });
-export type CursorCliSystemInitEvent = typeof CursorCliSystemInitEvent.Type;
+export type AcpSessionNewResult = typeof AcpSessionNewResult.Type;
 
-export const CursorCliUserEvent = Schema.Struct({
-  type: Schema.Literal("user"),
-  message: CursorCliUserMessage,
-  session_id: CursorCliSessionId,
-  ...CursorCliTimestampMs,
+export const AcpPromptResult = Schema.Struct({
+  stopReason: Schema.optional(Schema.String),
 });
-export type CursorCliUserEvent = typeof CursorCliUserEvent.Type;
+export type AcpPromptResult = typeof AcpPromptResult.Type;
 
-export const CursorCliAssistantEvent = Schema.Struct({
-  type: Schema.Literal("assistant"),
-  message: CursorCliAssistantMessage,
-  session_id: CursorCliSessionId,
-  ...CursorCliTimestampMs,
+export const AcpPermissionOption = Schema.Struct({
+  optionId: Schema.String,
+  name: Schema.String,
+  kind: Schema.optional(Schema.String),
 });
-export type CursorCliAssistantEvent = typeof CursorCliAssistantEvent.Type;
+export type AcpPermissionOption = typeof AcpPermissionOption.Type;
 
-export const CursorCliThinkingDeltaEvent = Schema.Struct({
-  type: Schema.Literal("thinking"),
-  subtype: Schema.Literal("delta"),
-  text: Schema.String,
-  session_id: CursorCliSessionId,
-  ...CursorCliTimestampMs,
+export const AcpPermissionToolCall = Schema.Struct({
+  toolCallId: Schema.String,
+  title: Schema.optional(Schema.String),
+  kind: Schema.optional(Schema.String),
+  status: Schema.optional(Schema.String),
+  content: Schema.optional(Schema.Array(Schema.Unknown)),
 });
-export type CursorCliThinkingDeltaEvent = typeof CursorCliThinkingDeltaEvent.Type;
+export type AcpPermissionToolCall = typeof AcpPermissionToolCall.Type;
 
-export const CursorCliThinkingCompletedEvent = Schema.Struct({
-  type: Schema.Literal("thinking"),
-  subtype: Schema.Literal("completed"),
-  session_id: CursorCliSessionId,
-  ...CursorCliTimestampMs,
+export const AcpPermissionRequestParams = Schema.Struct({
+  sessionId: AcpSessionId,
+  toolCall: AcpPermissionToolCall,
+  options: Schema.Array(AcpPermissionOption),
 });
-export type CursorCliThinkingCompletedEvent = typeof CursorCliThinkingCompletedEvent.Type;
+export type AcpPermissionRequestParams = typeof AcpPermissionRequestParams.Type;
 
-export const CursorCliToolCallStartedEvent = Schema.Struct({
-  type: Schema.Literal("tool_call"),
-  subtype: Schema.Literal("started"),
-  call_id: Schema.String,
-  tool_call: CursorCliToolCallPayload,
-  session_id: CursorCliSessionId,
-  ...CursorCliTimestampMs,
-});
-export type CursorCliToolCallStartedEvent = typeof CursorCliToolCallStartedEvent.Type;
+export type AcpSessionUpdateType =
+  | "available_commands_update"
+  | "agent_thought_chunk"
+  | "agent_message_chunk"
+  | "tool_call"
+  | "tool_call_update";
 
-export const CursorCliToolCallCompletedEvent = Schema.Struct({
-  type: Schema.Literal("tool_call"),
-  subtype: Schema.Literal("completed"),
-  call_id: Schema.String,
-  tool_call: CursorCliToolCallPayload,
-  session_id: CursorCliSessionId,
-  ...CursorCliTimestampMs,
-});
-export type CursorCliToolCallCompletedEvent = typeof CursorCliToolCallCompletedEvent.Type;
+export interface AcpSessionUpdate {
+  readonly sessionUpdate: AcpSessionUpdateType | string;
+  readonly content?: { type: string; text: string };
+  readonly toolCallId?: string;
+  readonly title?: string;
+  readonly kind?: string;
+  readonly status?: string;
+  readonly rawInput?: unknown;
+  readonly rawOutput?: unknown;
+  readonly availableCommands?: ReadonlyArray<{ name: string; description: string }>;
+}
 
-export const CursorCliResultSuccessEvent = Schema.Struct({
-  type: Schema.Literal("result"),
-  subtype: Schema.Literal("success"),
-  duration_ms: Schema.Number,
-  duration_api_ms: Schema.optional(Schema.Number),
-  is_error: Schema.Boolean,
-  result: Schema.String,
-  session_id: CursorCliSessionId,
-  request_id: Schema.optional(Schema.String),
-  usage: Schema.optional(CursorCliTokenUsage),
-  ...CursorCliTimestampMs,
-});
-export type CursorCliResultSuccessEvent = typeof CursorCliResultSuccessEvent.Type;
+export interface AcpJsonRpcMessage {
+  readonly jsonrpc?: string;
+  readonly id?: number;
+  readonly method?: string;
+  readonly params?: unknown;
+  readonly result?: unknown;
+  readonly error?: { code: number; message: string; data?: unknown };
+}
 
-export const CursorCliConnectionEvent = Schema.Struct({
-  type: Schema.Literal("connection"),
-  subtype: Schema.Literals(["reconnecting", "reconnected"]),
-  session_id: Schema.optional(CursorCliSessionId),
-  ...CursorCliTimestampMs,
-});
-export type CursorCliConnectionEvent = typeof CursorCliConnectionEvent.Type;
-
-export const CursorCliRetryEvent = Schema.Struct({
-  type: Schema.Literal("retry"),
-  subtype: Schema.Literals(["starting", "resuming"]),
-  session_id: Schema.optional(CursorCliSessionId),
-  ...CursorCliTimestampMs,
-});
-export type CursorCliRetryEvent = typeof CursorCliRetryEvent.Type;
-
-export const CursorCliStreamEvent = Schema.Union([
-  CursorCliSystemInitEvent,
-  CursorCliUserEvent,
-  CursorCliAssistantEvent,
-  CursorCliThinkingDeltaEvent,
-  CursorCliThinkingCompletedEvent,
-  CursorCliToolCallStartedEvent,
-  CursorCliToolCallCompletedEvent,
-  CursorCliResultSuccessEvent,
-  CursorCliConnectionEvent,
-  CursorCliRetryEvent,
-]);
-export type CursorCliStreamEvent = typeof CursorCliStreamEvent.Type;
-
-/**
- * CursorAdapterShape - Service API for the Cursor provider adapter.
- *
- * `provider` is intentionally narrowed to `"cursor"` here. Until contracts add
- * Cursor to `ProviderKind`, this shape is defined via `Omit<...,"provider">`.
- */
-export interface CursorAdapterShape
-  extends Omit<ProviderAdapterShape<ProviderAdapterError>, "provider"> {
+export interface CursorAdapterShape extends ProviderAdapterShape<ProviderAdapterError> {
   readonly provider: "cursor";
 }
 
-/**
- * CursorAdapter - Service tag for Cursor provider adapter operations.
- */
 export class CursorAdapter extends ServiceMap.Service<CursorAdapter, CursorAdapterShape>()(
   "t3/provider/Services/CursorAdapter",
 ) {}
