@@ -17,7 +17,10 @@ import {
   ProviderSessionId,
   ProviderThreadId,
   ProviderTurnId,
+  RuntimeItemId,
+  RuntimeSessionId,
   ThreadId,
+  TurnId,
 } from "@t3tools/contracts";
 import { it, assert, vi } from "@effect/vitest";
 import { assertFailure } from "@effect/vitest/utils";
@@ -51,6 +54,9 @@ const asProviderThreadId = (value: string): ProviderThreadId => ProviderThreadId
 const asRequestId = (value: string): ApprovalRequestId => ApprovalRequestId.makeUnsafe(value);
 const asEventId = (value: string): EventId => EventId.makeUnsafe(value);
 const asThreadId = (value: string): ThreadId => ThreadId.makeUnsafe(value);
+const asRuntimeSessionId = (value: string): RuntimeSessionId => RuntimeSessionId.makeUnsafe(value);
+const asRuntimeTurnId = (value: string): TurnId => TurnId.makeUnsafe(value);
+const asRuntimeItemId = (value: string): RuntimeItemId => RuntimeItemId.makeUnsafe(value);
 
 function makeFakeCodexAdapter(provider: ProviderKind = "codex") {
   const sessions = new Map<ProviderSessionId, ProviderSession>();
@@ -627,11 +633,11 @@ fanout.layer("ProviderServiceLive fanout", (it) => {
         type: "turn.completed",
         eventId: asEventId("evt-1"),
         provider: "codex",
-        sessionId: session.sessionId,
+        sessionId: asRuntimeSessionId(session.sessionId),
         createdAt: new Date().toISOString(),
-        threadId: asProviderThreadId("thread-1"),
-        turnId: asTurnId("turn-1"),
-        status: "completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asRuntimeTurnId("turn-1"),
+        payload: { state: "completed" },
       };
 
       fanout.codex.emit(completedEvent);
@@ -662,36 +668,36 @@ fanout.layer("ProviderServiceLive fanout", (it) => {
       yield* sleep(20);
 
       fanout.codex.emit({
-        type: "tool.started",
+        type: "item.started",
         eventId: asEventId("evt-seq-1"),
         provider: "codex",
-        sessionId: session.sessionId,
+        sessionId: asRuntimeSessionId(session.sessionId),
         createdAt: new Date().toISOString(),
-        threadId: asProviderThreadId("thread-1"),
-        turnId: asTurnId("turn-1"),
-        toolKind: "command",
-        title: "Command run",
+        threadId: asThreadId("thread-1"),
+        turnId: asRuntimeTurnId("turn-1"),
+        itemId: asRuntimeItemId("item-seq-1"),
+        payload: { itemType: "command_execution", title: "Command run" },
       });
       fanout.codex.emit({
-        type: "tool.completed",
+        type: "item.completed",
         eventId: asEventId("evt-seq-2"),
         provider: "codex",
-        sessionId: session.sessionId,
+        sessionId: asRuntimeSessionId(session.sessionId),
         createdAt: new Date().toISOString(),
-        threadId: asProviderThreadId("thread-1"),
-        turnId: asTurnId("turn-1"),
-        toolKind: "command",
-        title: "Command run",
+        threadId: asThreadId("thread-1"),
+        turnId: asRuntimeTurnId("turn-1"),
+        itemId: asRuntimeItemId("item-seq-1"),
+        payload: { itemType: "command_execution", title: "Command run" },
       });
       fanout.codex.emit({
         type: "turn.completed",
         eventId: asEventId("evt-seq-3"),
         provider: "codex",
-        sessionId: session.sessionId,
+        sessionId: asRuntimeSessionId(session.sessionId),
         createdAt: new Date().toISOString(),
-        threadId: asProviderThreadId("thread-1"),
-        turnId: asTurnId("turn-1"),
-        status: "completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asRuntimeTurnId("turn-1"),
+        payload: { state: "completed" },
       });
 
       yield* Fiber.join(consumer);
@@ -728,36 +734,36 @@ fanout.layer("ProviderServiceLive fanout", (it) => {
 
       const events: ReadonlyArray<ProviderRuntimeEvent> = [
         {
-          type: "tool.completed",
+          type: "item.completed",
           eventId: asEventId("evt-ordered-1"),
           provider: "codex",
-          sessionId: session.sessionId,
+          sessionId: asRuntimeSessionId(session.sessionId),
           createdAt: new Date().toISOString(),
-          threadId: asProviderThreadId("thread-1"),
-          turnId: asTurnId("turn-1"),
-          toolKind: "command",
-          title: "Command run",
-          detail: "echo one",
+          threadId: asThreadId("thread-1"),
+          turnId: asRuntimeTurnId("turn-1"),
+          itemId: asRuntimeItemId("item-ordered-1"),
+          payload: { itemType: "command_execution", title: "Command run", detail: "echo one" },
         },
         {
-          type: "message.delta",
+          type: "content.delta",
           eventId: asEventId("evt-ordered-2"),
           provider: "codex",
-          sessionId: session.sessionId,
+          sessionId: asRuntimeSessionId(session.sessionId),
           createdAt: new Date().toISOString(),
-          threadId: asProviderThreadId("thread-1"),
-          turnId: asTurnId("turn-1"),
-          delta: "hello",
+          threadId: asThreadId("thread-1"),
+          turnId: asRuntimeTurnId("turn-1"),
+          itemId: asRuntimeItemId("item-ordered-2"),
+          payload: { streamKind: "assistant_text", delta: "hello" },
         },
         {
           type: "turn.completed",
           eventId: asEventId("evt-ordered-3"),
           provider: "codex",
-          sessionId: session.sessionId,
+          sessionId: asRuntimeSessionId(session.sessionId),
           createdAt: new Date().toISOString(),
-          threadId: asProviderThreadId("thread-1"),
-          turnId: asTurnId("turn-1"),
-          status: "completed",
+          threadId: asThreadId("thread-1"),
+          turnId: asRuntimeTurnId("turn-1"),
+          payload: { state: "completed" },
         },
       ];
 

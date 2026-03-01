@@ -16,10 +16,13 @@ import {
   EventId,
   ORCHESTRATION_WS_CHANNELS,
   ORCHESTRATION_WS_METHODS,
-  ProviderItemId,
   ProviderSessionId,
   ProviderThreadId,
   ProviderTurnId,
+  RuntimeItemId,
+  RuntimeSessionId,
+  ThreadId,
+  TurnId,
   WS_CHANNELS,
   WS_METHODS,
   type WebSocketResponse,
@@ -61,7 +64,10 @@ const asProviderSessionId = (value: string): ProviderSessionId =>
   ProviderSessionId.makeUnsafe(value);
 const asProviderThreadId = (value: string): ProviderThreadId => ProviderThreadId.makeUnsafe(value);
 const asProviderTurnId = (value: string): ProviderTurnId => ProviderTurnId.makeUnsafe(value);
-const asProviderItemId = (value: string): ProviderItemId => ProviderItemId.makeUnsafe(value);
+const asRuntimeSessionId = (value: string): RuntimeSessionId => RuntimeSessionId.makeUnsafe(value);
+const asRuntimeItemId = (value: string): RuntimeItemId => RuntimeItemId.makeUnsafe(value);
+const asRuntimeThreadId = (value: string): ThreadId => ThreadId.makeUnsafe(value);
+const asRuntimeTurnId = (value: string): TurnId => TurnId.makeUnsafe(value);
 
 const defaultOpenService: OpenShape = {
   openBrowser: () => Effect.void,
@@ -1176,14 +1182,18 @@ describe("WebSocket Server", () => {
     });
 
     emitRuntimeEvent({
-      type: "message.delta",
+      type: "content.delta",
       eventId: asEventId("evt-ws-runtime-message-delta"),
       provider: "codex",
-      sessionId,
+      sessionId: asRuntimeSessionId(sessionId),
       createdAt: new Date().toISOString(),
-      turnId: asProviderTurnId("turn-1"),
-      itemId: asProviderItemId("item-1"),
-      delta: "hello from runtime",
+      threadId: asRuntimeThreadId("thread-1"),
+      turnId: asRuntimeTurnId("turn-1"),
+      itemId: asRuntimeItemId("item-1"),
+      payload: {
+        streamKind: "assistant_text",
+        delta: "hello from runtime",
+      },
     });
 
     const domainPush = await waitForPush(ws, ORCHESTRATION_WS_CHANNELS.domainEvent, (push) => {
