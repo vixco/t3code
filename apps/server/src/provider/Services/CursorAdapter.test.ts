@@ -1,131 +1,102 @@
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { CursorCliStreamEvent } from "./CursorAdapter.ts";
+import {
+  CursorAcpPermissionRequest,
+  CursorAcpResponseEnvelope,
+  CursorAcpSessionUpdate,
+  CursorAcpSessionUpdateNotification,
+} from "./CursorAdapter.ts";
 
-describe("CursorCliStreamEvent", () => {
-  it("decodes system/init events", () => {
-    const decoded = Schema.decodeUnknownSync(CursorCliStreamEvent)({
-      type: "system",
-      subtype: "init",
-      session_id: "sess-1",
-      apiKeySource: "login",
-      cwd: "/tmp/project",
-      model: "Auto",
-      permissionMode: "default",
-    });
-
-    expect(decoded.type).toBe("system");
-    if (decoded.type !== "system") {
-      return;
-    }
-    expect(decoded.subtype).toBe("init");
-    expect(decoded.session_id).toBe("sess-1");
-  });
-
-  it("decodes thinking delta/completed events", () => {
-    const delta = Schema.decodeUnknownSync(CursorCliStreamEvent)({
-      type: "thinking",
-      subtype: "delta",
-      text: "draft",
-      session_id: "sess-1",
-      timestamp_ms: 123,
-    });
-
-    expect(delta.type).toBe("thinking");
-    if (delta.type !== "thinking") {
-      return;
-    }
-    expect(delta.subtype).toBe("delta");
-
-    const completed = Schema.decodeUnknownSync(CursorCliStreamEvent)({
-      type: "thinking",
-      subtype: "completed",
-      session_id: "sess-1",
-    });
-
-    expect(completed.type).toBe("thinking");
-    if (completed.type !== "thinking") {
-      return;
-    }
-    expect(completed.subtype).toBe("completed");
-  });
-
-  it("decodes tool_call completed events with rejected results", () => {
-    const decoded = Schema.decodeUnknownSync(CursorCliStreamEvent)({
-      type: "tool_call",
-      subtype: "completed",
-      call_id: "tool-1\nline-2",
-      session_id: "sess-1",
-      tool_call: {
-        shellToolCall: {
-          args: {
-            command: "rm -rf /tmp/nope",
-          },
-          result: {
-            rejected: {
-              reason: "approval denied",
-            },
+describe("Cursor ACP schemas", () => {
+  it("decodes session/update thought chunk notifications", () => {
+    const decoded = Schema.decodeUnknownSync(CursorAcpSessionUpdateNotification)({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "sess-1",
+        update: {
+          sessionUpdate: "agent_thought_chunk",
+          content: {
+            type: "text",
+            text: "thinking...",
           },
         },
       },
     });
 
-    expect(decoded.type).toBe("tool_call");
-    if (decoded.type !== "tool_call") {
-      return;
-    }
-    expect(decoded.subtype).toBe("completed");
-    expect(decoded.call_id).toContain("\n");
+    expect(decoded.method).toBe("session/update");
+    expect(decoded.params.update.sessionUpdate).toBe("agent_thought_chunk");
   });
 
-  it("decodes result success events with usage payload", () => {
-    const decoded = Schema.decodeUnknownSync(CursorCliStreamEvent)({
-      type: "result",
-      subtype: "success",
-      duration_ms: 100,
-      duration_api_ms: 90,
-      is_error: false,
-      result: "OK",
-      session_id: "sess-1",
-      request_id: "req-1",
-      usage: {
-        inputTokens: 10,
-        outputTokens: 5,
-        cacheReadTokens: 2,
-        cacheWriteTokens: 1,
+  it("decodes tool_call_update completion payloads", () => {
+    const decoded = Schema.decodeUnknownSync(CursorAcpSessionUpdate)({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "tool-1",
+      status: "completed",
+      title: "Terminal",
+      rawOutput: {
+        exitCode: 0,
+        stdout: "/workspace\n",
       },
     });
 
-    expect(decoded.type).toBe("result");
-    if (decoded.type !== "result") {
+    expect(decoded.sessionUpdate).toBe("tool_call_update");
+    if (decoded.sessionUpdate !== "tool_call_update") {
       return;
     }
-    expect(decoded.subtype).toBe("success");
-    expect(decoded.is_error).toBe(false);
+    expect(decoded.toolCallId).toBe("tool-1");
+    expect(decoded.status).toBe("completed");
   });
 
-  it("decodes connection/retry lifecycle events", () => {
-    const reconnecting = Schema.decodeUnknownSync(CursorCliStreamEvent)({
-      type: "connection",
-      subtype: "reconnecting",
-      session_id: "sess-1",
+  it("decodes permission requests with options", () => {
+    const decoded = Schema.decodeUnknownSync(CursorAcpPermissionRequest)({
+      jsonrpc: "2.0",
+      id: 7,
+      method: "session/request_permission",
+      params: {
+        sessionId: "sess-1",
+        toolCall: {
+          kind: "execute",
+          command: "pwd",
+        },
+        options: [
+          { optionId: "allow-once", title: "Allow once" },
+          { optionId: "allow-always", title: "Always allow" },
+          { optionId: "reject-once", title: "Reject" },
+        ],
+      },
     });
-    expect(reconnecting.type).toBe("connection");
 
-    const retry = Schema.decodeUnknownSync(CursorCliStreamEvent)({
-      type: "retry",
-      subtype: "resuming",
-      session_id: "sess-1",
-    });
-    expect(retry.type).toBe("retry");
+    expect(decoded.method).toBe("session/request_permission");
+    expect(decoded.params.options).toHaveLength(3);
   });
 
-  it("rejects unsupported stream event types", () => {
+  it("decodes json-rpc response envelopes", () => {
+    const success = Schema.decodeUnknownSync(CursorAcpResponseEnvelope)({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { stopReason: "end_turn" },
+    });
+    expect(success.id).toBe(1);
+    expect(success.result).toEqual({ stopReason: "end_turn" });
+
+    const error = Schema.decodeUnknownSync(CursorAcpResponseEnvelope)({
+      jsonrpc: "2.0",
+      id: "2",
+      error: {
+        code: -32601,
+        message: "Method not found",
+      },
+    });
+    expect(error.id).toBe("2");
+    expect(error.error?.code).toBe(-32601);
+  });
+
+  it("rejects unsupported session update kinds", () => {
     expect(() =>
-      Schema.decodeUnknownSync(CursorCliStreamEvent)({
-        type: "bogus",
-        session_id: "sess-1",
+      Schema.decodeUnknownSync(CursorAcpSessionUpdate)({
+        sessionUpdate: "unknown_update_type",
       }),
     ).toThrow();
   });

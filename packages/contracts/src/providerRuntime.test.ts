@@ -3,7 +3,7 @@ import { Schema } from "effect";
 
 import { ProviderRuntimeEvent } from "./providerRuntime";
 
-const decodeRuntimeEvent = Schema.decodeUnknownSync(ProviderRuntimeEvent);
+const decodeRuntimeEvent = Schema.decodeUnknownSync(ProviderRuntimeEvent as any);
 
 describe("ProviderRuntimeEvent", () => {
   it("decodes turn.plan.updated for plan rendering", () => {

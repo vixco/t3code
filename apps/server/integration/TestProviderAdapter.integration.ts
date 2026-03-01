@@ -25,7 +25,7 @@ import type {
 } from "../src/provider/Services/ProviderAdapter.ts";
 
 export interface TestTurnResponse {
-  readonly events: ReadonlyArray<ProviderRuntimeEvent>;
+  readonly events: ReadonlyArray<Record<string, unknown>>;
   readonly mutateWorkspace?: (input: {
     readonly cwd: string;
     readonly turnCount: number;
@@ -169,7 +169,7 @@ export const makeTestProviderAdapterHarness = (options?: MakeTestProviderAdapter
       const deferredTurnCompletedEvents: ProviderRuntimeEvent[] = [];
       for (const fixtureEvent of response.events) {
         const rawEvent: Record<string, unknown> = {
-          ...(fixtureEvent as Record<string, unknown>),
+          ...fixtureEvent,
           eventId: randomUUID(),
           provider,
           sessionId: input.sessionId,
@@ -183,10 +183,25 @@ export const makeTestProviderAdapterHarness = (options?: MakeTestProviderAdapter
         }
 
         const runtimeEvent = rawEvent as ProviderRuntimeEvent;
-        if (runtimeEvent.type === "message.delta") {
-          assistantDeltas.push(runtimeEvent.delta);
+        const runtimeEventType =
+          typeof rawEvent.type === "string" ? rawEvent.type : runtimeEvent.type;
+        if (runtimeEventType === "message.delta" && typeof rawEvent.delta === "string") {
+          assistantDeltas.push(rawEvent.delta);
         }
-        if (runtimeEvent.type === "turn.completed") {
+        if (runtimeEventType === "content.delta") {
+          const payload =
+            rawEvent.payload && typeof rawEvent.payload === "object" && !Array.isArray(rawEvent.payload)
+              ? (rawEvent.payload as Record<string, unknown>)
+              : undefined;
+          if (
+            payload?.streamKind === "assistant_text" &&
+            typeof payload.delta === "string" &&
+            payload.delta.length > 0
+          ) {
+            assistantDeltas.push(payload.delta);
+          }
+        }
+        if (runtimeEventType === "turn.completed") {
           deferredTurnCompletedEvents.push(runtimeEvent);
           continue;
         }
@@ -227,7 +242,9 @@ export const makeTestProviderAdapterHarness = (options?: MakeTestProviderAdapter
           createdAt: nowIso(),
           threadId: state.snapshot.threadId,
           turnId,
-          status: "completed",
+          payload: {
+            state: "completed",
+          },
         });
       } else {
         for (const completedEvent of deferredTurnCompletedEvents) {

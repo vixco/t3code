@@ -53,7 +53,7 @@ export const codexTurnTextFixture = [
     turnId: TURN_ID,
     status: "completed",
   },
-] satisfies ReadonlyArray<ProviderRuntimeEvent>;
+];
 
 export const codexTurnToolFixture = [
   {
@@ -94,7 +94,7 @@ export const codexTurnToolFixture = [
     turnId: TURN_ID,
     status: "completed",
   },
-] satisfies ReadonlyArray<ProviderRuntimeEvent>;
+];
 
 export const codexTurnApprovalFixture = [
   {
@@ -135,4 +135,4 @@ export const codexTurnApprovalFixture = [
     turnId: TURN_ID,
     status: "completed",
   },
-] satisfies ReadonlyArray<ProviderRuntimeEvent>;
+];

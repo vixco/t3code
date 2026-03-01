@@ -76,12 +76,148 @@ function truncateDetail(value: string, limit = 180): string {
   return value.length > limit ? `${value.slice(0, limit - 3)}...` : value;
 }
 
+function asObject(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function eventPayloadRecord(event: ProviderRuntimeEvent): Record<string, unknown> | undefined {
+  const rawEvent = event as unknown as Record<string, unknown>;
+  return asObject(rawEvent.payload);
+}
+
+function mapLegacyTurnStatusToState(
+  status: unknown,
+): "completed" | "failed" | "cancelled" | "interrupted" | undefined {
+  switch (status) {
+    case "completed":
+    case "failed":
+    case "cancelled":
+    case "interrupted":
+      return status;
+    default:
+      return undefined;
+  }
+}
+
+function getTurnCompletionState(event: ProviderRuntimeEvent):
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "interrupted"
+  | undefined {
+  if (event.type !== "turn.completed") {
+    return undefined;
+  }
+  const payload = eventPayloadRecord(event);
+  const stateFromPayload = mapLegacyTurnStatusToState(payload?.state);
+  if (stateFromPayload !== undefined) {
+    return stateFromPayload;
+  }
+  const rawEvent = event as unknown as Record<string, unknown>;
+  return mapLegacyTurnStatusToState(rawEvent.status);
+}
+
+function getTurnCompletionErrorMessage(event: ProviderRuntimeEvent): string | undefined {
+  if (event.type !== "turn.completed") {
+    return undefined;
+  }
+  const payload = eventPayloadRecord(event);
+  const payloadMessage = asString(payload?.errorMessage);
+  if (payloadMessage !== undefined) {
+    return payloadMessage;
+  }
+  const rawEvent = event as unknown as Record<string, unknown>;
+  return asString(rawEvent.errorMessage);
+}
+
+function getRuntimeErrorMessage(event: ProviderRuntimeEvent): string {
+  if (event.type !== "runtime.error") {
+    return "Runtime error";
+  }
+  const payload = eventPayloadRecord(event);
+  const payloadMessage = asString(payload?.message);
+  if (payloadMessage !== undefined && payloadMessage.length > 0) {
+    return payloadMessage;
+  }
+  const rawEvent = event as unknown as Record<string, unknown>;
+  const legacyMessage = asString(rawEvent.message);
+  if (legacyMessage !== undefined && legacyMessage.length > 0) {
+    return legacyMessage;
+  }
+  return "Runtime error";
+}
+
+function mapLegacyRequestType(value: unknown):
+  | "command_execution_approval"
+  | "file_change_approval"
+  | "apply_patch_approval"
+  | "exec_command_approval"
+  | "tool_user_input"
+  | "dynamic_tool_call"
+  | "auth_tokens_refresh"
+  | "unknown" {
+  switch (value) {
+    case "command_execution_approval":
+    case "file_change_approval":
+    case "apply_patch_approval":
+    case "exec_command_approval":
+    case "tool_user_input":
+    case "dynamic_tool_call":
+    case "auth_tokens_refresh":
+      return value;
+    case "command":
+      return "command_execution_approval";
+    case "file-change":
+      return "file_change_approval";
+    case "apply_patch":
+      return "apply_patch_approval";
+    case "exec_command":
+      return "exec_command_approval";
+    case "user_input":
+      return "tool_user_input";
+    case "tool":
+      return "dynamic_tool_call";
+    case "auth":
+      return "auth_tokens_refresh";
+    default:
+      return "unknown";
+  }
+}
+
+function mapLegacyToolKindToItemType(
+  value: unknown,
+): "command_execution" | "file_change" | "apply_patch" | "dynamic_tool_call" {
+  switch (value) {
+    case "command_execution":
+    case "command":
+      return "command_execution";
+    case "file_change":
+    case "file-change":
+      return "file_change";
+    case "apply_patch":
+      return "apply_patch";
+    default:
+      return "dynamic_tool_call";
+  }
+}
+
 function runtimeEventToActivities(
   event: ProviderRuntimeEvent,
 ): ReadonlyArray<OrchestrationThreadActivity> {
   const maybeSequence = event.sessionSequence !== undefined ? { sequence: event.sessionSequence } : {};
+  const rawEvent = event as unknown as Record<string, unknown>;
+  const rawEventType = asString(rawEvent.type);
   switch (event.type) {
-    case "approval.requested": {
+    case "request.opened": {
+      const isCommandLike =
+        event.payload.requestType === "command_execution_approval" ||
+        event.payload.requestType === "exec_command_approval";
       return [
         {
           id: event.eventId,
@@ -89,13 +225,16 @@ function runtimeEventToActivities(
           tone: "approval",
           kind: "approval.requested",
           summary:
-            event.requestKind === "command"
+            isCommandLike
               ? "Command approval requested"
-              : "File-change approval requested",
+              : event.payload.requestType === "file_change_approval" ||
+                  event.payload.requestType === "apply_patch_approval"
+                ? "File-change approval requested"
+                : "Approval requested",
           payload: {
             requestId: event.requestId,
-            requestKind: event.requestKind,
-            ...(event.detail ? { detail: truncateDetail(event.detail) } : {}),
+            requestType: event.payload.requestType,
+            ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
@@ -103,7 +242,7 @@ function runtimeEventToActivities(
       ];
     }
 
-    case "approval.resolved": {
+    case "request.resolved": {
       return [
         {
           id: event.eventId,
@@ -113,8 +252,8 @@ function runtimeEventToActivities(
           summary: "Approval resolved",
           payload: {
             requestId: event.requestId,
-            ...(event.requestKind ? { requestKind: event.requestKind } : {}),
-            ...(event.decision ? { decision: event.decision } : {}),
+            requestType: event.payload.requestType,
+            ...(event.payload.decision ? { decision: event.payload.decision } : {}),
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
@@ -131,7 +270,7 @@ function runtimeEventToActivities(
           kind: "runtime.error",
           summary: "Runtime error",
           payload: {
-            message: truncateDetail(event.message),
+            message: truncateDetail(getRuntimeErrorMessage(event)),
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
@@ -139,17 +278,20 @@ function runtimeEventToActivities(
       ];
     }
 
-    case "tool.completed": {
+    case "item.completed": {
+      if (event.payload.itemType === "assistant_message") {
+        return [];
+      }
       return [
         {
           id: event.eventId,
           createdAt: event.createdAt,
           tone: "tool",
           kind: "tool.completed",
-          summary: `${event.title} complete`,
+          summary: `${event.payload.title ?? "Tool"} complete`,
           payload: {
-            toolKind: event.toolKind,
-            ...(event.detail ? { detail: truncateDetail(event.detail) } : {}),
+            itemType: event.payload.itemType,
+            ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
@@ -157,17 +299,20 @@ function runtimeEventToActivities(
       ];
     }
 
-    case "tool.started": {
+    case "item.started": {
+      if (event.payload.itemType === "assistant_message") {
+        return [];
+      }
       return [
         {
           id: event.eventId,
           createdAt: event.createdAt,
           tone: "tool",
           kind: "tool.started",
-          summary: `${event.title} started`,
+          summary: `${event.payload.title ?? "Tool"} started`,
           payload: {
-            toolKind: event.toolKind,
-            ...(event.detail ? { detail: truncateDetail(event.detail) } : {}),
+            itemType: event.payload.itemType,
+            ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
@@ -176,8 +321,80 @@ function runtimeEventToActivities(
     }
 
     default:
-      return [];
+      break;
   }
+
+  if (rawEventType === "approval.requested") {
+    const requestType = mapLegacyRequestType(rawEvent.requestType ?? rawEvent.requestKind);
+    const detail = asString(rawEvent.detail);
+    const requestId = asString(rawEvent.requestId);
+    return [
+      {
+        id: event.eventId,
+        createdAt: event.createdAt,
+        tone: "approval",
+        kind: "approval.requested",
+        summary:
+          requestType === "command_execution_approval" || requestType === "exec_command_approval"
+            ? "Command approval requested"
+            : requestType === "file_change_approval" || requestType === "apply_patch_approval"
+              ? "File-change approval requested"
+              : "Approval requested",
+        payload: {
+          ...(requestId ? { requestId } : {}),
+          requestType,
+          ...(detail ? { detail: truncateDetail(detail) } : {}),
+        },
+        turnId: toTurnId(asString(rawEvent.turnId)) ?? null,
+        ...maybeSequence,
+      },
+    ];
+  }
+
+  if (rawEventType === "approval.resolved") {
+    const requestType = mapLegacyRequestType(rawEvent.requestType ?? rawEvent.requestKind);
+    const requestId = asString(rawEvent.requestId);
+    const decision = asString(rawEvent.decision);
+    return [
+      {
+        id: event.eventId,
+        createdAt: event.createdAt,
+        tone: "approval",
+        kind: "approval.resolved",
+        summary: "Approval resolved",
+        payload: {
+          ...(requestId ? { requestId } : {}),
+          requestType,
+          ...(decision ? { decision } : {}),
+        },
+        turnId: toTurnId(asString(rawEvent.turnId)) ?? null,
+        ...maybeSequence,
+      },
+    ];
+  }
+
+  if (rawEventType === "tool.started" || rawEventType === "tool.completed") {
+    const itemType = mapLegacyToolKindToItemType(rawEvent.toolKind);
+    const title = asString(rawEvent.title) ?? "Tool";
+    const detail = asString(rawEvent.detail);
+    return [
+      {
+        id: event.eventId,
+        createdAt: event.createdAt,
+        tone: "tool",
+        kind: rawEventType === "tool.started" ? "tool.started" : "tool.completed",
+        summary: `${title} ${rawEventType === "tool.started" ? "started" : "complete"}`,
+        payload: {
+          itemType,
+          ...(detail ? { detail: truncateDetail(detail) } : {}),
+        },
+        turnId: toTurnId(asString(rawEvent.turnId)) ?? null,
+        ...maybeSequence,
+      },
+    ];
+  }
+
+  return [];
 }
 
 const make = Effect.gen(function* () {
@@ -350,6 +567,8 @@ const make = Effect.gen(function* () {
 
   const processRuntimeEvent = (event: ProviderRuntimeEvent) =>
     Effect.gen(function* () {
+      const rawEvent = event as unknown as Record<string, unknown>;
+      const rawEventType = asString(rawEvent.type) ?? event.type;
       const readModel = yield* orchestrationEngine.getReadModel();
       const thread = readModel.threads.find(
         (entry) => entry.session?.providerSessionId === event.sessionId,
@@ -427,6 +646,7 @@ const make = Effect.gen(function* () {
         event.type === "turn.started" ||
         event.type === "turn.completed"
       ) {
+        const turnCompletionState = getTurnCompletionState(event);
         const nextActiveTurnId =
           event.type === "turn.started"
             ? (eventTurnId ?? null)
@@ -435,7 +655,7 @@ const make = Effect.gen(function* () {
               : activeTurnId;
         const providerThreadIdFromEvent =
           event.type === "thread.started"
-            ? ProviderThreadId.makeUnsafe(event.threadId)
+            ? (event.threadId ? ProviderThreadId.makeUnsafe(event.threadId) : null)
             : event.threadId !== undefined
               ? ProviderThreadId.makeUnsafe(event.threadId)
               : null;
@@ -448,7 +668,7 @@ const make = Effect.gen(function* () {
             case "session.exited":
               return "stopped";
             case "turn.completed":
-              return event.status === "failed" ? "error" : "ready";
+              return turnCompletionState === "failed" ? "error" : "ready";
             case "session.started":
             case "thread.started":
               // Provider thread/session start notifications can arrive during an
@@ -457,8 +677,8 @@ const make = Effect.gen(function* () {
           }
         })();
         const lastError =
-          event.type === "turn.completed" && event.status === "failed"
-            ? (event.errorMessage ?? thread.session?.lastError ?? "Turn failed")
+          event.type === "turn.completed" && turnCompletionState === "failed"
+            ? (getTurnCompletionErrorMessage(event) ?? thread.session?.lastError ?? "Turn failed")
             : status === "ready"
               ? null
               : (thread.session?.lastError ?? null);
@@ -485,7 +705,19 @@ const make = Effect.gen(function* () {
         }
       }
 
-      if (event.type === "message.delta" && event.delta.length > 0) {
+      const isV2AssistantTextDelta =
+        event.type === "content.delta" && event.payload.streamKind === "assistant_text";
+      const isLegacyAssistantTextDelta = rawEventType === "message.delta";
+      if (isV2AssistantTextDelta || isLegacyAssistantTextDelta) {
+        const delta = (
+          event.type === "content.delta"
+            ? event.payload.delta
+            : ((rawEvent.delta as string | undefined) as string)
+        ).toString();
+        if (delta.length === 0) {
+          return;
+        }
+
         const assistantMessageId = MessageId.makeUnsafe(
           `assistant:${event.itemId ?? event.turnId ?? event.sessionId}`,
         );
@@ -496,7 +728,10 @@ const make = Effect.gen(function* () {
 
         const assistantDeliveryMode = yield* Ref.get(assistantDeliveryModeRef);
         if (assistantDeliveryMode === "buffered") {
-          const spillChunk = yield* appendBufferedAssistantText(assistantMessageId, event.delta);
+          const spillChunk = yield* appendBufferedAssistantText(
+            assistantMessageId,
+            delta,
+          );
           if (spillChunk.length > 0) {
             yield* orchestrationEngine.dispatch({
               type: "thread.message.assistant.delta",
@@ -514,15 +749,20 @@ const make = Effect.gen(function* () {
             commandId: providerCommandId(event, "assistant-delta"),
             threadId: thread.id,
             messageId: assistantMessageId,
-            delta: event.delta,
+            delta,
             ...(turnId ? { turnId } : {}),
             createdAt: now,
           });
         }
       }
 
-      if (event.type === "message.completed") {
-        const assistantMessageId = MessageId.makeUnsafe(`assistant:${event.itemId}`);
+      const isAssistantMessageCompleted =
+        (event.type === "item.completed" && event.payload.itemType === "assistant_message") ||
+        rawEventType === "message.completed";
+      if (isAssistantMessageCompleted) {
+        const assistantMessageId = MessageId.makeUnsafe(
+          `assistant:${event.itemId ?? asString(rawEvent.itemId) ?? event.turnId ?? event.sessionId}`,
+        );
         const turnId = toTurnId(event.turnId);
         if (turnId) {
           yield* rememberAssistantMessageId(event.sessionId, turnId, assistantMessageId);
@@ -570,6 +810,7 @@ const make = Effect.gen(function* () {
       }
 
       if (event.type === "runtime.error") {
+        const runtimeErrorMessage = getRuntimeErrorMessage(event);
         const shouldApplyRuntimeError = !STRICT_PROVIDER_LIFECYCLE_GUARD
           ? true
           : matchesThreadScope &&
@@ -596,7 +837,7 @@ const make = Effect.gen(function* () {
               approvalPolicy: thread.session?.approvalPolicy ?? DEFAULT_APPROVAL_POLICY,
               sandboxMode: thread.session?.sandboxMode ?? DEFAULT_SANDBOX_MODE,
               activeTurnId: eventTurnId ?? null,
-              lastError: event.message,
+              lastError: runtimeErrorMessage,
               updatedAt: now,
             },
             createdAt: now,

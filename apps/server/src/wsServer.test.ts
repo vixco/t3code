@@ -1089,8 +1089,8 @@ describe("WebSocket Server", () => {
   it("keeps orchestration domain push behavior for provider runtime events", async () => {
     const runtimeEventPubSub = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
     const sessionId = asProviderSessionId("sess-test");
-    const emitRuntimeEvent = (event: ProviderRuntimeEvent) => {
-      Effect.runSync(PubSub.publish(runtimeEventPubSub, event));
+    const emitRuntimeEvent = (event: ProviderRuntimeEvent | Record<string, unknown>) => {
+      Effect.runSync(PubSub.publish(runtimeEventPubSub, event as ProviderRuntimeEvent));
     };
     const unsupported = () => Effect.die(new Error("Unsupported provider call in test")) as never;
     const providerService: ProviderServiceShape = {

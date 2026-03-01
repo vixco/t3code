@@ -385,7 +385,6 @@ it.effect(
           {
             provider: "codex",
             cwd: "/tmp/project",
-            resumeThreadId: startedSession.threadId,
             resumeCursor: startedSession.resumeCursor,
           },
         ],
@@ -495,7 +494,6 @@ routing.layer("ProviderServiceLive routing", (it) => {
           {
             provider: "codex",
             cwd: "/tmp/project",
-            resumeThreadId: initial.threadId,
             resumeCursor: initial.resumeCursor,
           },
         ],
@@ -530,7 +528,6 @@ routing.layer("ProviderServiceLive routing", (it) => {
           {
             provider: "codex",
             cwd: "/tmp/project-send-turn",
-            resumeThreadId: initial.threadId,
             resumeCursor: initial.resumeCursor,
           },
         ],
@@ -631,7 +628,9 @@ fanout.layer("ProviderServiceLive fanout", (it) => {
         createdAt: new Date().toISOString(),
         threadId: asProviderThreadId("thread-1"),
         turnId: asTurnId("turn-1"),
-        status: "completed",
+        payload: {
+          state: "completed",
+        },
       };
 
       fanout.codex.emit(completedEvent);
@@ -662,26 +661,30 @@ fanout.layer("ProviderServiceLive fanout", (it) => {
       yield* sleep(20);
 
       fanout.codex.emit({
-        type: "tool.started",
+        type: "item.started",
         eventId: asEventId("evt-seq-1"),
         provider: "codex",
         sessionId: session.sessionId,
         createdAt: new Date().toISOString(),
         threadId: asProviderThreadId("thread-1"),
         turnId: asTurnId("turn-1"),
-        toolKind: "command",
-        title: "Command run",
+        payload: {
+          itemType: "command_execution",
+          title: "Command run",
+        },
       });
       fanout.codex.emit({
-        type: "tool.completed",
+        type: "item.completed",
         eventId: asEventId("evt-seq-2"),
         provider: "codex",
         sessionId: session.sessionId,
         createdAt: new Date().toISOString(),
         threadId: asProviderThreadId("thread-1"),
         turnId: asTurnId("turn-1"),
-        toolKind: "command",
-        title: "Command run",
+        payload: {
+          itemType: "command_execution",
+          title: "Command run",
+        },
       });
       fanout.codex.emit({
         type: "turn.completed",
@@ -691,7 +694,9 @@ fanout.layer("ProviderServiceLive fanout", (it) => {
         createdAt: new Date().toISOString(),
         threadId: asProviderThreadId("thread-1"),
         turnId: asTurnId("turn-1"),
-        status: "completed",
+        payload: {
+          state: "completed",
+        },
       });
 
       yield* Fiber.join(consumer);
@@ -728,26 +733,31 @@ fanout.layer("ProviderServiceLive fanout", (it) => {
 
       const events: ReadonlyArray<ProviderRuntimeEvent> = [
         {
-          type: "tool.completed",
+          type: "item.completed",
           eventId: asEventId("evt-ordered-1"),
           provider: "codex",
           sessionId: session.sessionId,
           createdAt: new Date().toISOString(),
           threadId: asProviderThreadId("thread-1"),
           turnId: asTurnId("turn-1"),
-          toolKind: "command",
-          title: "Command run",
-          detail: "echo one",
+          payload: {
+            itemType: "command_execution",
+            title: "Command run",
+            detail: "echo one",
+          },
         },
         {
-          type: "message.delta",
+          type: "content.delta",
           eventId: asEventId("evt-ordered-2"),
           provider: "codex",
           sessionId: session.sessionId,
           createdAt: new Date().toISOString(),
           threadId: asProviderThreadId("thread-1"),
           turnId: asTurnId("turn-1"),
-          delta: "hello",
+          payload: {
+            streamKind: "assistant_text",
+            delta: "hello",
+          },
         },
         {
           type: "turn.completed",
@@ -757,7 +767,9 @@ fanout.layer("ProviderServiceLive fanout", (it) => {
           createdAt: new Date().toISOString(),
           threadId: asProviderThreadId("thread-1"),
           turnId: asTurnId("turn-1"),
-          status: "completed",
+          payload: {
+            state: "completed",
+          },
         },
       ];
 

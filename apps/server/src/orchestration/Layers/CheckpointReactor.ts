@@ -48,6 +48,46 @@ function sameId(left: string | null | undefined, right: string | null | undefine
   return left === right;
 }
 
+function asObject(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function turnStateFromCompletion(
+  event: Extract<ProviderRuntimeEvent, { type: "turn.completed" }>,
+): "completed" | "failed" | "interrupted" | "cancelled" | undefined {
+  const payload = asObject((event as Record<string, unknown>).payload);
+  const state = asString(payload?.state);
+  if (
+    state === "completed" ||
+    state === "failed" ||
+    state === "interrupted" ||
+    state === "cancelled"
+  ) {
+    return state;
+  }
+
+  const legacyStatus = asString((event as Record<string, unknown>).status);
+  if (
+    legacyStatus === "completed" ||
+    legacyStatus === "failed" ||
+    legacyStatus === "interrupted" ||
+    legacyStatus === "cancelled"
+  ) {
+    return legacyStatus;
+  }
+  return undefined;
+}
+
 function checkpointStatusFromRuntime(status: string | undefined): "ready" | "missing" | "error" {
   switch (status) {
     case "failed":
@@ -287,6 +327,7 @@ const make = Effect.gen(function* () {
         .toReversed()
         .find((entry) => entry.role === "assistant" && entry.turnId === turnId)?.id ??
       MessageId.makeUnsafe(`assistant:${turnId}`);
+    const turnState = turnStateFromCompletion(event);
 
     const now = event.createdAt;
     yield* orchestrationEngine.dispatch({
@@ -296,7 +337,7 @@ const make = Effect.gen(function* () {
       turnId,
       completedAt: now,
       checkpointRef: targetCheckpointRef,
-      status: checkpointStatusFromRuntime(event.status),
+      status: checkpointStatusFromRuntime(turnState),
       files,
       assistantMessageId,
       checkpointTurnCount: nextTurnCount,
@@ -314,7 +355,7 @@ const make = Effect.gen(function* () {
         summary: "Checkpoint captured",
         payload: {
           turnCount: nextTurnCount,
-          ...(event.status !== undefined ? { status: event.status } : {}),
+          ...(turnState !== undefined ? { status: turnState } : {}),
         },
         turnId,
         createdAt: now,
@@ -571,6 +612,9 @@ const make = Effect.gen(function* () {
   });
 
   const processRuntimeEvent = Effect.fnUntraced(function* (event: ProviderRuntimeEvent) {
+    const rawEvent = event as unknown as Record<string, unknown>;
+    const rawEventType = asString(rawEvent.type) ?? event.type;
+
     if (event.type === "turn.started") {
       yield* ensurePreTurnBaselineFromTurnStart(event);
       return;
@@ -591,9 +635,13 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    if (event.type === "checkpoint.captured") {
-      const turnId = toTurnId(event.turnId);
+    if (rawEventType === "checkpoint.captured") {
+      const turnId = toTurnId(asString(rawEvent.turnId));
       if (!turnId) {
+        return;
+      }
+      const checkpointTurnCount = asNumber(rawEvent.turnCount);
+      if (checkpointTurnCount === undefined) {
         return;
       }
 
@@ -608,7 +656,7 @@ const make = Effect.gen(function* () {
       if (
         thread.checkpoints.some(
           (checkpoint) =>
-            checkpoint.turnId === turnId || checkpoint.checkpointTurnCount === event.turnCount,
+            checkpoint.turnId === turnId || checkpoint.checkpointTurnCount === checkpointTurnCount,
         )
       ) {
         return;
@@ -619,9 +667,9 @@ const make = Effect.gen(function* () {
         return;
       }
 
-      const fromTurnCount = Math.max(0, event.turnCount - 1);
+      const fromTurnCount = Math.max(0, checkpointTurnCount - 1);
       const fromCheckpointRef = checkpointRefForThreadTurn(thread.id, fromTurnCount);
-      const targetCheckpointRef = checkpointRefForThreadTurn(thread.id, event.turnCount);
+      const targetCheckpointRef = checkpointRefForThreadTurn(thread.id, checkpointTurnCount);
 
       const targetExists = yield* checkpointStore.hasCheckpointRef({
         cwd: sessionRuntime.value.cwd,
@@ -666,10 +714,10 @@ const make = Effect.gen(function* () {
         turnId,
         completedAt: event.createdAt,
         checkpointRef: targetCheckpointRef,
-        status: checkpointStatusFromRuntime(event.status),
+        status: checkpointStatusFromRuntime(asString(rawEvent.status)),
         files,
         assistantMessageId,
-        checkpointTurnCount: event.turnCount,
+        checkpointTurnCount,
         createdAt: event.createdAt,
       });
     }
@@ -717,10 +765,11 @@ const make = Effect.gen(function* () {
 
     yield* Effect.forkScoped(
       Stream.runForEach(providerService.streamEvents, (event) => {
+        const rawType = asString((event as unknown as Record<string, unknown>).type) ?? event.type;
         if (
-          event.type !== "turn.started" &&
-          event.type !== "turn.completed" &&
-          event.type !== "checkpoint.captured"
+          rawType !== "turn.started" &&
+          rawType !== "turn.completed" &&
+          rawType !== "checkpoint.captured"
         ) {
           return Effect.void;
         }

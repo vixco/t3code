@@ -181,7 +181,7 @@ const lifecycleManager = new FakeCodexManager();
 const lifecycleLayer = it.layer(makeCodexAdapterLive({ manager: lifecycleManager }));
 
 lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
-  it.effect("maps completed agent message items to canonical message.completed events", () =>
+  it.effect("maps completed agent message items to canonical item.completed events", () =>
     Effect.gen(function* () {
       const adapter = yield* CodexAdapter;
       const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
@@ -211,12 +211,14 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
       if (firstEvent._tag !== "Some") {
         return;
       }
-      assert.equal(firstEvent.value.type, "message.completed");
-      if (firstEvent.value.type !== "message.completed") {
+      assert.equal(firstEvent.value.type, "item.completed");
+      if (firstEvent.value.type !== "item.completed") {
         return;
       }
       assert.equal(firstEvent.value.itemId, "msg_1");
       assert.equal(firstEvent.value.turnId, "turn-1");
+      assert.equal(firstEvent.value.payload.itemType, "assistant_message");
+      assert.equal(firstEvent.value.payload.status, "completed");
     }),
   );
 
@@ -247,7 +249,7 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
         return;
       }
       assert.equal(firstEvent.value.sessionId, "sess-1");
-      assert.equal(firstEvent.value.message, "Session stopped");
+      assert.equal(firstEvent.value.payload.reason, "Session stopped");
     }),
   );
 });

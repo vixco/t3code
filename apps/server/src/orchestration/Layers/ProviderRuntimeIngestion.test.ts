@@ -37,8 +37,12 @@ const asProviderTurnId = (value: string): ProviderTurnId => ProviderTurnId.makeU
 const asItemId = (value: string): ProviderItemId => ProviderItemId.makeUnsafe(value);
 const asEventId = (value: string): EventId => EventId.makeUnsafe(value);
 const asMessageId = (value: string): MessageId => MessageId.makeUnsafe(value);
+type RuntimeEventInput = ProviderRuntimeEvent | Record<string, unknown>;
 
-function createProviderServiceHarness() {
+function createProviderServiceHarness(): {
+  service: ProviderServiceShape;
+  emit: (event: RuntimeEventInput) => void;
+} {
   const runtimeEventPubSub = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
 
   const unsupported = () => Effect.die(new Error("Unsupported provider call in test")) as never;
@@ -54,8 +58,8 @@ function createProviderServiceHarness() {
     streamEvents: Stream.fromPubSub(runtimeEventPubSub),
   };
 
-  const emit = (event: ProviderRuntimeEvent): void => {
-    Effect.runSync(PubSub.publish(runtimeEventPubSub, event));
+  const emit = (event: RuntimeEventInput): void => {
+    Effect.runSync(PubSub.publish(runtimeEventPubSub, event as ProviderRuntimeEvent));
   };
 
   return {
@@ -207,8 +211,10 @@ describe("ProviderRuntimeIngestion", () => {
       sessionId: asSessionId("sess-1"),
       createdAt: new Date().toISOString(),
       turnId: asProviderTurnId("turn-1"),
-      status: "failed",
-      errorMessage: "turn failed",
+      payload: {
+        state: "failed",
+        errorMessage: "turn failed",
+      },
     });
 
     const thread = await waitForThread(
@@ -274,7 +280,9 @@ describe("ProviderRuntimeIngestion", () => {
       createdAt: new Date().toISOString(),
       threadId: asProviderThreadId("provider-thread-1"),
       turnId: asProviderTurnId("turn-midturn-lifecycle"),
-      status: "completed",
+      payload: {
+        state: "completed",
+      },
     });
 
     await waitForThread(
@@ -311,7 +319,9 @@ describe("ProviderRuntimeIngestion", () => {
       createdAt: new Date().toISOString(),
       threadId: asProviderThreadId("provider-thread-aux"),
       turnId: asProviderTurnId("turn-aux"),
-      status: "completed",
+      payload: {
+        state: "completed",
+      },
     });
 
     await Effect.runPromise(Effect.sleep("40 millis"));
@@ -328,7 +338,9 @@ describe("ProviderRuntimeIngestion", () => {
       createdAt: new Date().toISOString(),
       threadId: asProviderThreadId("provider-thread-1"),
       turnId: asProviderTurnId("turn-primary"),
-      status: "completed",
+      payload: {
+        state: "completed",
+      },
     });
 
     await waitForThread(
@@ -387,7 +399,9 @@ describe("ProviderRuntimeIngestion", () => {
       createdAt: new Date().toISOString(),
       threadId: asProviderThreadId("provider-thread-real"),
       turnId: asProviderTurnId("turn-claude-placeholder"),
-      status: "completed",
+      payload: {
+        state: "completed",
+      },
     });
 
     await waitForThread(
@@ -423,7 +437,9 @@ describe("ProviderRuntimeIngestion", () => {
       sessionId: asSessionId("sess-1"),
       createdAt: new Date().toISOString(),
       turnId: asProviderTurnId("turn-guarded-other"),
-      status: "completed",
+      payload: {
+        state: "completed",
+      },
     });
 
     await Effect.runPromise(Effect.sleep("40 millis"));
@@ -439,7 +455,9 @@ describe("ProviderRuntimeIngestion", () => {
       sessionId: asSessionId("sess-1"),
       createdAt: new Date().toISOString(),
       turnId: asProviderTurnId("turn-guarded-main"),
-      status: "completed",
+      payload: {
+        state: "completed",
+      },
     });
 
     await waitForThread(
@@ -733,7 +751,9 @@ describe("ProviderRuntimeIngestion", () => {
       sessionId: asSessionId("sess-1"),
       createdAt: now,
       turnId: asProviderTurnId("turn-complete-dedup"),
-      status: "completed",
+      payload: {
+        state: "completed",
+      },
     });
 
     await waitForThread(
@@ -774,7 +794,9 @@ describe("ProviderRuntimeIngestion", () => {
       sessionId: asSessionId("sess-1"),
       createdAt: now,
       turnId: asProviderTurnId("turn-3"),
-      message: "runtime exploded",
+      payload: {
+        message: "runtime exploded",
+      },
     });
 
     const thread = await waitForThread(
@@ -799,7 +821,9 @@ describe("ProviderRuntimeIngestion", () => {
       sessionId: asSessionId("sess-1"),
       createdAt: now,
       threadId: ProviderThreadId.makeUnsafe("provider-thread-1"),
-      message: "session started",
+      payload: {
+        message: "session started",
+      },
     });
     harness.emit({
       type: "thread.started",
@@ -855,7 +879,9 @@ describe("ProviderRuntimeIngestion", () => {
       sessionId: asSessionId("sess-1"),
       createdAt: new Date().toISOString(),
       turnId: asProviderTurnId("turn-after-failure"),
-      message: "runtime still processed",
+      payload: {
+        message: "runtime still processed",
+      },
     });
 
     const thread = await waitForThread(

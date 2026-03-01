@@ -303,7 +303,6 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         const resumed = yield* adapter.startSession({
           provider: input.binding.provider,
           ...(persistedCwd ? { cwd: persistedCwd } : {}),
-          ...(resumeThreadId ? { resumeThreadId } : {}),
           ...(hasResumeCursor ? { resumeCursor: input.binding.resumeCursor } : {}),
         });
         if (resumed.provider !== adapter.provider) {
