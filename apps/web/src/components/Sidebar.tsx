@@ -159,7 +159,7 @@ function T3Wordmark() {
   return (
     <svg
       aria-label="T3"
-      className="h-3 w-auto shrink-0 text-foreground"
+      className="h-2.5 w-auto shrink-0 text-foreground"
       viewBox="15.5309 37 94.3941 56.96"
       xmlns="http://www.w3.org/2000/svg"
     >
@@ -615,14 +615,14 @@ export default function Sidebar() {
   };
 
   const wordmark = (
-    <div className={`flex items-center gap-2 ${isElectron ? "-translate-y-px" : ""}`}>
+    <div className={`flex items-center gap-2 ${isElectron ? "-translate-y-2" : ""}`}>
       <SidebarTrigger className="shrink-0 md:hidden" />
-      <div className="flex min-w-0 flex-1 items-center gap-1">
+      <div className="flex min-w-0 flex-1 items-center gap-1 leading-none">
         <T3Wordmark />
-        <span className="truncate text-base font-medium tracking-tight text-muted-foreground">
+        <span className="truncate text-sm font-medium tracking-tight text-muted-foreground">
           Code
         </span>
-        <span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-widest text-muted-foreground/60">
+        <span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.25em] text-muted-foreground/60">
           {APP_STAGE_LABEL}
         </span>
       </div>
