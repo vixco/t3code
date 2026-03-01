@@ -211,8 +211,8 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
       if (firstEvent._tag !== "Some") {
         return;
       }
-      assert.equal(firstEvent.value.type, "message.completed");
-      if (firstEvent.value.type !== "message.completed") {
+      assert.equal(firstEvent.value.type, "item.completed");
+      if (firstEvent.value.type !== "item.completed") {
         return;
       }
       assert.equal(firstEvent.value.itemId, "msg_1");
@@ -247,7 +247,7 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
         return;
       }
       assert.equal(firstEvent.value.sessionId, "sess-1");
-      assert.equal(firstEvent.value.message, "Session stopped");
+      assert.equal(firstEvent.value.payload.reason, "Session stopped");
     }),
   );
 });

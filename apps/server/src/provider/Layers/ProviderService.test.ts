@@ -391,7 +391,6 @@ it.effect(
           {
             provider: "codex",
             cwd: "/tmp/project",
-            resumeThreadId: startedSession.threadId,
             resumeCursor: startedSession.resumeCursor,
           },
         ],
@@ -501,7 +500,6 @@ routing.layer("ProviderServiceLive routing", (it) => {
           {
             provider: "codex",
             cwd: "/tmp/project",
-            resumeThreadId: initial.threadId,
             resumeCursor: initial.resumeCursor,
           },
         ],
@@ -536,7 +534,6 @@ routing.layer("ProviderServiceLive routing", (it) => {
           {
             provider: "codex",
             cwd: "/tmp/project-send-turn",
-            resumeThreadId: initial.threadId,
             resumeCursor: initial.resumeCursor,
           },
         ],
@@ -702,9 +699,10 @@ fanout.layer("ProviderServiceLive fanout", (it) => {
 
       yield* Fiber.join(consumer);
       const received = yield* Ref.get(receivedRef);
+      assert.equal(received.length, 3);
       assert.deepEqual(
-        received.map((event) => event.sessionSequence),
-        [1, 2, 3],
+        received.map((event) => event.type),
+        ["item.started", "item.completed", "turn.completed"],
       );
     }),
   );

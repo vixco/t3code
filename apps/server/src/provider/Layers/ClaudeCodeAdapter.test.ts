@@ -9,7 +9,7 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import { ApprovalRequestId, type ProviderTurnId } from "@t3tools/contracts";
+import { ApprovalRequestId, type ProviderTurnId, TurnId } from "@t3tools/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Fiber, Random, Stream } from "effect";
 
@@ -317,10 +317,10 @@ describe("ClaudeCodeAdapterLive", () => {
           "session.started",
           "turn.started",
           "thread.started",
-          "message.delta",
-          "tool.started",
-          "tool.completed",
-          "message.completed",
+          "content.delta",
+          "item.started",
+          "item.completed",
+          "item.completed",
           "turn.completed",
         ],
       );
@@ -328,27 +328,27 @@ describe("ClaudeCodeAdapterLive", () => {
       const turnStarted = runtimeEvents[1];
       assert.equal(turnStarted?.type, "turn.started");
       if (turnStarted?.type === "turn.started") {
-        assert.equal(turnStarted.turnId, turn.turnId);
+        assert.equal(turnStarted.turnId, TurnId.makeUnsafe(turn.turnId));
       }
 
       const deltaEvent = runtimeEvents[3];
-      assert.equal(deltaEvent?.type, "message.delta");
-      if (deltaEvent?.type === "message.delta") {
-        assert.equal(deltaEvent.delta, "Hi");
-        assert.equal(deltaEvent.turnId, turn.turnId);
+      assert.equal(deltaEvent?.type, "content.delta");
+      if (deltaEvent?.type === "content.delta") {
+        assert.equal(deltaEvent.payload.delta, "Hi");
+        assert.equal(deltaEvent.turnId, TurnId.makeUnsafe(turn.turnId));
       }
 
       const toolStarted = runtimeEvents[4];
-      assert.equal(toolStarted?.type, "tool.started");
-      if (toolStarted?.type === "tool.started") {
-        assert.equal(toolStarted.toolKind, "command");
+      assert.equal(toolStarted?.type, "item.started");
+      if (toolStarted?.type === "item.started") {
+        assert.equal(toolStarted.payload.itemType, "command_execution");
       }
 
       const turnCompleted = runtimeEvents[7];
       assert.equal(turnCompleted?.type, "turn.completed");
       if (turnCompleted?.type === "turn.completed") {
-        assert.equal(turnCompleted.turnId, turn.turnId);
-        assert.equal(turnCompleted.status, "completed");
+        assert.equal(turnCompleted.turnId, TurnId.makeUnsafe(turn.turnId));
+        assert.equal(turnCompleted.payload.state, "completed");
       }
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
@@ -418,21 +418,21 @@ describe("ClaudeCodeAdapterLive", () => {
           "session.started",
           "turn.started",
           "thread.started",
-          "message.delta",
-          "message.completed",
+          "content.delta",
+          "item.completed",
           "turn.completed",
         ],
       );
 
-      const deltaIndex = runtimeEvents.findIndex((event) => event.type === "message.delta");
-      const completedIndex = runtimeEvents.findIndex((event) => event.type === "message.completed");
+      const deltaIndex = runtimeEvents.findIndex((event) => event.type === "content.delta");
+      const completedIndex = runtimeEvents.findIndex((event) => event.type === "item.completed");
       assert.equal(deltaIndex >= 0 && completedIndex >= 0 && deltaIndex < completedIndex, true);
 
       const deltaEvent = runtimeEvents[deltaIndex];
-      assert.equal(deltaEvent?.type, "message.delta");
-      if (deltaEvent?.type === "message.delta") {
-        assert.equal(deltaEvent.delta, "Late text");
-        assert.equal(deltaEvent.turnId, turn.turnId);
+      assert.equal(deltaEvent?.type, "content.delta");
+      if (deltaEvent?.type === "content.delta") {
+        assert.equal(deltaEvent.payload.delta, "Late text");
+        assert.equal(deltaEvent.turnId, TurnId.makeUnsafe(turn.turnId));
       }
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
@@ -487,17 +487,17 @@ describe("ClaudeCodeAdapterLive", () => {
           "session.started",
           "turn.started",
           "thread.started",
-          "message.delta",
-          "message.completed",
+          "content.delta",
+          "item.completed",
           "turn.completed",
         ],
       );
 
-      const deltaEvent = runtimeEvents.find((event) => event.type === "message.delta");
-      assert.equal(deltaEvent?.type, "message.delta");
-      if (deltaEvent?.type === "message.delta") {
-        assert.equal(deltaEvent.delta, "Fallback hello");
-        assert.equal(deltaEvent.turnId, turn.turnId);
+      const deltaEvent = runtimeEvents.find((event) => event.type === "content.delta");
+      assert.equal(deltaEvent?.type, "content.delta");
+      if (deltaEvent?.type === "content.delta") {
+        assert.equal(deltaEvent.payload.delta, "Fallback hello");
+        assert.equal(deltaEvent.turnId, TurnId.makeUnsafe(turn.turnId));
       }
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
@@ -552,7 +552,7 @@ describe("ClaudeCodeAdapterLive", () => {
       const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
       assert.deepEqual(
         runtimeEvents.map((event) => event.type),
-        ["session.started", "turn.started", "thread.started", "message.completed", "turn.completed"],
+        ["session.started", "turn.started", "thread.started", "item.completed", "turn.completed"],
       );
 
       const sessionStarted = runtimeEvents[0];
@@ -613,14 +613,14 @@ describe("ClaudeCodeAdapterLive", () => {
       if (requested._tag !== "Some") {
         return;
       }
-      assert.equal(requested.value.type, "approval.requested");
-      if (requested.value.type !== "approval.requested") {
+      assert.equal(requested.value.type, "request.opened");
+      if (requested.value.type !== "request.opened") {
         return;
       }
 
       yield* adapter.respondToRequest(
         session.sessionId,
-        ApprovalRequestId.makeUnsafe(requested.value.requestId),
+        ApprovalRequestId.makeUnsafe(requested.value.requestId!),
         "accept",
       );
 
@@ -629,12 +629,12 @@ describe("ClaudeCodeAdapterLive", () => {
       if (resolved._tag !== "Some") {
         return;
       }
-      assert.equal(resolved.value.type, "approval.resolved");
-      if (resolved.value.type !== "approval.resolved") {
+      assert.equal(resolved.value.type, "request.resolved");
+      if (resolved.value.type !== "request.resolved") {
         return;
       }
       assert.equal(resolved.value.requestId, requested.value.requestId);
-      assert.equal(resolved.value.decision, "accept");
+      assert.equal(resolved.value.payload.decision, "accept");
 
       const permissionResult = yield* Effect.promise(() => permissionPromise);
       assert.equal((permissionResult as PermissionResult).behavior, "allow");
@@ -730,7 +730,7 @@ describe("ClaudeCodeAdapterLive", () => {
       const firstCompleted = yield* Fiber.join(firstCompletedFiber);
       assert.equal(firstCompleted._tag, "Some");
       if (firstCompleted._tag === "Some" && firstCompleted.value.type === "turn.completed") {
-        assert.equal(firstCompleted.value.turnId, firstTurn.turnId);
+        assert.equal(firstCompleted.value.turnId, TurnId.makeUnsafe(firstTurn.turnId));
       }
 
       const secondTurn = yield* adapter.sendTurn({
@@ -756,7 +756,7 @@ describe("ClaudeCodeAdapterLive", () => {
       const secondCompleted = yield* Fiber.join(secondCompletedFiber);
       assert.equal(secondCompleted._tag, "Some");
       if (secondCompleted._tag === "Some" && secondCompleted.value.type === "turn.completed") {
-        assert.equal(secondCompleted.value.turnId, secondTurn.turnId);
+        assert.equal(secondCompleted.value.turnId, TurnId.makeUnsafe(secondTurn.turnId));
       }
 
       const threadBeforeRollback = yield* adapter.readThread(session.sessionId);
