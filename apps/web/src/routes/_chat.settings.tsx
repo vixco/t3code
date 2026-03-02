@@ -346,10 +346,7 @@ function SettingsRouteView() {
                           : "border-border bg-background text-muted-foreground hover:bg-accent"
                       }`}
                       onClick={() => {
-                        dispatch({
-                          type: "SET_RUNTIME_MODE",
-                          mode: option.value,
-                        });
+                        dispatch.setRuntimeMode(option.value);
                       }}
                     >
                       <span className="flex flex-col">

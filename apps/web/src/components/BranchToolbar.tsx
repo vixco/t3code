@@ -114,12 +114,7 @@ export default function BranchToolbar({
       });
     }
     if (hasServerThread) {
-      dispatch({
-        type: "SET_THREAD_BRANCH",
-        threadId: activeThreadId,
-        branch: syncedBranch,
-        worktreePath: null,
-      });
+      dispatch.setThreadBranch(activeThreadId, syncedBranch, null);
       return;
     }
     setDraftThreadContext(threadId, {
@@ -147,7 +142,7 @@ export default function BranchToolbar({
 
   const setThreadError = (error: string | null) => {
     if (!activeThreadId) return;
-    dispatch({ type: "SET_ERROR", threadId: activeThreadId, error });
+    dispatch.setError(activeThreadId, error);
   };
 
   const setThreadBranch = (branch: string | null, worktreePath: string | null) => {
@@ -176,7 +171,7 @@ export default function BranchToolbar({
       });
     }
     if (hasServerThread) {
-      dispatch({ type: "SET_THREAD_BRANCH", threadId: activeThreadId, branch, worktreePath });
+      dispatch.setThreadBranch(activeThreadId, branch, worktreePath);
       return;
     }
     setDraftThreadContext(threadId, {

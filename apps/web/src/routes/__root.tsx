@@ -15,6 +15,7 @@ import { AnchoredToastProvider, ToastProvider, toastManager } from "../component
 import { serverConfigQueryOptions, serverQueryKeys } from "../lib/serverReactQuery";
 import { readNativeApi } from "../nativeApi";
 import { useStore } from "../store";
+import { useTerminalStateStore } from "../terminalStateStore";
 import { preferredTerminalEditor } from "../terminal-links";
 import { terminalRunningSubprocessFromEvent } from "../terminalActivity";
 import { onServerConfigUpdated, onServerWelcome } from "../wsNativeApi";
@@ -144,7 +145,7 @@ function EventRouter() {
       const snapshot = await api.orchestration.getSnapshot();
       if (disposed) return;
       latestSequence = Math.max(latestSequence, snapshot.snapshotSequence);
-      dispatch({ type: "SYNC_SERVER_READ_MODEL", readModel: snapshot });
+      dispatch.syncServerReadModel(snapshot);
       if (pending) {
         pending = false;
         await flushSnapshotSync();
@@ -184,12 +185,11 @@ function EventRouter() {
       if (hasRunningSubprocess === null) {
         return;
       }
-      dispatch({
-        type: "SET_THREAD_TERMINAL_ACTIVITY",
-        threadId: ThreadId.makeUnsafe(event.threadId),
-        terminalId: event.terminalId,
+      useTerminalStateStore.getState().setTerminalActivity(
+        ThreadId.makeUnsafe(event.threadId),
+        event.terminalId,
         hasRunningSubprocess,
-      });
+      );
     });
     const unsubWelcome = onServerWelcome((payload) => {
       void (async () => {
@@ -201,11 +201,7 @@ function EventRouter() {
         if (!payload.bootstrapProjectId || !payload.bootstrapThreadId) {
           return;
         }
-        dispatch({
-          type: "SET_PROJECT_EXPANDED",
-          projectId: payload.bootstrapProjectId,
-          expanded: true,
-        });
+        dispatch.setProjectExpanded(payload.bootstrapProjectId, true);
 
         if (pathnameRef.current !== "/") {
           return;
