@@ -1335,7 +1335,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       const [entry] = entries;
       if (!entry) return;
 
-      const nextHeight = entry.contentRect.height;
+      const nextHeight = entry.borderBoxSize[0]?.blockSize ?? entry.contentRect.height;
       const previousHeight = composerFormHeightRef.current;
       composerFormHeightRef.current = nextHeight;
 
