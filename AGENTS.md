@@ -14,11 +14,19 @@ This repository is a VERY EARLY WIP. Proposing sweeping changes that improve lon
 
 If a tradeoff is required, choose correctness and robustness over short-term convenience.
 
+## Required Commands
+
+- `bun lint`
+- `bun typecheck`
+
+Both of these commands should pass for a task to be considered "done".
+
 ## Package Roles
 
-- `apps/server`: Node.js WebSocket server. Wraps Codex app-server (JSON-RPC over stdio), serves the React web app, and manages provider sessions.
+- `apps/desktop`: Electron desktop app. Wraps the Node.js WebSocket server and React web app.
+- `apps/server`: Node.js orchestration runtime and WebSocket edge. Implements the orchestrator `<->` provider adapter pattern, brokering turns/events between provider runtimes and clients while serving the React web app. Currently supported providers are Codex (through the Codex app-server).
 - `apps/web`: React/Vite UI. Owns session UX, conversation/event rendering, and client-side state. Connects to the server via WebSocket.
-- `packages/contracts`: Shared Zod schemas and TypeScript contracts for provider events, WebSocket protocol, and model/session types.
+- `packages/contracts`: Shared `effect/Schema` schemas and TypeScript contracts for provider events, WebSocket protocol, and model/session types.
 
 ## Codex App Server (Important)
 
