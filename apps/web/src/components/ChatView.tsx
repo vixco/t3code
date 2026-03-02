@@ -2463,6 +2463,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           onEnvModeChange={onEnvModeChange}
           envLocked={envLocked}
           onComposerFocusRequest={scheduleComposerFocus}
+          onError={(error) => setThreadError(activeThread.id, error)}
         />
       )}
 

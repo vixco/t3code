@@ -34,6 +34,7 @@ interface BranchToolbarProps {
   onEnvModeChange: (mode: "local" | "worktree") => void;
   envLocked: boolean;
   onComposerFocusRequest?: () => void;
+  onError?: (error: string | null) => void;
 }
 
 export default function BranchToolbar({
@@ -42,6 +43,7 @@ export default function BranchToolbar({
   onEnvModeChange,
   envLocked,
   onComposerFocusRequest,
+  onError,
 }: BranchToolbarProps) {
   const { state, dispatch } = useStore();
   const draftThread = useComposerDraftStore((store) => store.getDraftThread(threadId));
@@ -147,7 +149,11 @@ export default function BranchToolbar({
 
   const setThreadError = (error: string | null) => {
     if (!activeThreadId) return;
-    dispatch({ type: "SET_ERROR", threadId: activeThreadId, error });
+    if (hasServerThread) {
+      dispatch({ type: "SET_ERROR", threadId: activeThreadId, error });
+    } else {
+      onError?.(error);
+    }
   };
 
   const setThreadBranch = (branch: string | null, worktreePath: string | null) => {
