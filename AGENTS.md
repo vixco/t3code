@@ -4,6 +4,7 @@
 
 - Both `bun lint` and `bun typecheck` must pass before considering tasks completed.
 - Dummy marker: touched for a no-op documentation update.
+- Dummy marker: touched on 2026-03-03 for a no-op documentation update.
 
 ## Project Snapshot
 
