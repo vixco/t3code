@@ -47,3 +47,4 @@ Docs:
 Use these as implementation references when designing protocol handling, UX flows, and operational safeguards.
 
 <!-- Dummy change: placeholder note for testing edits. -->
+<!-- Dummy change: second placeholder note for edit validation. -->
