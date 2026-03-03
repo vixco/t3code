@@ -689,7 +689,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
       case WS_METHODS.gitCheckout: {
         const body = stripRequestTag(request.body);
-        return yield* Effect.scoped(git.checkoutBranch(body));
+        return yield* git.checkoutBranch(body);
       }
 
       case WS_METHODS.gitInit: {

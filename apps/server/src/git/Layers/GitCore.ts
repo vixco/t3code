@@ -1161,7 +1161,7 @@ const makeGitCore = Effect.gen(function* () {
       });
 
       // Refresh upstream refs in the background so checkout remains responsive.
-      yield* Effect.forkScoped(
+      yield* Effect.forkDetach(
         refreshCheckedOutBranchUpstream(input.cwd).pipe(Effect.catch(() => Effect.void)),
       );
     });

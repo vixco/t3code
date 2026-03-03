@@ -7,7 +7,7 @@
  * @module GitCore
  */
 import { ServiceMap } from "effect";
-import type { Effect, Scope } from "effect";
+import type { Effect } from "effect";
 import type {
   GitCheckoutInput,
   GitCreateBranchInput,
@@ -151,7 +151,7 @@ export interface GitCoreShape {
    */
   readonly checkoutBranch: (
     input: GitCheckoutInput,
-  ) => Effect.Effect<void, GitCommandError, Scope.Scope>;
+  ) => Effect.Effect<void, GitCommandError>;
 
   /**
    * Initialize a repository in the provided directory.
