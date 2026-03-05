@@ -33,6 +33,7 @@ import { CodexAppServerManager } from "../../codexAppServerManager.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 
 const PROVIDER = "codex" as const;
 
@@ -433,7 +434,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
     const fileSystem = yield* FileSystem.FileSystem;
     const serverConfig = yield* Effect.service(ServerConfig);
     const directory = yield* ProviderSessionDirectory;
-    const services = yield* Effect.services<never>();
+    const services = yield* Effect.services<NodeServices.NodeServices>();
     const nativeEventLogger =
       options?.nativeEventLogger ??
       (options?.nativeEventLogPath !== undefined
@@ -595,11 +596,13 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
               return;
             }
             const orchestrationThreadId = yield* Effect.catch(
-              directory.getThreadId(event.sessionId).pipe(
-                Effect.map((threadIdOption) =>
-                  Option.isSome(threadIdOption) ? threadIdOption.value : null,
+              directory
+                .getThreadId(event.sessionId)
+                .pipe(
+                  Effect.map((threadIdOption) =>
+                    Option.isSome(threadIdOption) ? threadIdOption.value : null,
+                  ),
                 ),
-              ),
               () => Effect.succeed(null),
             );
             yield* nativeEventLogger.write(event, orchestrationThreadId);

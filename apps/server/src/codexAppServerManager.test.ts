@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { ManagedRuntime, ServiceMap } from "effect";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProviderSessionId } from "@t3tools/contracts";
 
 import {
@@ -10,8 +12,31 @@ import {
 
 const asSessionId = (value: string): ProviderSessionId => ProviderSessionId.makeUnsafe(value);
 
+let runtime: ManagedRuntime.ManagedRuntime<NodeServices.NodeServices, never> | null = null;
+let services: ServiceMap.ServiceMap<NodeServices.NodeServices> | null = null;
+
+beforeEach(async () => {
+  runtime = ManagedRuntime.make(NodeServices.layer);
+  services = await runtime.services();
+});
+
+afterEach(async () => {
+  services = null;
+  if (runtime) {
+    await runtime.dispose();
+  }
+  runtime = null;
+});
+
+function createManager() {
+  if (!services) {
+    throw new Error("Test runtime services not initialized.");
+  }
+  return new CodexAppServerManager(services);
+}
+
 function createSendTurnHarness() {
-  const manager = new CodexAppServerManager();
+  const manager = createManager();
   const context = {
     session: {
       sessionId: "sess_1",
@@ -47,7 +72,7 @@ function createSendTurnHarness() {
 }
 
 function createThreadControlHarness() {
-  const manager = new CodexAppServerManager();
+  const manager = createManager();
   const context = {
     session: {
       sessionId: "sess_1",
@@ -148,7 +173,7 @@ describe("isRecoverableThreadResumeError", () => {
 
 describe("startSession", () => {
   it("emits session/startFailed when resolving cwd throws before process launch", async () => {
-    const manager = new CodexAppServerManager();
+    const manager = createManager();
     const events: Array<{ method: string; kind: string; message?: string }> = [];
     manager.on("event", (event) => {
       events.push({

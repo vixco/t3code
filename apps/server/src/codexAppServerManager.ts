@@ -16,6 +16,7 @@ import {
   type ProviderSessionStartInput,
   type ProviderTurnStartResult,
 } from "@t3tools/contracts";
+import type * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Exit, ServiceMap, Scope, Stream } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { makeRuntimeCommand, spawnManagedCommand } from "./processRunner";
@@ -158,17 +159,20 @@ export interface CodexAppServerManagerEvents {
 
 export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEvents> {
   private readonly sessions = new Map<ProviderSessionId, CodexSessionContext>();
-  private readonly services: ServiceMap.ServiceMap<never> | undefined;
+  private readonly runPromise: <A, E>(
+    effect: Effect.Effect<A, E, NodeServices.NodeServices>,
+    options?: Effect.RunOptions | undefined,
+  ) => Promise<A>;
 
-  constructor(services?: ServiceMap.ServiceMap<never>) {
+  constructor(services?: ServiceMap.ServiceMap<NodeServices.NodeServices>) {
     super();
-    this.services = services;
-  }
-
-  private runPromise<A, E, R>(effect: Effect.Effect<A, E, R>): Promise<A> {
-    return this.services
-      ? Effect.runPromiseWith(this.services as ServiceMap.ServiceMap<R>)(effect)
-      : Effect.runPromise(effect as Effect.Effect<A, E, never>);
+    this.runPromise = services
+      ? Effect.runPromiseWith(services)
+      : ((effect, options) =>
+          Effect.runPromise(
+            effect as unknown as Effect.Effect<unknown, never>,
+            options,
+          )) as typeof this.runPromise;
   }
 
   async startSession(input: ProviderSessionStartInput): Promise<ProviderSession> {
@@ -531,12 +535,10 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       Effect.gen(
         function* (this: CodexAppServerManager) {
           yield* Effect.forkScoped(
-            Stream.runForEach(
-              Stream.splitLines(Stream.decodeText(context.child.stdout)),
-              (line) =>
-                Effect.sync(() => {
-                  this.handleStdoutLine(context, line);
-                }),
+            Stream.runForEach(Stream.splitLines(Stream.decodeText(context.child.stdout)), (line) =>
+              Effect.sync(() => {
+                this.handleStdoutLine(context, line);
+              }),
             ),
           );
 
@@ -565,9 +567,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
                   }
 
                   const message =
-                    cause instanceof Error
-                      ? cause.message
-                      : "codex app-server process errored.";
+                    cause instanceof Error ? cause.message : "codex app-server process errored.";
                   this.updateSession(context, {
                     status: "error",
                     activeTurnId: undefined,
