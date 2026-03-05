@@ -109,6 +109,14 @@ export function parseAuthStatusFromOutput(result: CommandResult): {
   readonly authStatus: ServerProviderAuthStatus;
   readonly message?: string;
 } {
+  if (result.timedOut) {
+    return {
+      status: "warning",
+      authStatus: "unknown",
+      message: "Timed out while checking Codex authentication status.",
+    };
+  }
+
   const lowerOutput = `${result.stdout}\n${result.stderr}`.toLowerCase();
 
   if (
@@ -237,7 +245,7 @@ export const checkCodexProviderStatus = (
     }
 
     const version = versionProbe.success;
-    if (version.code !== 0) {
+    if (version.timedOut || version.code !== 0) {
       const detail = detailFromResult(version);
       return {
         provider: CODEX_PROVIDER,

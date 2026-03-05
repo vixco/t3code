@@ -79,7 +79,7 @@ function toSpawnOptions(options: ProcessSpawnOptions) {
   };
 }
 
-export function spawnProcess(
+function spawnProcess(
   command: string,
   args: readonly string[],
   options: ProcessSpawnOptions = {},
