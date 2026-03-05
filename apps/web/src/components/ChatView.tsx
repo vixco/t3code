@@ -71,6 +71,7 @@ import { useTheme } from "../hooks/useTheme";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import {
   buildTurnDiffTree,
+  normalizeFilePath,
   summarizeTurnDiffStats,
   type TurnDiffTreeNode,
 } from "../lib/turnDiffTree";
@@ -3141,16 +3142,13 @@ function hasNonZeroStat(stat: { additions: number; deletions: number }): boolean
 const DiffStatLabel = memo(function DiffStatLabel(props: {
   additions: number;
   deletions: number;
-  showParentheses?: boolean;
 }) {
-  const { additions, deletions, showParentheses = false } = props;
+  const { additions, deletions } = props;
   return (
     <>
-      {showParentheses && <span className="text-muted-foreground/70">(</span>}
       <span className="text-success">+{additions}</span>
       <span className="mx-0.5 text-muted-foreground/70">/</span>
       <span className="text-destructive">-{deletions}</span>
-      {showParentheses && <span className="text-muted-foreground/70">)</span>}
     </>
   );
 });
@@ -3708,9 +3706,13 @@ const MessagesTimeline = memo(function MessagesTimeline({
                             type="button"
                             size="xs"
                             variant="outline"
-                            onClick={() =>
-                              onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)
-                            }
+                            onClick={() => {
+                              const rawPath = checkpointFiles[0]?.path;
+                              onOpenTurnDiff(
+                                turnSummary.turnId,
+                                rawPath ? normalizeFilePath(rawPath) : undefined,
+                              );
+                            }}
                           >
                             View diff
                           </Button>

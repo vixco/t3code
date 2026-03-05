@@ -39,6 +39,10 @@ function normalizePathSegments(pathValue: string): string[] {
     .filter((segment) => segment.length > 0);
 }
 
+export function normalizeFilePath(pathValue: string): string {
+  return normalizePathSegments(pathValue).join("/");
+}
+
 function compareByName(a: { name: string }, b: { name: string }): number {
   return a.name.localeCompare(b.name, undefined, SORT_LOCALE_OPTIONS);
 }
