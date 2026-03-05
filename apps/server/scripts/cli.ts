@@ -39,6 +39,7 @@ const buildCmd = Command.make(
   "build",
   {
     verbose: Flag.boolean("verbose").pipe(Flag.withDefault(false)),
+    format: Flag.choice("format", ["esm", "cjs"]).pipe(Flag.withDefault("esm")),
   },
   (config) =>
     Effect.gen(function* () {
@@ -53,7 +54,7 @@ const buildCmd = Command.make(
           cwd: serverDir,
           stdout: config.verbose ? "inherit" : "ignore",
           stderr: "inherit",
-        })`bun tsdown`,
+        })`bun tsdown --format ${config.format}`,
       );
 
       const webDist = path.join(repoRoot, "apps/web/dist");
@@ -114,6 +115,9 @@ const publishCmd = Command.make(
             repository: serverPackageJson.repository,
             bin: serverPackageJson.bin,
             type: serverPackageJson.type,
+            bin: {
+              t3: "./dist/bin.mjs",
+            },
             version,
             engines: serverPackageJson.engines,
             files: serverPackageJson.files,

@@ -23,6 +23,18 @@ interface WsRequestEnvelope {
   };
 }
 
+function normalizeWsUrl(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl);
+    if (url.pathname === "" || url.pathname === "/") {
+      url.pathname = "/ws";
+    }
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
 export class WsTransport {
   private ws: WebSocket | null = null;
   private nextId = 1;
@@ -38,13 +50,14 @@ export class WsTransport {
     // In dev mode, VITE_WS_URL points to the server's WebSocket endpoint.
     // In production, the page is served by the WS server on the same host:port.
     const envUrl = import.meta.env.VITE_WS_URL as string | undefined;
-    this.url =
+    const resolvedUrl =
       url ??
       (bridgeUrl && bridgeUrl.length > 0
         ? bridgeUrl
         : envUrl && envUrl.length > 0
           ? envUrl
           : `ws://${window.location.hostname}:${window.location.port}`);
+    this.url = normalizeWsUrl(resolvedUrl);
     this.connect();
   }
 

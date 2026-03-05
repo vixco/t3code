@@ -1,5 +1,5 @@
 import { Schema, Struct } from "effect";
-import { ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas";
+import { TrimmedNonEmptyString } from "./baseSchemas";
 
 import {
   ClientOrchestrationCommand,
@@ -31,6 +31,7 @@ import {
 import { KeybindingRule } from "./keybindings";
 import { ProjectSearchEntriesInput, ProjectWriteFileInput } from "./project";
 import { OpenInEditorInput } from "./editor";
+import { ServerBootstrapState } from "./server";
 
 // ── WebSocket RPC Method Names ───────────────────────────────────────
 
@@ -162,10 +163,5 @@ export type WsResponse = typeof WsResponse.Type;
 
 // ── Server welcome payload ───────────────────────────────────────────
 
-export const WsWelcomePayload = Schema.Struct({
-  cwd: TrimmedNonEmptyString,
-  projectName: TrimmedNonEmptyString,
-  bootstrapProjectId: Schema.optional(ProjectId),
-  bootstrapThreadId: Schema.optional(ThreadId),
-});
+export const WsWelcomePayload = ServerBootstrapState;
 export type WsWelcomePayload = typeof WsWelcomePayload.Type;
