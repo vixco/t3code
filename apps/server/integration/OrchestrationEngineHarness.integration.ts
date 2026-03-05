@@ -70,6 +70,7 @@ function initializeGitWorkspace(cwd: string) {
   runGit(cwd, ["init", "--initial-branch=main"]);
   runGit(cwd, ["config", "user.email", "test@example.com"]);
   runGit(cwd, ["config", "user.name", "Test User"]);
+  runGit(cwd, ["config", "core.autocrlf", "false"]);
   fs.writeFileSync(path.join(cwd, "README.md"), "v1\n", "utf8");
   runGit(cwd, ["add", "."]);
   runGit(cwd, ["commit", "-m", "Initial"]);
@@ -388,7 +389,7 @@ export const makeOrchestrationIntegrationHarness = Effect.gen(function* () {
     yield* shutdown.pipe(
       Effect.ensuring(
         Effect.sync(() => {
-          fs.rmSync(rootDir, { recursive: true, force: true });
+          fs.rmSync(rootDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
         }),
       ),
     );
