@@ -339,6 +339,7 @@ const VscodeEntryIcon = memo(function VscodeEntryIcon(props: {
   pathValue: string;
   kind: "file" | "directory";
   theme: "light" | "dark";
+  className?: string;
 }) {
   const [failedIconUrl, setFailedIconUrl] = useState<string | null>(null);
   const iconUrl = useMemo(
@@ -349,9 +350,9 @@ const VscodeEntryIcon = memo(function VscodeEntryIcon(props: {
 
   if (failed) {
     return props.kind === "directory" ? (
-      <FolderIcon className="size-4 text-muted-foreground/80" />
+      <FolderIcon className={cn("size-4 text-muted-foreground/80", props.className)} />
     ) : (
-      <FileIcon className="size-4 text-muted-foreground/80" />
+      <FileIcon className={cn("size-4 text-muted-foreground/80", props.className)} />
     );
   }
 
@@ -360,7 +361,7 @@ const VscodeEntryIcon = memo(function VscodeEntryIcon(props: {
       src={iconUrl}
       alt=""
       aria-hidden="true"
-      className="size-4 shrink-0"
+      className={cn("size-4 shrink-0", props.className)}
       loading="lazy"
       onError={() => setFailedIconUrl(iconUrl)}
     />
@@ -2553,6 +2554,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           isRevertingCheckpoint={isRevertingCheckpoint}
           onImageExpand={onExpandTimelineImage}
           markdownCwd={gitCwd ?? undefined}
+          resolvedTheme={resolvedTheme}
         />
       </div>
 
@@ -3153,14 +3155,23 @@ const DiffStatLabel = memo(function DiffStatLabel(props: {
   );
 });
 
-function buildInitiallyExpandedDirectoryState(
-  nodes: ReadonlyArray<TurnDiffTreeNode>,
+function collectDirectoryPaths(nodes: ReadonlyArray<TurnDiffTreeNode>): string[] {
+  const paths: string[] = [];
+  for (const node of nodes) {
+    if (node.kind !== "directory") continue;
+    paths.push(node.path);
+    paths.push(...collectDirectoryPaths(node.children));
+  }
+  return paths;
+}
+
+function buildDirectoryExpansionState(
+  directoryPaths: ReadonlyArray<string>,
+  expanded: boolean,
 ): Record<string, boolean> {
   const expandedState: Record<string, boolean> = {};
-  for (const node of nodes) {
-    if (node.kind === "directory") {
-      expandedState[node.path] = true;
-    }
+  for (const directoryPath of directoryPaths) {
+    expandedState[directoryPath] = expanded;
   }
   return expandedState;
 }
@@ -3168,13 +3179,27 @@ function buildInitiallyExpandedDirectoryState(
 const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   turnId: TurnId;
   files: ReadonlyArray<TurnDiffFileChange>;
+  allDirectoriesExpanded: boolean;
+  resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
-  const { files, onOpenTurnDiff, turnId } = props;
+  const { files, allDirectoriesExpanded, onOpenTurnDiff, resolvedTheme, turnId } = props;
   const treeNodes = useMemo(() => buildTurnDiffTree(files), [files]);
-  const [expandedDirectories, setExpandedDirectories] = useState<Record<string, boolean>>(
-    () => buildInitiallyExpandedDirectoryState(treeNodes),
+  const directoryPathsKey = useMemo(() => collectDirectoryPaths(treeNodes).join("\u0000"), [treeNodes]);
+  const allDirectoryExpansionState = useMemo(
+    () =>
+      buildDirectoryExpansionState(
+        directoryPathsKey ? directoryPathsKey.split("\u0000") : [],
+        allDirectoriesExpanded,
+      ),
+    [allDirectoriesExpanded, directoryPathsKey],
   );
+  const [expandedDirectories, setExpandedDirectories] = useState<Record<string, boolean>>(
+    () => buildDirectoryExpansionState((directoryPathsKey ? directoryPathsKey.split("\u0000") : []), true),
+  );
+  useEffect(() => {
+    setExpandedDirectories(allDirectoryExpansionState);
+  }, [allDirectoryExpansionState]);
 
   const toggleDirectory = useCallback((pathValue: string) => {
     setExpandedDirectories((current) => ({
@@ -3232,7 +3257,12 @@ const ChangedFilesTree = memo(function ChangedFilesTree(props: {
         onClick={() => onOpenTurnDiff(turnId, node.path)}
       >
         <span aria-hidden="true" className="size-3.5 shrink-0" />
-        <FileIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
+        <VscodeEntryIcon
+          pathValue={node.path}
+          kind="file"
+          theme={resolvedTheme}
+          className="size-3.5 text-muted-foreground/70"
+        />
         <span className="truncate font-mono text-[11px] text-muted-foreground/80 group-hover:text-foreground/90">
           {node.name}
         </span>
@@ -3271,6 +3301,7 @@ interface MessagesTimelineProps {
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   markdownCwd: string | undefined;
+  resolvedTheme: "light" | "dark";
 }
 
 type TimelineEntry = ReturnType<typeof deriveTimelineEntries>[number];
@@ -3325,6 +3356,7 @@ const MessagesTimeline = memo(function MessagesTimeline({
   isRevertingCheckpoint,
   onImageExpand,
   markdownCwd,
+  resolvedTheme,
 }: MessagesTimelineProps) {
   const rows = useMemo<TimelineRow[]>(() => {
     const nextRows: TimelineRow[] = [];
@@ -3465,6 +3497,15 @@ const MessagesTimeline = memo(function MessagesTimeline({
 
   const virtualRows = rowVirtualizer.getVirtualItems();
   const nonVirtualizedRows = rows.slice(virtualizedRowCount);
+  const [allDirectoriesExpandedByTurnId, setAllDirectoriesExpandedByTurnId] = useState<
+    Record<string, boolean>
+  >({});
+  const onToggleAllDirectories = useCallback((turnId: TurnId) => {
+    setAllDirectoriesExpandedByTurnId((current) => ({
+      ...current,
+      [turnId]: !(current[turnId] ?? true),
+    }));
+  }, []);
 
   const renderRowContent = (row: TimelineRow) => (
     <div className="pb-4">
@@ -3635,6 +3676,8 @@ const MessagesTimeline = memo(function MessagesTimeline({
                   if (checkpointFiles.length === 0) return null;
                   const summaryStat = summarizeTurnDiffStats(checkpointFiles);
                   const changedFileCountLabel = String(checkpointFiles.length);
+                  const allDirectoriesExpanded =
+                    allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true;
                   return (
                     <div className="mt-2 rounded-lg border border-border/80 bg-card/45 p-2.5">
                       <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -3650,21 +3693,33 @@ const MessagesTimeline = memo(function MessagesTimeline({
                             </>
                           )}
                         </p>
-                        <Button
-                          type="button"
-                          size="xs"
-                          variant="outline"
-                          onClick={() =>
-                            onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)
-                          }
-                        >
-                          View diff
-                        </Button>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="outline"
+                            onClick={() => onToggleAllDirectories(turnSummary.turnId)}
+                          >
+                            {allDirectoriesExpanded ? "Collapse all" : "Expand all"}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="outline"
+                            onClick={() =>
+                              onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)
+                            }
+                          >
+                            View diff
+                          </Button>
+                        </div>
                       </div>
                       <ChangedFilesTree
                         key={`changed-files-tree:${turnSummary.turnId}`}
                         turnId={turnSummary.turnId}
                         files={checkpointFiles}
+                        allDirectoriesExpanded={allDirectoriesExpanded}
+                        resolvedTheme={resolvedTheme}
                         onOpenTurnDiff={onOpenTurnDiff}
                       />
                     </div>
