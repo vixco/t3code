@@ -433,6 +433,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
     const fileSystem = yield* FileSystem.FileSystem;
     const serverConfig = yield* Effect.service(ServerConfig);
     const directory = yield* ProviderSessionDirectory;
+    const services = yield* Effect.services<never>();
     const nativeEventLogger =
       options?.nativeEventLogger ??
       (options?.nativeEventLogPath !== undefined
@@ -449,7 +450,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
         if (options?.makeManager) {
           return options.makeManager();
         }
-        return new CodexAppServerManager();
+        return new CodexAppServerManager(services);
       }),
       (manager) =>
         Effect.sync(() => {
@@ -587,7 +588,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
     const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
 
     yield* Effect.acquireRelease(
-      Effect.gen(function* () {
+      Effect.sync(() => {
         const writeNativeEvent = (event: ProviderEvent) =>
           Effect.gen(function* () {
             if (!nativeEventLogger) {
@@ -604,7 +605,6 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
             yield* nativeEventLogger.write(event, orchestrationThreadId);
           });
 
-        const services = yield* Effect.services<never>();
         const listener = (event: ProviderEvent) =>
           Effect.gen(function* () {
             yield* writeNativeEvent(event);
