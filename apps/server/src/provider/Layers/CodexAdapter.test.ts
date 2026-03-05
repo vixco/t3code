@@ -15,7 +15,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, assert, it, vi } from "@effect/vitest";
 import { assertFailure } from "@effect/vitest/utils";
 
-import { Effect, Fiber, Layer, Option, Stream } from "effect";
+import { Effect, Fiber, Layer, Option, ServiceMap, Stream } from "effect";
 
 import {
   CodexAppServerManager,
@@ -132,7 +132,9 @@ const providerSessionDirectoryTestLayer = Layer.succeed(ProviderSessionDirectory
   listSessionIds: () => Effect.succeed([]),
 });
 
-const validationManager = new FakeCodexManager();
+const validationManager = new FakeCodexManager(
+  ServiceMap.empty() as ServiceMap.ServiceMap<NodeServices.NodeServices>,
+);
 const validationLayer = it.layer(
   makeCodexAdapterLive({ manager: validationManager }).pipe(
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
@@ -164,7 +166,9 @@ validationLayer("CodexAdapterLive validation", (it) => {
   );
 });
 
-const sessionErrorManager = new FakeCodexManager();
+const sessionErrorManager = new FakeCodexManager(
+  ServiceMap.empty() as ServiceMap.ServiceMap<NodeServices.NodeServices>,
+);
 sessionErrorManager.sendTurnImpl.mockImplementation(async () => {
   throw new Error("Unknown session: sess-missing");
 });
@@ -204,7 +208,9 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
   );
 });
 
-const lifecycleManager = new FakeCodexManager();
+const lifecycleManager = new FakeCodexManager(
+  ServiceMap.empty() as ServiceMap.ServiceMap<NodeServices.NodeServices>,
+);
 const lifecycleLayer = it.layer(
   makeCodexAdapterLive({ manager: lifecycleManager }).pipe(
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),

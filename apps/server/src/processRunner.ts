@@ -5,13 +5,19 @@ import {
   spawnSync,
   type StdioOptions,
 } from "node:child_process";
-import { statSync } from "node:fs";
 import { extname, join } from "node:path";
 
 import type { ServerRuntimeEnvironment } from "@t3tools/contracts";
 import { Effect, Exit, Scope } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
+import {
+  isExecutableFile,
+  resolveCommandCandidates,
+  resolvePathEnvironmentVariable,
+  resolveWindowsPathExtensions,
+  stripWrappingQuotes,
+} from "./commandResolution";
 import { detectServerRuntimeEnvironment } from "./runtimeEnvironment";
 
 interface ProcessSpawnBaseOptions {
@@ -93,71 +99,6 @@ function resolveRuntimeEnvironment(
   return runtimeEnvironment ?? detectServerRuntimeEnvironment();
 }
 
-function resolvePathEnvironmentVariable(env: NodeJS.ProcessEnv): string {
-  return env.PATH ?? env.Path ?? env.path ?? "";
-}
-
-function resolveWindowsPathExtensions(env: NodeJS.ProcessEnv): ReadonlyArray<string> {
-  const rawValue = env.PATHEXT;
-  const fallback = [".COM", ".EXE", ".BAT", ".CMD"];
-  if (!rawValue) return fallback;
-
-  const parsed = rawValue
-    .split(";")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0)
-    .map((entry) => (entry.startsWith(".") ? entry.toUpperCase() : `.${entry.toUpperCase()}`));
-  return parsed.length > 0 ? Array.from(new Set(parsed)) : fallback;
-}
-
-function resolveCommandCandidates(
-  command: string,
-  windowsPathExtensions: ReadonlyArray<string>,
-): ReadonlyArray<string> {
-  const extension = extname(command);
-  const normalizedExtension = extension.toUpperCase();
-
-  if (extension.length > 0 && windowsPathExtensions.includes(normalizedExtension)) {
-    const commandWithoutExtension = command.slice(0, -extension.length);
-    return Array.from(
-      new Set([
-        command,
-        `${commandWithoutExtension}${normalizedExtension}`,
-        `${commandWithoutExtension}${normalizedExtension.toLowerCase()}`,
-      ]),
-    );
-  }
-
-  const candidates: string[] = [command];
-  for (const candidateExtension of windowsPathExtensions) {
-    candidates.push(`${command}${candidateExtension}`);
-    candidates.push(`${command}${candidateExtension.toLowerCase()}`);
-  }
-  return Array.from(new Set(candidates));
-}
-
-function stripWrappingQuotes(value: string): string {
-  return value.replace(/^"+|"+$/g, "");
-}
-
-function isExecutableFile(
-  filePath: string,
-  windowsPathExtensions: ReadonlyArray<string>,
-): boolean {
-  try {
-    const stat = statSync(filePath);
-    if (!stat.isFile()) return false;
-    const extension = extname(filePath);
-    if (extension.length === 0) return false;
-    if (windowsPathExtensions.length === 0) {
-      return true;
-    }
-    return windowsPathExtensions.includes(extension.toUpperCase());
-  } catch {
-    return false;
-  }
-}
-
 function resolveEffectiveEnvironment(options: ProcessLaunchPlanOptions): NodeJS.ProcessEnv {
   const env = (options.env ?? {}) as NodeJS.ProcessEnv;
   if (options.inheritParentEnv === false) {
@@ -175,7 +116,7 @@ function resolveWindowsCommand(
   env: NodeJS.ProcessEnv,
 ): ResolvedWindowsCommand | null {
   const windowsPathExtensions = resolveWindowsPathExtensions(env);
-  const candidates = resolveCommandCandidates(command, windowsPathExtensions);
+  const candidates = resolveCommandCandidates(command, "win32", windowsPathExtensions);
 
   const classify = (filePath: string): ResolvedWindowsCommand => {
     const extension = extname(filePath).toUpperCase();
@@ -187,7 +128,7 @@ function resolveWindowsCommand(
 
   if (command.includes("/") || command.includes("\\")) {
     for (const candidate of candidates) {
-      if (isExecutableFile(candidate, windowsPathExtensions)) {
+      if (isExecutableFile(candidate, "win32", windowsPathExtensions)) {
         return classify(candidate);
       }
     }
@@ -202,7 +143,7 @@ function resolveWindowsCommand(
   for (const pathEntry of pathEntries) {
     for (const candidate of candidates) {
       const candidatePath = join(pathEntry, candidate);
-      if (isExecutableFile(candidatePath, windowsPathExtensions)) {
+      if (isExecutableFile(candidatePath, "win32", windowsPathExtensions)) {
         return classify(candidatePath);
       }
     }

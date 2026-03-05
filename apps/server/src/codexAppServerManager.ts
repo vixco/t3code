@@ -169,15 +169,9 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     options?: Effect.RunOptions | undefined,
   ) => Promise<A>;
 
-  constructor(services?: ServiceMap.ServiceMap<NodeServices.NodeServices>) {
+  constructor(services: ServiceMap.ServiceMap<NodeServices.NodeServices>) {
     super();
-    this.runPromise = services
-      ? Effect.runPromiseWith(services)
-      : ((effect, options) =>
-          Effect.runPromise(
-            effect as unknown as Effect.Effect<unknown, never>,
-            options,
-          )) as typeof this.runPromise;
+    this.runPromise = Effect.runPromiseWith(services);
   }
 
   async startSession(input: ProviderSessionStartInput): Promise<ProviderSession> {
