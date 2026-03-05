@@ -17,7 +17,7 @@ import {
   type ProviderTurnStartResult,
 } from "@t3tools/contracts";
 import type * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, Exit, ServiceMap, Scope, Stream } from "effect";
+import { Cause, Effect, Exit, ServiceMap, Scope, Stream } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { makeRuntimeCommand, spawnManagedCommand } from "./processRunner";
 
@@ -151,6 +151,11 @@ export function isRecoverableThreadResumeError(error: unknown): boolean {
   }
 
   return RECOVERABLE_THREAD_RESUME_ERROR_SNIPPETS.some((snippet) => message.includes(snippet));
+}
+
+export function messageFromCodexProcessCause(cause: Cause.Cause<unknown>): string {
+  const squashed = Cause.squash(cause);
+  return squashed instanceof Error ? squashed.message : "codex app-server process errored.";
 }
 
 export interface CodexAppServerManagerEvents {
@@ -566,8 +571,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
                     return;
                   }
 
-                  const message =
-                    cause instanceof Error ? cause.message : "codex app-server process errored.";
+                  const message = messageFromCodexProcessCause(cause);
                   this.updateSession(context, {
                     status: "error",
                     activeTurnId: undefined,

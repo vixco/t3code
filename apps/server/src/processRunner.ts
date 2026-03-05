@@ -127,7 +127,7 @@ export const spawnManagedCommand = (command: ChildProcess.Command) =>
     } satisfies ManagedChildProcess;
   });
 
-export function spawnProcess(
+function spawnProcess(
   command: string,
   args: readonly string[],
   options: ProcessSpawnOptions = {},

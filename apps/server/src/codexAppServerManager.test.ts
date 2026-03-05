@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { Cause } from "effect";
 import { ManagedRuntime, ServiceMap } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProviderSessionId } from "@t3tools/contracts";
@@ -7,6 +8,7 @@ import {
   CodexAppServerManager,
   classifyCodexStderrLine,
   isRecoverableThreadResumeError,
+  messageFromCodexProcessCause,
   normalizeCodexModelSlug,
 } from "./codexAppServerManager";
 
@@ -168,6 +170,12 @@ describe("isRecoverableThreadResumeError", () => {
         new Error("thread/resume failed: timed out waiting for server"),
       ),
     ).toBe(false);
+  });
+});
+
+describe("messageFromCodexProcessCause", () => {
+  it("extracts the underlying error message from an effect cause", () => {
+    expect(messageFromCodexProcessCause(Cause.fail(new Error("boom")))).toBe("boom");
   });
 });
 
