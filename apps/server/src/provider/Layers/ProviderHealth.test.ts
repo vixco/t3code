@@ -7,7 +7,12 @@ import { checkCodexProviderStatus, parseAuthStatusFromOutput } from "./ProviderH
 // ── Test helpers ────────────────────────────────────────────────────
 
 function mockRunner(
-  handler: (args: ReadonlyArray<string>) => { stdout: string; stderr: string; code: number },
+  handler: (args: ReadonlyArray<string>) => {
+    stdout: string;
+    stderr: string;
+    code: number | null;
+    timedOut?: boolean;
+  },
 ) {
   return (args: ReadonlyArray<string>) => Promise.resolve(handler(args));
 }
@@ -115,6 +120,32 @@ it.effect("returns warning when login status command is unsupported", () =>
     );
   }),
 );
+
+it.effect("returns unavailable when codex version probe times out", () =>
+  Effect.gen(function* () {
+    const status = yield* checkCodexProviderStatus(
+      mockRunner((args) => {
+        const joined = args.join(" ");
+        if (joined === "--version") {
+          return { stdout: "", stderr: "", code: null, timedOut: true };
+        }
+        throw new Error(`Unexpected args: ${joined}`);
+      }),
+    );
+    assert.strictEqual(status.provider, "codex");
+    assert.strictEqual(status.status, "error");
+    assert.strictEqual(status.available, false);
+    assert.strictEqual(status.authStatus, "unknown");
+    assert.strictEqual(status.message, "Codex CLI is installed but failed to run. Timed out while running command.");
+  }),
+);
+
+it("parseAuthStatusFromOutput: timed out auth check is warning", () => {
+  const parsed = parseAuthStatusFromOutput({ stdout: "", stderr: "", code: null, timedOut: true });
+  assert.strictEqual(parsed.status, "warning");
+  assert.strictEqual(parsed.authStatus, "unknown");
+  assert.strictEqual(parsed.message, "Timed out while checking Codex authentication status.");
+});
 
 // ── Pure function tests ─────────────────────────────────────────────
 
