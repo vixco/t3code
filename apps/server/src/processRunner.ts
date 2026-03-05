@@ -7,6 +7,8 @@ import {
 } from "node:child_process";
 
 import type { ServerRuntimeEnvironment } from "@t3tools/contracts";
+import { Effect, Exit, Scope } from "effect";
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { detectServerRuntimeEnvironment } from "./runtimeEnvironment";
 
@@ -17,9 +19,18 @@ interface ProcessSpawnBaseOptions {
   shell?: boolean | undefined;
 }
 
+interface RuntimeShellOptions {
+  runtimeEnvironment?: ServerRuntimeEnvironment | undefined;
+  shell?: boolean | string | undefined;
+}
+
 export interface ProcessSpawnOptions extends ProcessSpawnBaseOptions {
   stdio?: StdioOptions | undefined;
   detached?: boolean | undefined;
+}
+
+export interface RuntimeCommandOptions extends ChildProcess.CommandOptions {
+  runtimeEnvironment?: ServerRuntimeEnvironment | undefined;
 }
 
 export interface ProcessSpawnSyncOptions extends ProcessSpawnBaseOptions {
@@ -61,7 +72,7 @@ function resolveRuntimeEnvironment(
   return runtimeEnvironment ?? detectServerRuntimeEnvironment();
 }
 
-function shouldUseShell(options: ProcessSpawnBaseOptions): boolean {
+function shouldUseShell(options: RuntimeShellOptions): boolean | string {
   if (options.shell !== undefined) {
     return options.shell;
   }
@@ -78,6 +89,43 @@ function toSpawnOptions(options: ProcessSpawnOptions) {
     ...(options.detached !== undefined ? { detached: options.detached } : {}),
   };
 }
+
+export function toRuntimeCommandOptions(
+  options: RuntimeCommandOptions = {},
+): ChildProcess.CommandOptions {
+  return {
+    ...options,
+    shell: options.shell ?? shouldUseShell(options),
+  };
+}
+
+export function makeRuntimeCommand(
+  command: string,
+  args: ReadonlyArray<string>,
+  options: RuntimeCommandOptions = {},
+): ChildProcess.StandardCommand {
+  return ChildProcess.make(command, [...args], toRuntimeCommandOptions(options));
+}
+
+export interface ManagedChildProcess {
+  readonly scope: Scope.Closeable;
+  readonly handle: ChildProcessSpawner.ChildProcessHandle;
+}
+
+export const spawnManagedCommand = (command: ChildProcess.Command) =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make("sequential");
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const handle = yield* spawner.spawn(command).pipe(
+      Scope.provide(scope),
+      Effect.tapError(() => Scope.close(scope, Exit.void)),
+    );
+
+    return {
+      scope,
+      handle,
+    } satisfies ManagedChildProcess;
+  });
 
 export function spawnProcess(
   command: string,

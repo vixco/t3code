@@ -1,7 +1,5 @@
-import { type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import readline from "node:readline";
 
 import {
   ApprovalRequestId,
@@ -18,7 +16,9 @@ import {
   type ProviderSessionStartInput,
   type ProviderTurnStartResult,
 } from "@t3tools/contracts";
-import { killProcessTree, spawnPipedProcess } from "./processRunner";
+import { Effect, Exit, ServiceMap, Scope, Stream } from "effect";
+import type { ChildProcessSpawner } from "effect/unstable/process";
+import { makeRuntimeCommand, spawnManagedCommand } from "./processRunner";
 
 type PendingRequestKey = string;
 
@@ -41,8 +41,8 @@ interface PendingApprovalRequest {
 
 interface CodexSessionContext {
   session: ProviderSession;
-  child: ChildProcessWithoutNullStreams;
-  output: readline.Interface;
+  child: ChildProcessSpawner.ChildProcessHandle;
+  scope: Scope.Closeable;
   pending: Map<PendingRequestKey, PendingRequest>;
   pendingApprovals: Map<ApprovalRequestId, PendingApprovalRequest>;
   nextRequestId: number;
@@ -158,6 +158,18 @@ export interface CodexAppServerManagerEvents {
 
 export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEvents> {
   private readonly sessions = new Map<ProviderSessionId, CodexSessionContext>();
+  private readonly services: ServiceMap.ServiceMap<never> | undefined;
+
+  constructor(services?: ServiceMap.ServiceMap<never>) {
+    super();
+    this.services = services;
+  }
+
+  private runPromise<A, E, R>(effect: Effect.Effect<A, E, R>): Promise<A> {
+    return this.services
+      ? Effect.runPromiseWith(this.services as ServiceMap.ServiceMap<R>)(effect)
+      : Effect.runPromise(effect as Effect.Effect<A, E, never>);
+  }
 
   async startSession(input: ProviderSessionStartInput): Promise<ProviderSession> {
     const sessionId = ProviderSessionId.makeUnsafe(randomUUID());
@@ -179,19 +191,23 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
 
       const codexBinaryPath = input.codexBinaryPath ?? "codex";
       const codexHomePath = input.codexHomePath;
-      const child = spawnPipedProcess(codexBinaryPath, ["app-server"], {
-        cwd: resolvedCwd,
-        env: {
-          ...process.env,
-          ...(codexHomePath ? { CODEX_HOME: codexHomePath } : {}),
-        },
-      });
-      const output = readline.createInterface({ input: child.stdout });
+      const managedProcess = await this.runPromise(
+        spawnManagedCommand(
+          makeRuntimeCommand(codexBinaryPath, ["app-server"], {
+            cwd: resolvedCwd,
+            env: {
+              ...process.env,
+              ...(codexHomePath ? { CODEX_HOME: codexHomePath } : {}),
+            },
+            extendEnv: false,
+          }),
+        ),
+      );
 
       context = {
         session,
-        child,
-        output,
+        child: managedProcess.handle,
+        scope: managedProcess.scope,
         pending: new Map(),
         pendingApprovals: new Map(),
         nextRequestId: 1,
@@ -199,7 +215,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       };
 
       this.sessions.set(sessionId, context);
-      this.attachProcessListeners(context);
+      await this.attachProcessListeners(context);
 
       this.emitLifecycleEvent(context, "session/connecting", "Starting codex app-server");
 
@@ -214,7 +230,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         },
       });
 
-      this.writeMessage(context, { method: "initialized" });
+      await this.writeMessage(context, { method: "initialized" });
 
       const normalizedModel = normalizeCodexModelSlug(input.model);
       const sessionOverrides = {
@@ -430,7 +446,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     }
 
     context.pendingApprovals.delete(requestId);
-    this.writeMessage(context, {
+    await this.writeMessage(context, {
       id: pendingRequest.jsonRpcId,
       result: {
         decision,
@@ -471,12 +487,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     }
     context.pending.clear();
     context.pendingApprovals.clear();
-
-    context.output.close();
-
-    if (!context.child.killed) {
-      killProcessTree(context.child);
-    }
+    void this.runPromise(Scope.close(context.scope, Exit.void)).catch(() => undefined);
 
     this.updateSession(context, {
       status: "closed",
@@ -515,47 +526,76 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     return context;
   }
 
-  private attachProcessListeners(context: CodexSessionContext): void {
-    context.output.on("line", (line) => {
-      this.handleStdoutLine(context, line);
-    });
+  private async attachProcessListeners(context: CodexSessionContext): Promise<void> {
+    await this.runPromise(
+      Effect.gen(
+        function* (this: CodexAppServerManager) {
+          yield* Effect.forkScoped(
+            Stream.runForEach(
+              Stream.splitLines(Stream.decodeText(context.child.stdout)),
+              (line) =>
+                Effect.sync(() => {
+                  this.handleStdoutLine(context, line);
+                }),
+            ),
+          );
 
-    context.child.stderr.on("data", (chunk: Buffer) => {
-      const raw = chunk.toString();
-      const lines = raw.split(/\r?\n/g);
-      for (const rawLine of lines) {
-        const classified = classifyCodexStderrLine(rawLine);
-        if (!classified) {
-          continue;
-        }
+          yield* Effect.forkScoped(
+            Stream.runForEach(Stream.decodeText(context.child.stderr), (raw) =>
+              Effect.sync(() => {
+                const lines = raw.split(/\r?\n/g);
+                for (const rawLine of lines) {
+                  const classified = classifyCodexStderrLine(rawLine);
+                  if (!classified) {
+                    continue;
+                  }
 
-        this.emitErrorEvent(context, "process/stderr", classified.message);
-      }
-    });
+                  this.emitErrorEvent(context, "process/stderr", classified.message);
+                }
+              }),
+            ),
+          );
 
-    context.child.on("error", (error) => {
-      const message = error.message || "codex app-server process errored.";
-      this.updateSession(context, {
-        status: "error",
-        lastError: message,
-      });
-      this.emitErrorEvent(context, "process/error", message);
-    });
+          yield* Effect.forkScoped(
+            Effect.matchCauseEffect(context.child.exitCode, {
+              onFailure: (cause) =>
+                Effect.sync(() => {
+                  if (context.stopping) {
+                    return;
+                  }
 
-    context.child.on("exit", (code, signal) => {
-      if (context.stopping) {
-        return;
-      }
+                  const message =
+                    cause instanceof Error
+                      ? cause.message
+                      : "codex app-server process errored.";
+                  this.updateSession(context, {
+                    status: "error",
+                    activeTurnId: undefined,
+                    lastError: message,
+                  });
+                  this.emitErrorEvent(context, "process/error", message);
+                  this.sessions.delete(context.session.sessionId);
+                }),
+              onSuccess: (code) =>
+                Effect.sync(() => {
+                  if (context.stopping) {
+                    return;
+                  }
 
-      const message = `codex app-server exited (code=${code ?? "null"}, signal=${signal ?? "null"}).`;
-      this.updateSession(context, {
-        status: "closed",
-        activeTurnId: undefined,
-        lastError: code === 0 ? context.session.lastError : message,
-      });
-      this.emitLifecycleEvent(context, "session/exited", message);
-      this.sessions.delete(context.session.sessionId);
-    });
+                  const message = `codex app-server exited (code=${code}).`;
+                  this.updateSession(context, {
+                    status: "closed",
+                    activeTurnId: undefined,
+                    lastError: code === 0 ? context.session.lastError : message,
+                  });
+                  this.emitLifecycleEvent(context, "session/exited", message);
+                  this.sessions.delete(context.session.sessionId);
+                }),
+            }),
+          );
+        }.bind(this),
+      ).pipe(Scope.provide(context.scope)),
+    );
   }
 
   private handleStdoutLine(context: CodexSessionContext, line: string): void {
@@ -711,19 +751,31 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     }
 
     if (request.method === "item/tool/requestUserInput") {
-      this.writeMessage(context, {
+      void this.writeMessage(context, {
         id: request.id,
         result: { answers: {} },
+      }).catch((error) => {
+        this.emitErrorEvent(
+          context,
+          "protocol/writeError",
+          error instanceof Error ? error.message : String(error),
+        );
       });
       return;
     }
 
-    this.writeMessage(context, {
+    void this.writeMessage(context, {
       id: request.id,
       error: {
         code: -32601,
         message: `Unsupported server request: ${request.method}`,
       },
+    }).catch((error) => {
+      this.emitErrorEvent(
+        context,
+        "protocol/writeError",
+        error instanceof Error ? error.message : String(error),
+      );
     });
   }
 
@@ -766,23 +818,30 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         resolve,
         reject,
       });
-      this.writeMessage(context, {
+      void this.writeMessage(context, {
         method,
         id,
         params,
+      }).catch((error) => {
+        clearTimeout(timeout);
+        context.pending.delete(String(id));
+        reject(error instanceof Error ? error : new Error(String(error)));
       });
     });
 
     return result as TResponse;
   }
 
-  private writeMessage(context: CodexSessionContext, message: unknown): void {
+  private async writeMessage(context: CodexSessionContext, message: unknown): Promise<void> {
     const encoded = JSON.stringify(message);
-    if (!context.child.stdin.writable) {
+    if (context.stopping) {
       throw new Error("Cannot write to codex app-server stdin.");
     }
-
-    context.child.stdin.write(`${encoded}\n`);
+    await this.runPromise(
+      Stream.run(context.child.stdin)(Stream.make(new TextEncoder().encode(`${encoded}\n`))).pipe(
+        Scope.provide(context.scope),
+      ),
+    );
   }
 
   private emitLifecycleEvent(context: CodexSessionContext, method: string, message: string): void {
