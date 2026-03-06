@@ -12,6 +12,11 @@ export const CodexModelOptions = Schema.Struct({
 });
 export type CodexModelOptions = typeof CodexModelOptions.Type;
 
+export const ClaudeCodeModelOptions = Schema.Struct({
+  thinking: Schema.optional(Schema.Boolean),
+});
+export type ClaudeCodeModelOptions = typeof ClaudeCodeModelOptions.Type;
+
 export const CursorModelOptions = Schema.Struct({
   reasoning: Schema.optional(Schema.Literals(CURSOR_REASONING_OPTIONS)),
   fastMode: Schema.optional(Schema.Boolean),
@@ -21,6 +26,7 @@ export type CursorModelOptions = typeof CursorModelOptions.Type;
 
 export const ProviderModelOptions = Schema.Struct({
   codex: Schema.optional(CodexModelOptions),
+  claudeCode: Schema.optional(ClaudeCodeModelOptions),
   cursor: Schema.optional(CursorModelOptions),
 });
 export type ProviderModelOptions = typeof ProviderModelOptions.Type;
