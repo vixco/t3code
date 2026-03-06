@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode, createElement, useEffect } from "react";
 import {
   DEFAULT_MODEL,
+  ProjectId,
   ProviderSessionId,
   ThreadId,
   type OrchestrationReadModel,
@@ -15,11 +16,13 @@ import {
   type RuntimeMode,
   type Thread,
 } from "./types";
+import { resolveServerHttpOrigin } from "./lib/serverOrigin";
 
 // ── State ────────────────────────────────────────────────────────────
 
 export interface AppState {
   projects: Project[];
+  projectOrder: Project["id"][];
   threads: Thread[];
   threadsHydrated: boolean;
   runtimeMode: RuntimeMode;
@@ -39,15 +42,19 @@ const LEGACY_PERSISTED_STATE_KEYS = [
 
 const initialState: AppState = {
   projects: [],
+  projectOrder: [],
   threads: [],
   threadsHydrated: false,
   runtimeMode: DEFAULT_RUNTIME_MODE,
 };
 const persistedExpandedProjectCwds = new Set<string>();
+const persistedProjectOrder: Project["id"][] = [];
 
 // ── Persist helpers ──────────────────────────────────────────────────
 
 function readPersistedState(): AppState {
+  persistedExpandedProjectCwds.clear();
+  persistedProjectOrder.length = 0;
   if (typeof window === "undefined") return initialState;
   try {
     const raw = window.localStorage.getItem(PERSISTED_STATE_KEY);
@@ -55,15 +62,21 @@ function readPersistedState(): AppState {
     const parsed = JSON.parse(raw) as {
       runtimeMode?: RuntimeMode;
       expandedProjectCwds?: string[];
+      projectOrder?: string[];
     };
-    persistedExpandedProjectCwds.clear();
     for (const cwd of parsed.expandedProjectCwds ?? []) {
       if (typeof cwd === "string" && cwd.length > 0) {
         persistedExpandedProjectCwds.add(cwd);
       }
     }
+    for (const projectId of parsed.projectOrder ?? []) {
+      if (typeof projectId === "string" && projectId.length > 0) {
+        persistedProjectOrder.push(ProjectId.makeUnsafe(projectId));
+      }
+    }
     return {
       ...initialState,
+      projectOrder: [...persistedProjectOrder],
       runtimeMode:
         parsed.runtimeMode === "approval-required" || parsed.runtimeMode === "full-access"
           ? parsed.runtimeMode
@@ -84,6 +97,7 @@ function persistState(state: AppState): void {
         expandedProjectCwds: state.projects
           .filter((project) => project.expanded)
           .map((project) => project.cwd),
+        projectOrder: state.projects.map((project) => project.id),
       }),
     );
     for (const legacyKey of LEGACY_PERSISTED_STATE_KEYS) {
@@ -134,6 +148,28 @@ function mapProjectsFromReadModel(
   });
 }
 
+function applyProjectOrder(projects: Project[], projectOrder: Project["id"][]): Project[] {
+  if (projects.length < 2 || projectOrder.length === 0) {
+    return projects;
+  }
+
+  const remainingProjects = new Map(projects.map((project) => [project.id, project] as const));
+  const orderedProjects: Project[] = [];
+  for (const projectId of projectOrder) {
+    const project = remainingProjects.get(projectId);
+    if (!project) continue;
+    orderedProjects.push(project);
+    remainingProjects.delete(projectId);
+  }
+
+  const nextProjects = [
+    ...orderedProjects,
+    ...projects.filter((project) => remainingProjects.has(project.id)),
+  ];
+  const orderChanged = nextProjects.some((project, index) => project !== projects[index]);
+  return orderChanged ? nextProjects : projects;
+}
+
 function toLegacySessionStatus(
   status: OrchestrationSessionStatus,
 ): "connecting" | "ready" | "running" | "error" | "closed" {
@@ -157,34 +193,9 @@ function toLegacyProvider(providerName: string | null): "codex" | "claudeCode" {
   return providerName === "claudeCode" ? "claudeCode" : "codex";
 }
 
-function resolveWsHttpOrigin(): string {
-  if (typeof window === "undefined") return "";
-  const bridgeWsUrl = window.desktopBridge?.getWsUrl?.();
-  const envWsUrl = import.meta.env.VITE_WS_URL as string | undefined;
-  const wsCandidate =
-    typeof bridgeWsUrl === "string" && bridgeWsUrl.length > 0
-      ? bridgeWsUrl
-      : typeof envWsUrl === "string" && envWsUrl.length > 0
-        ? envWsUrl
-        : null;
-  if (!wsCandidate) return window.location.origin;
-  try {
-    const wsUrl = new URL(wsCandidate);
-    const protocol =
-      wsUrl.protocol === "wss:"
-        ? "https:"
-        : wsUrl.protocol === "ws:"
-          ? "http:"
-          : wsUrl.protocol;
-    return `${protocol}//${wsUrl.host}`;
-  } catch {
-    return window.location.origin;
-  }
-}
-
 function toAttachmentPreviewUrl(rawUrl: string): string {
   if (rawUrl.startsWith("/")) {
-    return `${resolveWsHttpOrigin()}${rawUrl}`;
+    return `${resolveServerHttpOrigin()}${rawUrl}`;
   }
   return rawUrl;
 }
@@ -199,9 +210,10 @@ export function syncServerReadModel(
   state: AppState,
   readModel: OrchestrationReadModel,
 ): AppState {
-  const projects = mapProjectsFromReadModel(
-    readModel.projects.filter((project) => project.deletedAt === null),
-    state.projects,
+  const activeReadModelProjects = readModel.projects.filter((project) => project.deletedAt === null);
+  const projects = applyProjectOrder(
+    mapProjectsFromReadModel(activeReadModelProjects, state.projects),
+    state.projectOrder,
   );
   const existingThreadById = new Map(
     state.threads.map((thread) => [thread.id, thread] as const),
@@ -272,6 +284,7 @@ export function syncServerReadModel(
   return {
     ...state,
     projects,
+    projectOrder: projects.map((project) => project.id),
     threads,
     threadsHydrated: true,
   };
@@ -333,6 +346,38 @@ export function setProjectExpanded(
   return changed ? { ...state, projects } : state;
 }
 
+export function moveProject(
+  state: AppState,
+  projectId: Project["id"],
+  targetProjectId: Project["id"],
+  position: "before" | "after",
+): AppState {
+  if (projectId === targetProjectId) return state;
+
+  const currentIndex = state.projects.findIndex((project) => project.id === projectId);
+  const targetIndex = state.projects.findIndex((project) => project.id === targetProjectId);
+  if (currentIndex < 0 || targetIndex < 0) return state;
+
+  const projects = [...state.projects];
+  const [project] = projects.splice(currentIndex, 1);
+  if (!project) return state;
+
+  const adjustedTargetIndex = projects.findIndex((entry) => entry.id === targetProjectId);
+  if (adjustedTargetIndex < 0) return state;
+
+  const insertionIndex = position === "before" ? adjustedTargetIndex : adjustedTargetIndex + 1;
+  projects.splice(insertionIndex, 0, project);
+
+  const orderChanged = projects.some((entry, index) => entry !== state.projects[index]);
+  if (!orderChanged) return state;
+
+  return {
+    ...state,
+    projects,
+    projectOrder: projects.map((entry) => entry.id),
+  };
+}
+
 export function setError(state: AppState, threadId: ThreadId, error: string | null): AppState {
   const threads = updateThread(state.threads, threadId, (t) => {
     if (t.error === error) return t;
@@ -372,6 +417,11 @@ interface AppStore extends AppState {
   markThreadVisited: (threadId: ThreadId, visitedAt?: string) => void;
   markThreadUnread: (threadId: ThreadId) => void;
   toggleProject: (projectId: Project["id"]) => void;
+  moveProject: (
+    projectId: Project["id"],
+    targetProjectId: Project["id"],
+    position: "before" | "after",
+  ) => void;
   setProjectExpanded: (projectId: Project["id"], expanded: boolean) => void;
   setError: (threadId: ThreadId, error: string | null) => void;
   setThreadBranch: (
@@ -392,6 +442,8 @@ export const useStore = create<AppStore>((set) => ({
     set((state) => markThreadUnread(state, threadId)),
   toggleProject: (projectId) =>
     set((state) => toggleProject(state, projectId)),
+  moveProject: (projectId, targetProjectId, position) =>
+    set((state) => moveProject(state, projectId, targetProjectId, position)),
   setProjectExpanded: (projectId, expanded) =>
     set((state) => setProjectExpanded(state, projectId, expanded)),
   setError: (threadId, error) =>
@@ -402,7 +454,7 @@ export const useStore = create<AppStore>((set) => ({
     set((state) => setRuntimeMode(state, mode)),
 }));
 
-// Persist on every state change (only runtimeMode + expandedProjectCwds)
+// Persist on every state change (runtimeMode + expanded projects + project order)
 useStore.subscribe((state) => persistState(state));
 
 export function StoreProvider({ children }: { children: ReactNode }) {

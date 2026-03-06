@@ -1,7 +1,9 @@
+import type { OrchestrationReadModel } from "@t3tools/contracts";
 import { ProjectId, ThreadId, TurnId } from "@t3tools/contracts";
 import { describe, expect, it } from "vitest";
 
-import { markThreadUnread, type AppState } from "./store";
+import { markThreadUnread, moveProject, syncServerReadModel, type AppState } from "./store";
+import type { Project } from "./types";
 import type { Thread } from "./types";
 
 function makeThread(overrides: Partial<Thread> = {}): Thread {
@@ -24,18 +26,22 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
   };
 }
 
-function makeState(thread: Thread): AppState {
+function makeProject(overrides: Partial<Project> = {}): Project {
   return {
-    projects: [
-      {
-        id: ProjectId.makeUnsafe("project-1"),
-        name: "Project",
-        cwd: "/tmp/project",
-        model: "gpt-5-codex",
-        expanded: true,
-        scripts: [],
-      },
-    ],
+    id: ProjectId.makeUnsafe("project-1"),
+    name: "Project",
+    cwd: "/tmp/project",
+    model: "gpt-5-codex",
+    expanded: true,
+    scripts: [],
+    ...overrides,
+  };
+}
+
+function makeState(thread: Thread, projects: Project[] = [makeProject()]): AppState {
+  return {
+    projects,
+    projectOrder: projects.map((project) => project.id),
     threads: [thread],
     threadsHydrated: true,
     runtimeMode: "full-access",
@@ -80,5 +86,77 @@ describe("store pure functions", () => {
     const next = markThreadUnread(initialState, ThreadId.makeUnsafe("thread-1"));
 
     expect(next).toEqual(initialState);
+  });
+
+  it("moveProject reorders projects and persists the new order", () => {
+    const firstProject = makeProject({
+      id: ProjectId.makeUnsafe("project-1"),
+      name: "First",
+      cwd: "/tmp/first",
+    });
+    const secondProject = makeProject({
+      id: ProjectId.makeUnsafe("project-2"),
+      name: "Second",
+      cwd: "/tmp/second",
+    });
+    const thirdProject = makeProject({
+      id: ProjectId.makeUnsafe("project-3"),
+      name: "Third",
+      cwd: "/tmp/third",
+    });
+    const initialState = makeState(makeThread(), [firstProject, secondProject, thirdProject]);
+
+    const next = moveProject(
+      initialState,
+      ProjectId.makeUnsafe("project-3"),
+      ProjectId.makeUnsafe("project-1"),
+      "before",
+    );
+
+    expect(next.projects.map((project) => project.id)).toEqual([
+      ProjectId.makeUnsafe("project-3"),
+      ProjectId.makeUnsafe("project-1"),
+      ProjectId.makeUnsafe("project-2"),
+    ]);
+    expect(next.projectOrder).toEqual(next.projects.map((project) => project.id));
+  });
+
+  it("syncServerReadModel reapplies a persisted project order to fresh snapshots", () => {
+    const initialState = {
+      ...makeState(makeThread(), []),
+      projectOrder: [
+        ProjectId.makeUnsafe("project-2"),
+        ProjectId.makeUnsafe("project-1"),
+      ],
+    };
+    const readModel = {
+      projects: [
+        {
+          id: ProjectId.makeUnsafe("project-1"),
+          title: "First",
+          workspaceRoot: "/tmp/first",
+          defaultModel: null,
+          scripts: [],
+          deletedAt: null,
+        },
+        {
+          id: ProjectId.makeUnsafe("project-2"),
+          title: "Second",
+          workspaceRoot: "/tmp/second",
+          defaultModel: null,
+          scripts: [],
+          deletedAt: null,
+        },
+      ],
+      threads: [],
+    } as unknown as OrchestrationReadModel;
+
+    const next = syncServerReadModel(initialState, readModel);
+
+    expect(next.projects.map((project) => project.id)).toEqual([
+      ProjectId.makeUnsafe("project-2"),
+      ProjectId.makeUnsafe("project-1"),
+    ]);
+    expect(next.projectOrder).toEqual(next.projects.map((project) => project.id));
   });
 });

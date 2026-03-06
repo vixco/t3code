@@ -1,12 +1,13 @@
 import {
   ChevronRightIcon,
   FolderIcon,
+  GripVerticalIcon,
   GitPullRequestIcon,
   RocketIcon,
   SquarePenIcon,
   TerminalIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_MODEL,
   type DesktopUpdateState,
@@ -20,6 +21,7 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { useAppSettings } from "../appSettings";
 import { isElectron } from "../env";
 import { APP_STAGE_LABEL } from "../branding";
+import { resolveServerHttpOrigin } from "../lib/serverOrigin";
 import { newCommandId, newProjectId, newThreadId } from "../lib/utils";
 import { useStore } from "../store";
 import { isChatNewLocalShortcut, isChatNewShortcut, shortcutLabelForCommand } from "../keybindings";
@@ -78,6 +80,11 @@ function formatRelativeTime(iso: string): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
+}
+
+function resolveProjectDropPosition(element: HTMLElement, clientY: number) {
+  const { top, height } = element.getBoundingClientRect();
+  return clientY < top + height / 2 ? "before" : "after";
 }
 
 interface ThreadStatusPill {
@@ -212,29 +219,7 @@ function T3Wordmark() {
   );
 }
 
-/**
- * Derives the server's HTTP origin (scheme + host + port) from the same
- * sources WsTransport uses, converting ws(s) to http(s).
- */
-function getServerHttpOrigin(): string {
-  const bridgeUrl = window.desktopBridge?.getWsUrl();
-  const envUrl = import.meta.env.VITE_WS_URL as string | undefined;
-  const wsUrl =
-    bridgeUrl && bridgeUrl.length > 0
-      ? bridgeUrl
-      : envUrl && envUrl.length > 0
-        ? envUrl
-        : `ws://${window.location.hostname}:${window.location.port}`;
-  // Parse to extract just the origin, dropping path/query (e.g. ?token=…)
-  const httpUrl = wsUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
-  try {
-    return new URL(httpUrl).origin;
-  } catch {
-    return httpUrl;
-  }
-}
-
-const serverHttpOrigin = getServerHttpOrigin();
+const serverHttpOrigin = resolveServerHttpOrigin();
 
 function ProjectFavicon({ cwd }: { cwd: string }) {
   const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
@@ -260,6 +245,7 @@ export default function Sidebar() {
   const projects = useStore((store) => store.projects);
   const threads = useStore((store) => store.threads);
   const markThreadUnread = useStore((store) => store.markThreadUnread);
+  const moveProject = useStore((store) => store.moveProject);
   const toggleProject = useStore((store) => store.toggleProject);
   const clearComposerDraftForThread = useComposerDraftStore((store) => store.clearThreadDraft);
   const getDraftThreadByProjectId = useComposerDraftStore(
@@ -294,6 +280,11 @@ export default function Sidebar() {
   const [isAddingProject, setIsAddingProject] = useState(false);
   const [renamingThreadId, setRenamingThreadId] = useState<ThreadId | null>(null);
   const [renamingTitle, setRenamingTitle] = useState("");
+  const [draggedProjectId, setDraggedProjectId] = useState<ProjectId | null>(null);
+  const [projectDropTarget, setProjectDropTarget] = useState<{
+    projectId: ProjectId;
+    position: "before" | "after";
+  } | null>(null);
   const [expandedThreadListsByProject, setExpandedThreadListsByProject] = useState<
     ReadonlySet<ProjectId>
   >(() => new Set());
@@ -967,6 +958,65 @@ export default function Sidebar() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!draggedProjectId) return;
+
+    const previousUserSelect = document.body.style.userSelect;
+    const previousCursor = document.body.style.cursor;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "grabbing";
+
+    const handlePointerRelease = () => {
+      setDraggedProjectId(null);
+      setProjectDropTarget(null);
+    };
+
+    window.addEventListener("pointerup", handlePointerRelease);
+    window.addEventListener("pointercancel", handlePointerRelease);
+    return () => {
+      document.body.style.userSelect = previousUserSelect;
+      document.body.style.cursor = previousCursor;
+      window.removeEventListener("pointerup", handlePointerRelease);
+      window.removeEventListener("pointercancel", handlePointerRelease);
+    };
+  }, [draggedProjectId]);
+
+  function resetProjectDragState() {
+    setDraggedProjectId(null);
+    setProjectDropTarget(null);
+  }
+
+  function handleProjectDragStart(event: PointerEvent<HTMLButtonElement>, projectId: ProjectId) {
+    if (event.button !== 0) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    setDraggedProjectId(projectId);
+    setProjectDropTarget(null);
+  }
+
+  function handleProjectDragOver(event: PointerEvent<HTMLElement>, projectId: ProjectId) {
+    if (!draggedProjectId) return;
+
+    const position = resolveProjectDropPosition(event.currentTarget, event.clientY);
+    setProjectDropTarget((current) => {
+      if (current?.projectId === projectId && current.position === position) {
+        return current;
+      }
+      return { projectId, position };
+    });
+  }
+
+  function handleProjectDrop(event: PointerEvent<HTMLElement>, projectId: ProjectId) {
+    if (!draggedProjectId) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    const position = resolveProjectDropPosition(event.currentTarget, event.clientY);
+    moveProject(draggedProjectId, projectId, position);
+    resetProjectDragState();
+  }
+
   const wordmark = (
     <div className="flex items-center gap-2">
       <SidebarTrigger className="shrink-0 md:hidden" />
@@ -1032,6 +1082,12 @@ export default function Sidebar() {
                 hasHiddenThreads && !isThreadListExpanded
                   ? projectThreads.slice(0, THREAD_PREVIEW_LIMIT)
                   : projectThreads;
+              const dropIndicator =
+                draggedProjectId !== null &&
+                draggedProjectId !== project.id &&
+                projectDropTarget?.projectId === project.id
+                  ? projectDropTarget.position
+                  : null;
 
               return (
                 <Collapsible
@@ -1043,13 +1099,39 @@ export default function Sidebar() {
                     toggleProject(project.id);
                   }}
                 >
-                  <SidebarMenuItem>
-                    <div className="group/project-header relative">
+                  <SidebarMenuItem className={draggedProjectId === project.id ? "opacity-60" : ""}>
+                    {dropIndicator === "before" && (
+                      <div className="pointer-events-none absolute inset-x-2 top-0 h-0.5 rounded-full bg-primary" />
+                    )}
+                    {dropIndicator === "after" && (
+                      <div className="pointer-events-none absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary" />
+                    )}
+                    <div
+                      className="group/project-header relative"
+                      onPointerEnter={(event) => handleProjectDragOver(event, project.id)}
+                      onPointerMove={(event) => handleProjectDragOver(event, project.id)}
+                      onPointerUp={(event) => handleProjectDrop(event, project.id)}
+                    >
+                      <button
+                        type="button"
+                        aria-label={`Reorder ${project.name}`}
+                        aria-grabbed={draggedProjectId === project.id}
+                        className={`absolute top-1/2 left-1 z-10 inline-flex size-5 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground/45 transition-colors hover:bg-accent hover:text-foreground ${
+                          draggedProjectId === project.id ? "cursor-grabbing" : "cursor-grab"
+                        }`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                        onPointerDown={(event) => handleProjectDragStart(event, project.id)}
+                      >
+                        <GripVerticalIcon className="size-3.5" />
+                      </button>
                       <CollapsibleTrigger
                         render={
                           <SidebarMenuButton
                             size="sm"
-                            className="gap-2 px-2 py-1.5 text-left hover:bg-accent group-hover/project-header:bg-accent group-hover/project-header:text-sidebar-accent-foreground"
+                            className="gap-2 py-1.5 pr-2 pl-7 text-left hover:bg-accent group-hover/project-header:bg-accent group-hover/project-header:text-sidebar-accent-foreground"
                           />
                         }
                         onContextMenu={(event) => {
