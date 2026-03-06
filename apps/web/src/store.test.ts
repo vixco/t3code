@@ -1,7 +1,17 @@
-import { ProjectId, ThreadId, TurnId, type OrchestrationReadModel } from "@t3tools/contracts";
+import {
+  ProjectId,
+  ThreadId,
+  TurnId,
+  type OrchestrationReadModel,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vitest";
 
-import { markThreadUnread, reorderProjects, syncServerReadModel, type AppState } from "./store";
+import {
+  markThreadUnread,
+  reorderProjects,
+  syncServerReadModel,
+  type AppState,
+} from "./store";
 import type { Project, Thread } from "./types";
 
 function makeProject(id: string, cwd = `/tmp/${id}`): Project {
@@ -35,7 +45,10 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
   };
 }
 
-function makeState(thread: Thread, projects: Project[] = [makeProject("project-1")]): AppState {
+function makeState(
+  thread: Thread,
+  projects: Project[] = [makeProject("project-1")],
+): AppState {
   return {
     projects,
     threads: [thread],
@@ -44,7 +57,9 @@ function makeState(thread: Thread, projects: Project[] = [makeProject("project-1
   };
 }
 
-function makeReadModel(projects: Array<{ id: string; cwd?: string }>): OrchestrationReadModel {
+function makeReadModel(
+  projects: Array<{ id: string; cwd?: string }>,
+): OrchestrationReadModel {
   return {
     snapshotSequence: 1,
     projects: projects.map((project) => ({
@@ -70,7 +85,11 @@ describe("store pure functions", () => {
       makeProject("project-3"),
     ]);
 
-    const next = reorderProjects(initialState, ProjectId.makeUnsafe("project-1"), 3);
+    const next = reorderProjects(
+      initialState,
+      ProjectId.makeUnsafe("project-1"),
+      3,
+    );
 
     expect(next.projects.map((project) => project.id)).toEqual([
       ProjectId.makeUnsafe("project-2"),
@@ -117,7 +136,10 @@ describe("store pure functions", () => {
       }),
     );
 
-    const next = markThreadUnread(initialState, ThreadId.makeUnsafe("thread-1"));
+    const next = markThreadUnread(
+      initialState,
+      ThreadId.makeUnsafe("thread-1"),
+    );
 
     const updatedThread = next.threads[0];
     expect(updatedThread).toBeDefined();
@@ -135,7 +157,10 @@ describe("store pure functions", () => {
       }),
     );
 
-    const next = markThreadUnread(initialState, ThreadId.makeUnsafe("thread-1"));
+    const next = markThreadUnread(
+      initialState,
+      ThreadId.makeUnsafe("thread-1"),
+    );
 
     expect(next).toEqual(initialState);
   });

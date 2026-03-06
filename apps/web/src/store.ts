@@ -73,7 +73,8 @@ function readPersistedState(): AppState {
     return {
       ...initialState,
       runtimeMode:
-        parsed.runtimeMode === "approval-required" || parsed.runtimeMode === "full-access"
+        parsed.runtimeMode === "approval-required" ||
+        parsed.runtimeMode === "full-access"
           ? parsed.runtimeMode
           : DEFAULT_RUNTIME_MODE,
     };
@@ -132,7 +133,9 @@ function mapProjectsFromReadModel(
       id: project.id,
       name: project.title,
       cwd: project.workspaceRoot,
-      model: existing?.model ?? resolveModelSlug(project.defaultModel ?? DEFAULT_MODEL),
+      model:
+        existing?.model ??
+        resolveModelSlug(project.defaultModel ?? DEFAULT_MODEL),
       expanded:
         existing?.expanded ??
         (persistedExpandedProjectCwds.size > 0
@@ -142,7 +145,9 @@ function mapProjectsFromReadModel(
     };
   });
   const preferredProjectOrderCwds =
-    previous.length > 0 ? previous.map((project) => project.cwd) : persistedProjectOrderCwds;
+    previous.length > 0
+      ? previous.map((project) => project.cwd)
+      : persistedProjectOrderCwds;
   if (preferredProjectOrderCwds.length === 0 || mappedProjects.length <= 1) {
     return mappedProjects;
   }
@@ -157,7 +162,9 @@ function mapProjectsFromReadModel(
     if (rightIndex === undefined) return -1;
     return leftIndex - rightIndex;
   });
-  return orderedProjects.every((project, index) => project === mappedProjects[index])
+  return orderedProjects.every(
+    (project, index) => project === mappedProjects[index],
+  )
     ? mappedProjects
     : orderedProjects;
 }
@@ -256,7 +263,9 @@ export function syncServerReadModel(
               activeTurnId: thread.session.activeTurnId ?? undefined,
               createdAt: thread.session.updatedAt,
               updatedAt: thread.session.updatedAt,
-              ...(thread.session.lastError ? { lastError: thread.session.lastError } : {}),
+              ...(thread.session.lastError
+                ? { lastError: thread.session.lastError }
+                : {}),
             }
           : null,
         messages: thread.messages.map((message) => {
@@ -266,7 +275,9 @@ export function syncServerReadModel(
             name: attachment.name,
             mimeType: attachment.mimeType,
             sizeBytes: attachment.sizeBytes,
-            previewUrl: toAttachmentPreviewUrl(attachmentPreviewRoutePath(attachment.id)),
+            previewUrl: toAttachmentPreviewUrl(
+              attachmentPreviewRoutePath(attachment.id),
+            ),
           }));
           const normalizedMessage: ChatMessage = {
             id: message.id,
@@ -313,7 +324,9 @@ export function markThreadVisited(
   const at = visitedAt ?? new Date().toISOString();
   const visitedAtMs = Date.parse(at);
   const threads = updateThread(state.threads, threadId, (thread) => {
-    const previousVisitedAtMs = thread.lastVisitedAt ? Date.parse(thread.lastVisitedAt) : NaN;
+    const previousVisitedAtMs = thread.lastVisitedAt
+      ? Date.parse(thread.lastVisitedAt)
+      : NaN;
     if (
       Number.isFinite(previousVisitedAtMs) &&
       Number.isFinite(visitedAtMs) &&
@@ -326,7 +339,10 @@ export function markThreadVisited(
   return threads === state.threads ? state : { ...state, threads };
 }
 
-export function markThreadUnread(state: AppState, threadId: ThreadId): AppState {
+export function markThreadUnread(
+  state: AppState,
+  threadId: ThreadId,
+): AppState {
   const threads = updateThread(state.threads, threadId, (thread) => {
     if (!thread.latestTurn?.completedAt) return thread;
     const latestTurnCompletedAtMs = Date.parse(thread.latestTurn.completedAt);
@@ -338,7 +354,10 @@ export function markThreadUnread(state: AppState, threadId: ThreadId): AppState 
   return threads === state.threads ? state : { ...state, threads };
 }
 
-export function toggleProject(state: AppState, projectId: Project["id"]): AppState {
+export function toggleProject(
+  state: AppState,
+  projectId: Project["id"],
+): AppState {
   return {
     ...state,
     projects: state.projects.map((p) =>
@@ -366,11 +385,18 @@ export function reorderProjects(
   sourceProjectId: Project["id"],
   destinationIndex: number,
 ): AppState {
-  const sourceIndex = state.projects.findIndex((project) => project.id === sourceProjectId);
+  const sourceIndex = state.projects.findIndex(
+    (project) => project.id === sourceProjectId,
+  );
   if (sourceIndex === -1) return state;
-  const boundedDestinationIndex = Math.max(0, Math.min(destinationIndex, state.projects.length));
+  const boundedDestinationIndex = Math.max(
+    0,
+    Math.min(destinationIndex, state.projects.length),
+  );
   const normalizedDestinationIndex =
-    sourceIndex < boundedDestinationIndex ? boundedDestinationIndex - 1 : boundedDestinationIndex;
+    sourceIndex < boundedDestinationIndex
+      ? boundedDestinationIndex - 1
+      : boundedDestinationIndex;
   if (normalizedDestinationIndex === sourceIndex) return state;
   const projects = [...state.projects];
   const [movedProject] = projects.splice(sourceIndex, 1);
@@ -379,7 +405,11 @@ export function reorderProjects(
   return { ...state, projects };
 }
 
-export function setError(state: AppState, threadId: ThreadId, error: string | null): AppState {
+export function setError(
+  state: AppState,
+  threadId: ThreadId,
+  error: string | null,
+): AppState {
   const threads = updateThread(state.threads, threadId, (t) => {
     if (t.error === error) return t;
     return { ...t, error };
@@ -419,7 +449,10 @@ interface AppStore extends AppState {
   markThreadUnread: (threadId: ThreadId) => void;
   toggleProject: (projectId: Project["id"]) => void;
   setProjectExpanded: (projectId: Project["id"], expanded: boolean) => void;
-  reorderProjects: (sourceProjectId: Project["id"], destinationIndex: number) => void;
+  reorderProjects: (
+    sourceProjectId: Project["id"],
+    destinationIndex: number,
+  ) => void;
   setError: (threadId: ThreadId, error: string | null) => void;
   setThreadBranch: (
     threadId: ThreadId,
@@ -437,8 +470,7 @@ export const useStore = create<AppStore>((set) => ({
     set((state) => markThreadVisited(state, threadId, visitedAt)),
   markThreadUnread: (threadId) =>
     set((state) => markThreadUnread(state, threadId)),
-  toggleProject: (projectId) =>
-    set((state) => toggleProject(state, projectId)),
+  toggleProject: (projectId) => set((state) => toggleProject(state, projectId)),
   setProjectExpanded: (projectId, expanded) =>
     set((state) => setProjectExpanded(state, projectId, expanded)),
   reorderProjects: (sourceProjectId, destinationIndex) =>
@@ -447,8 +479,7 @@ export const useStore = create<AppStore>((set) => ({
     set((state) => setError(state, threadId, error)),
   setThreadBranch: (threadId, branch, worktreePath) =>
     set((state) => setThreadBranch(state, threadId, branch, worktreePath)),
-  setRuntimeMode: (mode) =>
-    set((state) => setRuntimeMode(state, mode)),
+  setRuntimeMode: (mode) => set((state) => setRuntimeMode(state, mode)),
 }));
 
 // Persist on every state change (runtimeMode + sidebar project UI state)
