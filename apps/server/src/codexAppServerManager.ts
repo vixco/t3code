@@ -44,6 +44,7 @@ interface CodexSessionContext {
   session: ProviderSession;
   child: ChildProcessSpawner.ChildProcessHandle;
   scope: Scope.Closeable;
+  scopeClosePromise: Promise<void> | null;
   pending: Map<PendingRequestKey, PendingRequest>;
   pendingApprovals: Map<ApprovalRequestId, PendingApprovalRequest>;
   nextRequestId: number;
@@ -164,6 +165,7 @@ export interface CodexAppServerManagerEvents {
 
 export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEvents> {
   private readonly sessions = new Map<ProviderSessionId, CodexSessionContext>();
+  private readonly pendingScopeCloses = new Set<Promise<void>>();
   private readonly ownedRuntime:
     | ManagedRuntime.ManagedRuntime<NodeServices.NodeServices, unknown>
     | null;
@@ -222,6 +224,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         session,
         child: managedProcess.handle,
         scope: managedProcess.scope,
+        scopeClosePromise: null,
         pending: new Map(),
         pendingApprovals: new Map(),
         nextRequestId: 1,
@@ -494,14 +497,9 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     }
 
     context.stopping = true;
-
-    for (const pending of context.pending.values()) {
-      clearTimeout(pending.timeout);
-      pending.reject(new Error("Session stopped before request completed."));
-    }
-    context.pending.clear();
+    this.rejectPendingRequests(context, "Session stopped before request completed.");
     context.pendingApprovals.clear();
-    void this.runPromise(Scope.close(context.scope, Exit.void)).catch(() => undefined);
+    void this.closeSessionScope(context);
 
     this.updateSession(context, {
       status: "closed",
@@ -527,7 +525,14 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     }
 
     if (this.ownedRuntime) {
-      void this.ownedRuntime.dispose();
+      const pendingScopeCloses = Array.from(this.pendingScopeCloses);
+      const closeComplete =
+        pendingScopeCloses.length > 0
+          ? Promise.allSettled(pendingScopeCloses).then(() => undefined)
+          : Promise.resolve();
+      void closeComplete.finally(() => {
+        void this.ownedRuntime?.dispose();
+      });
     }
   }
 
@@ -557,17 +562,14 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
           );
 
           yield* Effect.forkScoped(
-            Stream.runForEach(Stream.decodeText(context.child.stderr), (raw) =>
+            Stream.runForEach(Stream.splitLines(Stream.decodeText(context.child.stderr)), (rawLine) =>
               Effect.sync(() => {
-                const lines = raw.split(/\r?\n/g);
-                for (const rawLine of lines) {
-                  const classified = classifyCodexStderrLine(rawLine);
-                  if (!classified) {
-                    continue;
-                  }
-
-                  this.emitErrorEvent(context, "process/stderr", classified.message);
+                const classified = classifyCodexStderrLine(rawLine);
+                if (!classified) {
+                  return;
                 }
+
+                this.emitErrorEvent(context, "process/stderr", classified.message);
               }),
             ),
           );
@@ -575,35 +577,19 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
           yield* Effect.forkScoped(
             Effect.matchCauseEffect(context.child.exitCode, {
               onFailure: (cause) =>
-                Effect.sync(() => {
-                  if (context.stopping) {
-                    return;
-                  }
-
-                  const message = messageFromCodexProcessCause(cause);
-                  this.updateSession(context, {
-                    status: "error",
-                    activeTurnId: undefined,
-                    lastError: message,
-                  });
-                  this.emitErrorEvent(context, "process/error", message);
-                  this.sessions.delete(context.session.sessionId);
-                }),
+                Effect.promise(() =>
+                  this.handleUnexpectedProcessExit(context, {
+                    kind: "failure",
+                    message: messageFromCodexProcessCause(cause),
+                  }),
+                ),
               onSuccess: (code) =>
-                Effect.sync(() => {
-                  if (context.stopping) {
-                    return;
-                  }
-
-                  const message = `codex app-server exited (code=${code}).`;
-                  this.updateSession(context, {
-                    status: "closed",
-                    activeTurnId: undefined,
-                    lastError: code === 0 ? context.session.lastError : message,
-                  });
-                  this.emitLifecycleEvent(context, "session/exited", message);
-                  this.sessions.delete(context.session.sessionId);
-                }),
+                Effect.promise(() =>
+                  this.handleUnexpectedProcessExit(context, {
+                    kind: "exit",
+                    code,
+                  }),
+                ),
             }),
           );
         }.bind(this),
@@ -850,11 +836,76 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     if (context.stopping) {
       throw new Error("Cannot write to codex app-server stdin.");
     }
+    const isRunning = await this.runPromise(
+      context.child.isRunning.pipe(Effect.catch(() => Effect.succeed(false))),
+    );
+    if (!isRunning) {
+      throw new Error("Cannot write to codex app-server stdin.");
+    }
     await this.runPromise(
       Stream.run(context.child.stdin)(Stream.make(new TextEncoder().encode(`${encoded}\n`))).pipe(
         Scope.provide(context.scope),
       ),
     );
+  }
+
+  private rejectPendingRequests(context: CodexSessionContext, message: string): void {
+    for (const pending of context.pending.values()) {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error(message));
+    }
+    context.pending.clear();
+  }
+
+  private closeSessionScope(context: CodexSessionContext): Promise<void> {
+    if (context.scopeClosePromise) {
+      return context.scopeClosePromise;
+    }
+
+    const closePromise = this.runPromise(Scope.close(context.scope, Exit.void))
+      .catch(() => undefined)
+      .finally(() => {
+        if (context.scopeClosePromise === closePromise) {
+          context.scopeClosePromise = null;
+        }
+        this.pendingScopeCloses.delete(closePromise);
+      });
+    context.scopeClosePromise = closePromise;
+    this.pendingScopeCloses.add(closePromise);
+    return closePromise;
+  }
+
+  private async handleUnexpectedProcessExit(
+    context: CodexSessionContext,
+    outcome: { kind: "failure"; message: string } | { kind: "exit"; code: number },
+  ): Promise<void> {
+    if (context.stopping) {
+      return;
+    }
+
+    context.stopping = true;
+    this.rejectPendingRequests(context, "Session terminated before request completed.");
+    context.pendingApprovals.clear();
+
+    if (outcome.kind === "failure") {
+      this.updateSession(context, {
+        status: "error",
+        activeTurnId: undefined,
+        lastError: outcome.message,
+      });
+      this.emitErrorEvent(context, "process/error", outcome.message);
+    } else {
+      const message = `codex app-server exited (code=${outcome.code}).`;
+      this.updateSession(context, {
+        status: "closed",
+        activeTurnId: undefined,
+        lastError: outcome.code === 0 ? context.session.lastError : message,
+      });
+      this.emitLifecycleEvent(context, "session/exited", message);
+    }
+
+    this.sessions.delete(context.session.sessionId);
+    await this.closeSessionScope(context);
   }
 
   private emitLifecycleEvent(context: CodexSessionContext, method: string, message: string): void {

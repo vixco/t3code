@@ -1,6 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Cause } from "effect";
-import { ManagedRuntime, ServiceMap } from "effect";
+import { Cause, Effect, ManagedRuntime, ServiceMap } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProviderSessionId } from "@t3tools/contracts";
 
@@ -103,6 +102,58 @@ function createThreadControlHarness() {
   return { manager, context, requireSession, sendRequest, updateSession };
 }
 
+function createMinimalSessionContext(sessionId = asSessionId("sess_1")) {
+  return {
+    session: {
+      sessionId,
+      provider: "codex",
+      status: "ready",
+      threadId: "thread_1",
+      createdAt: "2026-02-10T00:00:00.000Z",
+      updatedAt: "2026-02-10T00:00:00.000Z",
+    },
+    child: {
+      stdin: {},
+      isRunning: Effect.succeed(true),
+    },
+    scope: {},
+    scopeClosePromise: null,
+    pending: new Map(),
+    pendingApprovals: new Map(),
+    nextRequestId: 1,
+    stopping: false,
+  } as unknown as {
+    session: {
+      sessionId: ProviderSessionId;
+      provider: "codex";
+      status: "ready" | "closed";
+      threadId: string;
+      createdAt: string;
+      updatedAt: string;
+      activeTurnId?: string;
+      lastError?: string;
+    };
+    child: {
+      stdin: unknown;
+      isRunning: Effect.Effect<boolean, never>;
+    };
+    scope: unknown;
+    scopeClosePromise: Promise<void> | null;
+    pending: Map<
+      string,
+      {
+        method: string;
+        timeout: ReturnType<typeof setTimeout>;
+        resolve: (value: unknown) => void;
+        reject: (error: Error) => void;
+      }
+    >;
+    pendingApprovals: Map<string, unknown>;
+    nextRequestId: number;
+    stopping: boolean;
+  };
+}
+
 describe("classifyCodexStderrLine", () => {
   it("ignores empty lines", () => {
     expect(classifyCodexStderrLine("   ")).toBeNull();
@@ -183,6 +234,107 @@ describe("constructor", () => {
   it("supports the optional no-services path without unsafe casting", () => {
     const manager = new CodexAppServerManager();
     expect(() => manager.stopAll()).not.toThrow();
+  });
+});
+
+describe("session lifecycle guards", () => {
+  it("rejects writes when the codex process is not running", async () => {
+    const manager = createManager();
+    const context = createMinimalSessionContext();
+    context.child.isRunning = Effect.succeed(false);
+    const runPromise = vi
+      .spyOn(manager as unknown as { runPromise: (...args: unknown[]) => Promise<unknown> }, "runPromise")
+      .mockResolvedValue(false);
+
+    await expect(
+      (
+        manager as unknown as { writeMessage: (ctx: unknown, message: unknown) => Promise<void> }
+      ).writeMessage(context, {
+        method: "initialized",
+      }),
+    ).rejects.toThrow("Cannot write to codex app-server stdin.");
+    expect(runPromise).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes session scope on unexpected process exit", async () => {
+    const manager = createManager();
+    const context = createMinimalSessionContext();
+    const pendingReject = vi.fn();
+    context.pending.set("1", {
+      method: "thread/start",
+      timeout: setTimeout(() => undefined, 1000),
+      resolve: () => undefined,
+      reject: pendingReject,
+    });
+    (
+      manager as unknown as {
+        sessions: Map<ProviderSessionId, unknown>;
+      }
+    ).sessions.set(context.session.sessionId, context);
+    const runPromise = vi
+      .spyOn(manager as unknown as { runPromise: (...args: unknown[]) => Promise<unknown> }, "runPromise")
+      .mockResolvedValue(undefined);
+
+    await (
+      manager as unknown as {
+        handleUnexpectedProcessExit: (
+          ctx: unknown,
+          outcome: { kind: "failure"; message: string } | { kind: "exit"; code: number },
+        ) => Promise<void>;
+      }
+    ).handleUnexpectedProcessExit(context, { kind: "exit", code: 1 });
+
+    expect(pendingReject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Session terminated before request completed.",
+      }),
+    );
+    expect(context.session.status).toBe("closed");
+    expect(context.session.lastError).toBe("codex app-server exited (code=1).");
+    expect(runPromise).toHaveBeenCalledTimes(1);
+    expect(
+      (
+        manager as unknown as {
+          sessions: Map<ProviderSessionId, unknown>;
+        }
+      ).sessions.has(context.session.sessionId),
+    ).toBe(false);
+  });
+
+  it("waits for active scope closes before disposing owned runtime", async () => {
+    const manager = new CodexAppServerManager();
+    const context = createMinimalSessionContext();
+    (
+      manager as unknown as {
+        sessions: Map<ProviderSessionId, unknown>;
+      }
+    ).sessions.set(context.session.sessionId, context);
+    let resolveClose: (() => void) | undefined;
+    const closePromise = new Promise<void>((resolve) => {
+      resolveClose = resolve;
+    });
+    vi.spyOn(
+      manager as unknown as { runPromise: (...args: unknown[]) => Promise<unknown> },
+      "runPromise",
+    ).mockReturnValue(closePromise);
+    const ownedRuntime = (
+      manager as unknown as {
+        ownedRuntime: { dispose: () => Promise<void> } | null;
+      }
+    ).ownedRuntime;
+    if (!ownedRuntime) {
+      throw new Error("Expected manager to own a runtime.");
+    }
+    const disposeSpy = vi.spyOn(ownedRuntime, "dispose").mockResolvedValue(undefined);
+
+    manager.stopAll();
+
+    expect(disposeSpy).not.toHaveBeenCalled();
+    resolveClose?.();
+    await closePromise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(disposeSpy).toHaveBeenCalledTimes(1);
   });
 });
 

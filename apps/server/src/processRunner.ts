@@ -267,19 +267,21 @@ interface ManagedChildProcess {
 }
 
 export const spawnManagedCommand = (command: ChildProcess.Command) =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make("sequential");
-    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const handle = yield* spawner.spawn(command).pipe(
-      Scope.provide(scope),
-      Effect.tapError(() => Scope.close(scope, Exit.void)),
-    );
+  Effect.uninterruptible(
+    Effect.gen(function* () {
+      const scope = yield* Scope.make("sequential");
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const handle = yield* spawner.spawn(command).pipe(
+        Scope.provide(scope),
+        Effect.tapError(() => Scope.close(scope, Exit.void)),
+      );
 
-    return {
-      scope,
-      handle,
-    } satisfies ManagedChildProcess;
-  });
+      return {
+        scope,
+        handle,
+      } satisfies ManagedChildProcess;
+    }),
+  );
 
 function spawnProcess(
   command: string,
@@ -344,15 +346,24 @@ export function spawnDetachedProcess(
       stdio: "ignore",
     });
 
+    const cleanup = () => {
+      child.off("spawn", handleSpawn);
+      child.off("error", handleError);
+    };
+
     const handleSpawn = () => {
+      cleanup();
       child.unref();
       resolve();
     };
 
-    child.once("spawn", handleSpawn);
-    child.once("error", (error) => {
+    const handleError = (error: Error) => {
+      cleanup();
       reject(normalizeSpawnError(command, args, error));
-    });
+    };
+
+    child.once("spawn", handleSpawn);
+    child.once("error", handleError);
   });
 }
 
