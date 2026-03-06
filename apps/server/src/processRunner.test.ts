@@ -102,10 +102,9 @@ describe("resolveProcessLaunchPlan", () => {
         },
       });
 
-      expect(plan.command).toBe("C:\\Windows\\System32\\cmd.exe");
-      expect(plan.args.slice(0, 3)).toEqual(["/d", "/s", "/c"]);
-      expect(plan.args[3]).toBe(`"${wrapperPath}" "C:\\repo\\a&b.ts"`);
-      expect(plan.shell).toBe(false);
+      expect(plan.command).toBe(wrapperPath);
+      expect(plan.args).toEqual(["C:\\repo\\a&b.ts"]);
+      expect(plan.shell).toBe("C:\\Windows\\System32\\cmd.exe");
     });
   });
 
@@ -130,8 +129,38 @@ describe("resolveProcessLaunchPlan", () => {
         },
       });
 
-      expect(plan.command).toBe("C:\\Windows\\System32\\cmd.exe");
-      expect(plan.args[3]).toBe(`"${wrapperPath}" "pkg@^1.0"`);
+      expect(plan.command).toBe(wrapperPath);
+      expect(plan.args).toEqual(["pkg@^1.0"]);
+      expect(plan.shell).toBe("C:\\Windows\\System32\\cmd.exe");
+    });
+  });
+
+  it("preserves spaced batch launcher paths on windows", () => {
+    withTempDir((rootDir) => {
+      const dir = path.join(rootDir, "runner admin");
+      fs.mkdirSync(dir);
+      const wrapperPath = path.join(dir, "code.CMD");
+      fs.writeFileSync(wrapperPath, "@echo off\r\n");
+
+      const plan = resolveProcessLaunchPlan("code", ["--status"], {
+        env: {
+          PATH: dir,
+          PATHEXT: ".COM;.EXE;.BAT;.CMD",
+          COMSPEC: "C:\\Windows\\System32\\cmd.exe",
+        },
+        inheritParentEnv: false,
+        runtimeEnvironment: {
+          platform: "windows",
+          pathStyle: "windows",
+          isWsl: false,
+          windowsInteropMode: "windows-native",
+          wslDistroName: null,
+        },
+      });
+
+      expect(plan.command).toBe(wrapperPath);
+      expect(plan.args).toEqual(["--status"]);
+      expect(plan.shell).toBe("C:\\Windows\\System32\\cmd.exe");
     });
   });
 
@@ -191,9 +220,9 @@ describe("makeRuntimeCommand", () => {
         },
       });
 
-      expect(command.command).toBe("C:\\Windows\\System32\\cmd.exe");
-      expect(command.args).toEqual(["/d", "/s", "/c", `"${wrapperPath}" "C:\\repo\\a&b.ts"`]);
-      expect(command.options.shell).toBe(false);
+      expect(command.command).toBe(wrapperPath);
+      expect(command.args).toEqual(["C:\\repo\\a&b.ts"]);
+      expect(command.options.shell).toBe("C:\\Windows\\System32\\cmd.exe");
     });
   });
 });

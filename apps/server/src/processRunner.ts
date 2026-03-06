@@ -164,25 +164,6 @@ function resolveWindowsCommand(
   return null;
 }
 
-function quoteWindowsBatchArgument(argument: string): string {
-  if (argument.length === 0) {
-    return '""';
-  }
-
-  const escaped = argument
-    .replaceAll("%", "%%")
-    .replace(/(\\*)"/g, (_match, slashes: string) => `${slashes}${slashes}\\"`)
-    .replace(/(\\+)$/g, "$1$1");
-  return `"${escaped}"`;
-}
-
-function buildWindowsBatchCommandLine(
-  command: string,
-  args: ReadonlyArray<string>,
-): string {
-  return [quoteWindowsBatchArgument(command), ...args.map(quoteWindowsBatchArgument)].join(" ");
-}
-
 function resolveWindowsCommandShell(env: NodeJS.ProcessEnv): string {
   return env.ComSpec ?? env.COMSPEC ?? process.env.ComSpec ?? process.env.COMSPEC ?? "cmd.exe";
 }
@@ -224,9 +205,9 @@ export function resolveProcessLaunchPlan(
 
   if (resolved.kind === "batch") {
     return {
-      command: resolveWindowsCommandShell(env),
-      args: ["/d", "/s", "/c", buildWindowsBatchCommandLine(resolved.path, args)],
-      shell: false,
+      command: resolved.path,
+      args: [...args],
+      shell: resolveWindowsCommandShell(env),
       runtimeEnvironment,
     };
   }

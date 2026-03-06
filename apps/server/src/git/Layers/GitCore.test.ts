@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -13,6 +13,7 @@ import { GitCoreLive } from "./GitCore.ts";
 import { GitCore, type GitCoreShape } from "../Services/GitCore.ts";
 import { GitCommandError } from "../Errors.ts";
 import { runProcess } from "../../processRunner.ts";
+import { removeDirectoryBestEffort } from "../../testUtils/removeDirectoryBestEffort.ts";
 
 // ── Helpers ──
 
@@ -24,9 +25,9 @@ const GitCoreTestLayer = GitCoreLive.pipe(
 const TestLayer = Layer.mergeAll(NodeServices.layer, GitServiceTestLayer, GitCoreTestLayer);
 const tempDirs = new Set<string>();
 
-afterEach(() => {
+afterEach(async () => {
   for (const dir of tempDirs) {
-    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    await removeDirectoryBestEffort(dir);
   }
   tempDirs.clear();
 });

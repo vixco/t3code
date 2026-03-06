@@ -57,6 +57,7 @@ import {
   type TestProviderAdapterHarness,
 } from "./TestProviderAdapter.integration.ts";
 import { ServerConfig } from "../src/config.ts";
+import { removeDirectoryBestEffort } from "../src/testUtils/removeDirectoryBestEffort.ts";
 
 function runGit(cwd: string, args: ReadonlyArray<string>) {
   return execFileSync("git", args, {
@@ -388,9 +389,7 @@ export const makeOrchestrationIntegrationHarness = Effect.gen(function* () {
 
     yield* shutdown.pipe(
       Effect.ensuring(
-        Effect.sync(() => {
-          fs.rmSync(rootDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
-        }),
+        Effect.promise(() => removeDirectoryBestEffort(rootDir)),
       ),
     );
   });
