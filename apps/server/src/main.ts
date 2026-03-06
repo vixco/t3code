@@ -120,7 +120,7 @@ const CliEnvConfig = Config.all({
 });
 
 const resolveBooleanFlag = (flag: Option.Option<boolean>, envValue: boolean) =>
-  Option.getOrElse(Option.filter(flag, Boolean), () => envValue);
+  Option.getOrElse(flag, () => envValue);
 
 const ServerConfigLive = (input: CliInput) =>
   Layer.effect(
