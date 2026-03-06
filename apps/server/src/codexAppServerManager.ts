@@ -575,9 +575,9 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
           yield* Effect.forkScoped(
             Effect.matchCauseEffect(context.child.exitCode, {
               onFailure: (cause) =>
-                Effect.sync(() => {
+                Effect.suspend(() => {
                   if (context.stopping) {
-                    return;
+                    return Effect.void;
                   }
 
                   const message = messageFromCodexProcessCause(cause);
@@ -588,11 +588,12 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
                   });
                   this.emitErrorEvent(context, "process/error", message);
                   this.sessions.delete(context.session.sessionId);
+                  return Scope.close(context.scope, Exit.void).pipe(Effect.ignore);
                 }),
               onSuccess: (code) =>
-                Effect.sync(() => {
+                Effect.suspend(() => {
                   if (context.stopping) {
-                    return;
+                    return Effect.void;
                   }
 
                   const message = `codex app-server exited (code=${code}).`;
@@ -603,6 +604,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
                   });
                   this.emitLifecycleEvent(context, "session/exited", message);
                   this.sessions.delete(context.session.sessionId);
+                  return Scope.close(context.scope, Exit.void).pipe(Effect.ignore);
                 }),
             }),
           );
