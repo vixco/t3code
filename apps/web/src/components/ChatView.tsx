@@ -1,10 +1,12 @@
 import {
   type ApprovalRequestId,
+  CURSOR_REASONING_OPTIONS,
   DEFAULT_MODEL,
   EDITORS,
   type EditorId,
   type KeybindingCommand,
   type CodexReasoningEffort,
+  type CursorReasoningOption,
   type MessageId,
   type ProjectId,
   type ProjectEntry,
@@ -25,8 +27,12 @@ import {
 import {
   getDefaultModel,
   getDefaultReasoningEffort,
+  getCursorModelCapabilities,
+  getCursorModelFamilyOptions,
   getReasoningEffortOptions,
   normalizeModelSlug,
+  parseCursorModelSelection,
+  resolveCursorModelFromSelection,
   resolveModelSlugForProvider,
 } from "@t3tools/shared/model";
 import {
@@ -71,7 +77,6 @@ import {
   findLatestProposedPlan,
   type PendingApproval,
   type PendingUserInput,
-  type ProviderPickerKind,
   PROVIDER_OPTIONS,
   deriveWorkLogEntries,
   hasToolActivityForTurn,
@@ -755,6 +760,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
     ? (sessionProvider ?? selectedProviderByThreadId ?? null)
     : null;
   const selectedProvider: ProviderKind = lockedProvider ?? selectedProviderByThreadId ?? "codex";
+  const cursorModelSelectionLockedReason =
+    hasThreadStarted && selectedProvider === "cursor"
+      ? "Cursor currently does not support changing models after the first message in a thread."
+      : null;
   const baseThreadModel = resolveModelSlugForProvider(
     selectedProvider,
     activeThread?.model ??
@@ -801,21 +810,46 @@ export default function ChatView({ threadId }: ChatViewProps) {
     };
     return Object.keys(codexOptions).length > 0 ? { codex: codexOptions } : undefined;
   }, [selectedCodexFastModeEnabled, selectedEffort, selectedProvider, supportsReasoningEffort]);
-  const selectedModelForPicker = selectedModel;
+  const selectedCursorModel = useMemo(
+    () => (selectedProvider === "cursor" ? parseCursorModelSelection(selectedModel) : null),
+    [selectedModel, selectedProvider],
+  );
+  const selectedCursorModelCapabilities = useMemo(
+    () => (selectedCursorModel ? getCursorModelCapabilities(selectedCursorModel.family) : null),
+    [selectedCursorModel],
+  );
+  const hasSelectedCursorTraits = Boolean(
+    selectedCursorModelCapabilities &&
+    (selectedCursorModelCapabilities.supportsReasoning ||
+      selectedCursorModelCapabilities.supportsFast ||
+      selectedCursorModelCapabilities.supportsThinking),
+  );
+  const selectedModelForPicker =
+    selectedProvider === "cursor" && selectedCursorModel
+      ? selectedCursorModel.family
+      : selectedModel;
   const modelOptionsByProvider = useMemo(
     () => getCustomModelOptionsByProvider(settings),
     [settings],
   );
   const selectedModelForPickerWithCustomFallback = useMemo(() => {
-    const currentOptions = modelOptionsByProvider[selectedProvider];
+    if (selectedProvider !== "cursor") {
+      const currentOptions = modelOptionsByProvider[selectedProvider];
+      return currentOptions.some((option) => option.slug === selectedModelForPicker)
+        ? selectedModelForPicker
+        : (normalizeModelSlug(selectedModelForPicker, selectedProvider) ?? selectedModelForPicker);
+    }
+
+    const currentOptions = modelOptionsByProvider.cursor;
     return currentOptions.some((option) => option.slug === selectedModelForPicker)
       ? selectedModelForPicker
-      : (normalizeModelSlug(selectedModelForPicker, selectedProvider) ?? selectedModelForPicker);
+      : selectedModelForPicker;
   }, [modelOptionsByProvider, selectedModelForPicker, selectedProvider]);
   const searchableModelOptions = useMemo(
     () =>
-      AVAILABLE_PROVIDER_OPTIONS.filter(
-        (option) => lockedProvider === null || option.value === lockedProvider,
+      PROVIDER_OPTIONS.filter(
+        (option) =>
+          option.available && (lockedProvider === null || option.value === lockedProvider),
       ).flatMap((option) =>
         modelOptionsByProvider[option.value].map(({ slug, name }) => ({
           provider: option.value,
@@ -2975,22 +3009,72 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const onProviderModelSelect = useCallback(
     (provider: ProviderKind, model: ModelSlug) => {
       if (!activeThread) return;
+      if (cursorModelSelectionLockedReason !== null && provider === "cursor") {
+        scheduleComposerFocus();
+        return;
+      }
       if (lockedProvider !== null && provider !== lockedProvider) {
         scheduleComposerFocus();
         return;
       }
-      const resolvedModel = resolveModelSlugForProvider(provider, model);
+      const resolvedModel =
+        provider === "cursor"
+          ? resolveCursorModelFromSelection(parseCursorModelSelection(model))
+          : resolveModelSlugForProvider(provider, model);
       setComposerDraftProvider(activeThread.id, provider);
       setComposerDraftModel(activeThread.id, resolvedModel);
       scheduleComposerFocus();
     },
     [
       activeThread,
+      cursorModelSelectionLockedReason,
       lockedProvider,
       scheduleComposerFocus,
       setComposerDraftModel,
       setComposerDraftProvider,
     ],
+  );
+  const onCursorReasoningSelect = useCallback(
+    (reasoning: CursorReasoningOption) => {
+      if (selectedProvider !== "cursor") return;
+      const cursorSelection = parseCursorModelSelection(selectedModel);
+      const nextModel = resolveCursorModelFromSelection({
+        family: cursorSelection.family,
+        reasoning,
+        fast: cursorSelection.fast,
+        thinking: cursorSelection.thinking,
+      });
+      onProviderModelSelect("cursor", nextModel);
+    },
+    [onProviderModelSelect, selectedModel, selectedProvider],
+  );
+  const onCursorFastModeChange = useCallback(
+    (enabled: boolean) => {
+      if (selectedProvider !== "cursor") return;
+      const cursorSelection = parseCursorModelSelection(selectedModel);
+      const nextModel = resolveCursorModelFromSelection({
+        family: cursorSelection.family,
+        reasoning: cursorSelection.reasoning,
+        fast: enabled,
+        thinking: cursorSelection.thinking,
+      });
+      onProviderModelSelect("cursor", nextModel);
+    },
+    [onProviderModelSelect, selectedModel, selectedProvider],
+  );
+  const onCursorThinkingModeChange = useCallback(
+    (enabled: boolean) => {
+      if (selectedProvider !== "cursor") return;
+      const cursorSelection = parseCursorModelSelection(selectedModel);
+      const nextModel = resolveCursorModelFromSelection({
+        family: cursorSelection.family,
+        reasoning: cursorSelection.reasoning,
+        fast: cursorSelection.fast,
+        thinking: enabled,
+      });
+      onProviderModelSelect("cursor", nextModel);
+    },
+    [onProviderModelSelect, selectedModel, selectedProvider],
   );
   const onEffortSelect = useCallback(
     (effort: CodexReasoningEffort) => {
@@ -3510,15 +3594,82 @@ export default function ChatView({ threadId }: ChatViewProps) {
             <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 pb-2.5 sm:flex-nowrap sm:gap-0 sm:px-3 sm:pb-3">
               <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-max sm:overflow-visible">
                 {/* Provider/model picker */}
-                <ProviderModelPicker
-                  provider={selectedProvider}
-                  model={selectedModelForPickerWithCustomFallback}
-                  lockedProvider={lockedProvider}
-                  modelOptionsByProvider={modelOptionsByProvider}
-                  onProviderModelChange={onProviderModelSelect}
-                />
+                {cursorModelSelectionLockedReason ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <span className="inline-flex">
+                          <ProviderModelPicker
+                            provider={selectedProvider}
+                            model={selectedModelForPickerWithCustomFallback}
+                            lockedProvider={lockedProvider}
+                            modelOptionsByProvider={modelOptionsByProvider}
+                            disabled
+                            onProviderModelChange={onProviderModelSelect}
+                          />
+                        </span>
+                      }
+                    />
+                    <TooltipPopup side="top" className="max-w-72 whitespace-normal leading-tight">
+                      {cursorModelSelectionLockedReason}
+                    </TooltipPopup>
+                  </Tooltip>
+                ) : (
+                  <ProviderModelPicker
+                    provider={selectedProvider}
+                    model={selectedModelForPickerWithCustomFallback}
+                    lockedProvider={lockedProvider}
+                    modelOptionsByProvider={modelOptionsByProvider}
+                    onProviderModelChange={onProviderModelSelect}
+                  />
+                )}
 
-                {selectedProvider === "codex" && selectedEffort != null ? (
+                {selectedProvider === "cursor" ? (
+                  <>
+                    {hasSelectedCursorTraits && (
+                      <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
+                    )}
+
+                    {selectedCursorModel &&
+                      selectedCursorModelCapabilities &&
+                      hasSelectedCursorTraits && (
+                        <>
+                          {cursorModelSelectionLockedReason ? (
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <span className="inline-flex">
+                                    <CursorTraitsPicker
+                                      selection={selectedCursorModel}
+                                      capabilities={selectedCursorModelCapabilities}
+                                      disabled
+                                      onReasoningChange={onCursorReasoningSelect}
+                                      onFastModeChange={onCursorFastModeChange}
+                                      onThinkingModeChange={onCursorThinkingModeChange}
+                                    />
+                                  </span>
+                                }
+                              />
+                              <TooltipPopup
+                                side="top"
+                                className="max-w-72 whitespace-normal leading-tight"
+                              >
+                                {cursorModelSelectionLockedReason}
+                              </TooltipPopup>
+                            </Tooltip>
+                          ) : (
+                            <CursorTraitsPicker
+                              selection={selectedCursorModel}
+                              capabilities={selectedCursorModelCapabilities}
+                              onReasoningChange={onCursorReasoningSelect}
+                              onFastModeChange={onCursorFastModeChange}
+                              onThinkingModeChange={onCursorThinkingModeChange}
+                            />
+                          )}
+                        </>
+                      )}
+                  </>
+                ) : selectedProvider === "codex" && selectedEffort != null ? (
                   <>
                     <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
                     <CodexTraitsPicker
@@ -5127,18 +5278,7 @@ const MessagesTimeline = memo(function MessagesTimeline({
   );
 });
 
-function isAvailableProviderOption(
-  option: (typeof PROVIDER_OPTIONS)[number],
-): option is {
-  value: ProviderKind;
-  label: string;
-  available: true;
-} {
-  return option.available && option.value !== "claudeCode";
-}
-
-const AVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter(isAvailableProviderOption);
-const UNAVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter((option) => !option.available);
+const AVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter((option) => option.available);
 const COMING_SOON_PROVIDER_OPTIONS = [
   { id: "opencode", label: "OpenCode", icon: OpenCodeIcon },
   { id: "gemini", label: "Gemini", icon: Gemini },
@@ -5146,13 +5286,24 @@ const COMING_SOON_PROVIDER_OPTIONS = [
 
 function getCustomModelOptionsByProvider(settings: {
   customCodexModels: readonly string[];
+  customClaudeModels: readonly string[];
+  customCursorModels: readonly string[];
 }): Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>> {
+  const cursorFamilyOptions = getCursorModelFamilyOptions();
   return {
     codex: getAppModelOptions("codex", settings.customCodexModels),
+    claudeCode: getAppModelOptions("claudeCode", settings.customClaudeModels),
+    cursor: [
+      ...cursorFamilyOptions,
+      ...getAppModelOptions("cursor", settings.customCursorModels).filter(
+        (option) =>
+          option.isCustom && !cursorFamilyOptions.some((family) => family.slug === option.slug),
+      ),
+    ],
   };
 }
 
-const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
+const PROVIDER_ICON_BY_PROVIDER: Record<ProviderKind, Icon> = {
   codex: OpenAI,
   claudeCode: ClaudeAI,
   cursor: CursorIcon,
@@ -5186,6 +5337,10 @@ function resolveModelForProviderPicker(
   const resolved = options.find((option) => option.slug === normalized);
   if (resolved) {
     return resolved.slug;
+  }
+
+  if (provider === "cursor") {
+    return parseCursorModelSelection(normalized).family;
   }
 
   return null;
@@ -5229,7 +5384,10 @@ const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         <span className="flex min-w-0 items-center gap-2">
           <ProviderIcon
             aria-hidden="true"
-            className="size-4 shrink-0 text-muted-foreground/70"
+            className={cn(
+              "size-4 shrink-0",
+              props.provider === "claudeCode" ? "" : "text-muted-foreground/70",
+            )}
           />
           <span className="truncate">{selectedModelLabel}</span>
           <ChevronDownIcon aria-hidden="true" className="size-3 opacity-60" />
@@ -5282,26 +5440,7 @@ const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             </MenuSub>
           );
         })}
-        {UNAVAILABLE_PROVIDER_OPTIONS.length > 0 && <MenuDivider />}
-        {UNAVAILABLE_PROVIDER_OPTIONS.map((option) => {
-          const OptionIcon = PROVIDER_ICON_BY_PROVIDER[option.value];
-          return (
-            <MenuItem key={option.value} disabled>
-              <OptionIcon
-                aria-hidden="true"
-                className={cn(
-                  "size-4 shrink-0 opacity-80",
-                  option.value === "claudeCode" ? "" : "text-muted-foreground/85",
-                )}
-              />
-              <span>{option.label}</span>
-              <span className="ms-auto text-[11px] text-muted-foreground/80 uppercase tracking-[0.08em]">
-                Coming soon
-              </span>
-            </MenuItem>
-          );
-        })}
-        {UNAVAILABLE_PROVIDER_OPTIONS.length === 0 && <MenuDivider />}
+        <MenuDivider />
         {COMING_SOON_PROVIDER_OPTIONS.map((option) => {
           const OptionIcon = option.icon;
           return (
@@ -5393,6 +5532,117 @@ const CodexTraitsPicker = memo(function CodexTraitsPicker(props: {
             <MenuRadioItem value="on">on</MenuRadioItem>
           </MenuRadioGroup>
         </MenuGroup>
+      </MenuPopup>
+    </Menu>
+  );
+});
+
+const CursorTraitsPicker = memo(function CursorTraitsPicker(props: {
+  selection: ReturnType<typeof parseCursorModelSelection>;
+  capabilities: ReturnType<typeof getCursorModelCapabilities>;
+  disabled?: boolean;
+  onReasoningChange: (reasoning: CursorReasoningOption) => void;
+  onFastModeChange: (enabled: boolean) => void;
+  onThinkingModeChange: (enabled: boolean) => void;
+}) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const reasoningLabelByOption: Record<CursorReasoningOption, string> = {
+    low: "Low",
+    normal: "Normal",
+    high: "High",
+    xhigh: "Extra High",
+  };
+  const traitSummary = [
+    ...(props.capabilities.supportsReasoning
+      ? [reasoningLabelByOption[props.selection.reasoning]]
+      : []),
+    ...(props.capabilities.supportsFast && props.selection.fast ? ["Fast"] : []),
+    ...(props.capabilities.supportsThinking && props.selection.thinking ? ["Thinking"] : []),
+  ];
+  const triggerLabel = traitSummary.length > 0 ? traitSummary.join(" · ") : "Traits";
+
+  return (
+    <Menu
+      open={isMenuOpen}
+      onOpenChange={(open) => {
+        if (props.disabled) {
+          setIsMenuOpen(false);
+          return;
+        }
+        setIsMenuOpen(open);
+      }}
+    >
+      <MenuTrigger
+        render={
+          <Button
+            size="sm"
+            variant="ghost"
+            className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
+            disabled={props.disabled}
+          />
+        }
+      >
+        <span>{triggerLabel}</span>
+        <ChevronDownIcon aria-hidden="true" className="size-3 opacity-60" />
+      </MenuTrigger>
+      <MenuPopup align="start">
+        {props.capabilities.supportsReasoning && (
+          <MenuGroup>
+            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Reasoning</div>
+            <MenuRadioGroup
+              value={props.selection.reasoning}
+              onValueChange={(value) => {
+                if (props.disabled) return;
+                if (!value) return;
+                const nextReasoning = CURSOR_REASONING_OPTIONS.find((option) => option === value);
+                if (!nextReasoning) return;
+                props.onReasoningChange(nextReasoning);
+              }}
+            >
+              {CURSOR_REASONING_OPTIONS.map((reasoning) => (
+                <MenuRadioItem key={reasoning} value={reasoning}>
+                  {reasoning}
+                  {reasoning === "normal" ? " (default)" : ""}
+                </MenuRadioItem>
+              ))}
+            </MenuRadioGroup>
+          </MenuGroup>
+        )}
+        {props.capabilities.supportsReasoning &&
+          (props.capabilities.supportsFast || props.capabilities.supportsThinking) && (
+            <MenuDivider />
+          )}
+        {props.capabilities.supportsFast && (
+          <MenuGroup>
+            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Fast Mode</div>
+            <MenuRadioGroup
+              value={props.selection.fast ? "on" : "off"}
+              onValueChange={(value) => {
+                if (props.disabled) return;
+                props.onFastModeChange(value === "on");
+              }}
+            >
+              <MenuRadioItem value="off">off</MenuRadioItem>
+              <MenuRadioItem value="on">on</MenuRadioItem>
+            </MenuRadioGroup>
+          </MenuGroup>
+        )}
+        {props.capabilities.supportsFast && props.capabilities.supportsThinking && <MenuDivider />}
+        {props.capabilities.supportsThinking && (
+          <MenuGroup>
+            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Thinking</div>
+            <MenuRadioGroup
+              value={props.selection.thinking ? "on" : "off"}
+              onValueChange={(value) => {
+                if (props.disabled) return;
+                props.onThinkingModeChange(value === "on");
+              }}
+            >
+              <MenuRadioItem value="off">off</MenuRadioItem>
+              <MenuRadioItem value="on">on</MenuRadioItem>
+            </MenuRadioGroup>
+          </MenuGroup>
+        )}
       </MenuPopup>
     </Menu>
   );
