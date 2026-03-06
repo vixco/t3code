@@ -273,15 +273,17 @@ type SortableProjectHandleProps = Pick<ReturnType<typeof useSortable>, "attribut
 
 function SortableProjectItem({
   projectId,
+  className,
   children,
 }: {
   projectId: ProjectId;
+  className?: string;
   children: (handleProps: SortableProjectHandleProps) => React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } =
     useSortable({ id: projectId });
   return (
-    <div
+    <SidebarMenuItem
       ref={setNodeRef}
       style={{
         transform: CSS.Translate.toString(transform),
@@ -289,10 +291,10 @@ function SortableProjectItem({
       }}
       className={`rounded-md ${
         isDragging ? "z-20 opacity-80" : ""
-      } ${isOver && !isDragging ? "ring-1 ring-primary/40" : ""}`}
+      } ${isOver && !isDragging ? "ring-1 ring-primary/40" : ""} ${className ?? ""}`}
     >
       {children({ attributes, listeners })}
-    </div>
+    </SidebarMenuItem>
   );
 }
 
@@ -1205,9 +1207,9 @@ export default function Sidebar() {
                       : projectThreads;
 
                   return (
-                    <SortableProjectItem key={project.id} projectId={project.id}>
+                    <SortableProjectItem key={project.id} projectId={project.id} className="group/collapsible">
                       {(dragHandleProps) => (
-                        <SidebarMenuItem className="group/collapsible">
+                        <>
                           <div className="group/project-header relative">
                             <SidebarMenuButton
                               size="sm"
@@ -1448,7 +1450,7 @@ export default function Sidebar() {
                               </SidebarMenuSub>
                             </div>
                           </div>
-                        </SidebarMenuItem>
+                        </>
                       )}
                     </SortableProjectItem>
                   );
