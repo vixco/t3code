@@ -830,7 +830,7 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
                     payload: message,
                   },
                 },
-                null,
+                context.session.threadId,
               ),
           );
         } catch {
@@ -1063,6 +1063,12 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
           }
           Effect.runFork(
             Effect.gen(function* () {
+              for (const pending of context.pending.values()) {
+                clearTimeout(pending.timeout);
+                pending.reject(new Error("Cursor ACP process exited unexpectedly."));
+              }
+              context.pending.clear();
+
               if (context.turnState) {
                 yield* completeTurn(
                   context,
