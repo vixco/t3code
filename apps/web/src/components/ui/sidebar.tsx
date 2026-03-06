@@ -339,6 +339,7 @@ function SidebarRail({
   const sidebarInstance = React.useContext(SidebarInstanceContext);
   const railRef = React.useRef<HTMLButtonElement | null>(null);
   const suppressClickRef = React.useRef(false);
+  const cleanupResizeListenersRef = React.useRef<(() => void) | null>(null);
   const resizeStateRef = React.useRef<{
     moved: boolean;
     pointerId: number;
@@ -367,6 +368,8 @@ function SidebarRail({
       if (resizeState.rafId !== null) {
         window.cancelAnimationFrame(resizeState.rafId);
       }
+      cleanupResizeListenersRef.current?.();
+      cleanupResizeListenersRef.current = null;
       resizeState.transitionTargets.forEach((element) => {
         element.style.removeProperty("transition-duration");
       });
@@ -429,12 +432,46 @@ function SidebarRail({
         width: initialWidth,
         wrapper,
       };
+      const stopResizeFromWindowEvent = (nativeEvent: PointerEvent) => {
+        const activeResizeState = resizeStateRef.current;
+        if (!activeResizeState || nativeEvent.pointerId !== activeResizeState.pointerId) {
+          return;
+        }
+        suppressClickRef.current = activeResizeState.moved;
+        stopResize(nativeEvent.pointerId);
+      };
+      const stopResizeFromVisibilityChange = () => {
+        const activeResizeState = resizeStateRef.current;
+        if (!activeResizeState || document.visibilityState === "visible") {
+          return;
+        }
+        suppressClickRef.current = activeResizeState.moved;
+        stopResize(activeResizeState.pointerId);
+      };
+      const stopResizeFromBlur = () => {
+        const activeResizeState = resizeStateRef.current;
+        if (!activeResizeState) {
+          return;
+        }
+        suppressClickRef.current = activeResizeState.moved;
+        stopResize(activeResizeState.pointerId);
+      };
+      window.addEventListener("pointerup", stopResizeFromWindowEvent, true);
+      window.addEventListener("pointercancel", stopResizeFromWindowEvent, true);
+      window.addEventListener("blur", stopResizeFromBlur);
+      document.addEventListener("visibilitychange", stopResizeFromVisibilityChange);
+      cleanupResizeListenersRef.current = () => {
+        window.removeEventListener("pointerup", stopResizeFromWindowEvent, true);
+        window.removeEventListener("pointercancel", stopResizeFromWindowEvent, true);
+        window.removeEventListener("blur", stopResizeFromBlur);
+        document.removeEventListener("visibilitychange", stopResizeFromVisibilityChange);
+      };
       wrapper.style.setProperty("--sidebar-width", `${initialWidth}px`);
       event.currentTarget.setPointerCapture(event.pointerId);
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     },
-    [onPointerDown, open, resolvedResizable, sidebarInstance?.side],
+    [onPointerDown, open, resolvedResizable, sidebarInstance?.side, stopResize],
   );
 
   const handlePointerMove = React.useCallback(
@@ -516,6 +553,13 @@ function SidebarRail({
     [endResizeInteraction, onPointerCancel],
   );
 
+  const handleLostPointerCapture = React.useCallback(() => {
+    const resizeState = resizeStateRef.current;
+    if (!resizeState) return;
+    suppressClickRef.current = resizeState.moved;
+    stopResize(resizeState.pointerId);
+  }, [stopResize]);
+
   const handleClick = React.useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       onClick?.(event);
@@ -579,6 +623,7 @@ function SidebarRail({
       onClick={handleClick}
       onPointerCancel={handlePointerCancel}
       onPointerDown={handlePointerDown}
+      onLostPointerCapture={handleLostPointerCapture}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       ref={railRef}
