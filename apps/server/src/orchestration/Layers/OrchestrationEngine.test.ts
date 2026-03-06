@@ -108,6 +108,79 @@ describe("OrchestrationEngine", () => {
     await system.dispose();
   });
 
+  it("seeds branched thread history during thread creation", async () => {
+    const createdAt = now();
+    const system = await createOrchestrationSystem();
+    const { engine } = system;
+
+    await system.run(
+      engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.makeUnsafe("cmd-project-branch-seed"),
+        projectId: asProjectId("project-branch-seed"),
+        title: "Project 1",
+        workspaceRoot: "/tmp/project-branch-seed",
+        defaultModel: "gpt-5-codex",
+        createdAt,
+      }),
+    );
+
+    await system.run(
+      engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.makeUnsafe("cmd-thread-branch-seed"),
+        threadId: ThreadId.makeUnsafe("thread-branch-seed"),
+        projectId: asProjectId("project-branch-seed"),
+        title: "Branch of Thread",
+        model: "gpt-5-codex",
+        branch: "feature/source",
+        worktreePath: null,
+        seedMessages: [
+          {
+            messageId: asMessageId("msg-seed-user"),
+            role: "user",
+            text: "original question",
+            attachments: [],
+            createdAt: "2026-02-01T00:00:00.000Z",
+            updatedAt: "2026-02-01T00:00:00.000Z",
+          },
+          {
+            messageId: asMessageId("msg-seed-assistant"),
+            role: "assistant",
+            text: "original answer",
+            attachments: [],
+            createdAt: "2026-02-01T00:00:01.000Z",
+            updatedAt: "2026-02-01T00:00:01.000Z",
+          },
+        ],
+        createdAt,
+      }),
+    );
+
+    const readModel = await system.run(engine.getReadModel());
+    const thread = readModel.threads.find((entry) => entry.id === "thread-branch-seed");
+    expect(thread?.messages.map((message) => message.text)).toEqual([
+      "original question",
+      "original answer",
+    ]);
+    expect(thread?.messages.every((message) => message.turnId === null)).toBe(true);
+    expect(thread?.session).toBeNull();
+
+    const events = await system.run(
+      Stream.runCollect(engine.readEvents(0)).pipe(
+        Effect.map((chunk): OrchestrationEvent[] => Array.from(chunk)),
+      ),
+    );
+    expect(events.map((event) => event.type)).toEqual([
+      "project.created",
+      "thread.created",
+      "thread.message-sent",
+      "thread.message-sent",
+    ]);
+
+    await system.dispose();
+  });
+
   it("replays append-only events from sequence", async () => {
     const system = await createOrchestrationSystem();
     const { engine } = system;

@@ -1,7 +1,11 @@
 import { MessageId } from "@t3tools/contracts";
 import { describe, expect, it } from "vitest";
 
-import { buildBootstrapInput } from "./historyBootstrap";
+import {
+  buildBootstrapInput,
+  resolveTurnBootstrapMessages,
+  selectBootstrapMessages,
+} from "./historyBootstrap";
 
 const messageId = (value: string) => MessageId.makeUnsafe(value);
 
@@ -121,5 +125,127 @@ describe("buildBootstrapInput", () => {
 
     expect(result.text).toContain("Attached image");
     expect(result.text).toContain("screenshot.png");
+  });
+
+  it("labels system messages distinctly in transcript blocks", () => {
+    const result = buildBootstrapInput(
+      [
+        {
+          id: messageId("sys-1"),
+          role: "system",
+          text: "Follow repository rules.",
+          createdAt: "2026-02-09T00:00:00.000Z",
+          streaming: false,
+        },
+      ],
+      "continue",
+      1_500,
+    );
+
+    expect(result.text).toContain("SYSTEM:\nFollow repository rules.");
+  });
+});
+
+describe("selectBootstrapMessages", () => {
+  it("returns the newest fitting suffix in chronological order", () => {
+    const result = selectBootstrapMessages(
+      [
+        {
+          id: messageId("u-1"),
+          role: "user",
+          text: "first question with details",
+          createdAt: "2026-02-09T00:00:00.000Z",
+          streaming: false,
+        },
+        {
+          id: messageId("a-1"),
+          role: "assistant",
+          text: "first answer with details",
+          createdAt: "2026-02-09T00:00:01.000Z",
+          streaming: false,
+        },
+        {
+          id: messageId("u-2"),
+          role: "user",
+          text: "second question with details",
+          createdAt: "2026-02-09T00:00:02.000Z",
+          streaming: false,
+        },
+      ],
+      "final request",
+      320,
+    );
+
+    expect(result.omittedCount).toBeGreaterThan(0);
+    expect(result.messages.map((message) => message.id)).toEqual([messageId("u-2")]);
+  });
+});
+
+describe("resolveTurnBootstrapMessages", () => {
+  it("prefers explicit draft bootstrap messages", () => {
+    const draftBootstrapMessages = [
+      {
+        id: messageId("draft-1"),
+        role: "user" as const,
+        text: "draft bootstrap",
+        createdAt: "2026-02-09T00:00:00.000Z",
+        streaming: false,
+      },
+    ];
+    const threadMessages = [
+      {
+        id: messageId("thread-1"),
+        role: "assistant" as const,
+        text: "visible history",
+        createdAt: "2026-02-09T00:00:01.000Z",
+        streaming: false,
+      },
+    ];
+
+    expect(
+      resolveTurnBootstrapMessages({
+        draftBootstrapMessages,
+        threadMessages,
+        providerThreadId: null,
+      }),
+    ).toEqual(draftBootstrapMessages);
+  });
+
+  it("reuses visible thread history when no provider thread exists yet", () => {
+    const threadMessages = [
+      {
+        id: messageId("thread-1"),
+        role: "assistant" as const,
+        text: "visible history",
+        createdAt: "2026-02-09T00:00:01.000Z",
+        streaming: false,
+      },
+    ];
+
+    expect(
+      resolveTurnBootstrapMessages({
+        draftBootstrapMessages: [],
+        threadMessages,
+        providerThreadId: null,
+      }),
+    ).toEqual(threadMessages);
+  });
+
+  it("skips bootstrap when the provider thread already exists", () => {
+    expect(
+      resolveTurnBootstrapMessages({
+        draftBootstrapMessages: [],
+        threadMessages: [
+          {
+            id: messageId("thread-1"),
+            role: "assistant" as const,
+            text: "visible history",
+            createdAt: "2026-02-09T00:00:01.000Z",
+            streaming: false,
+          },
+        ],
+        providerThreadId: "provider-thread-1",
+      }),
+    ).toEqual([]);
   });
 });

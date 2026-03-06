@@ -1,4 +1,4 @@
-import { ProjectId, ThreadId } from "@t3tools/contracts";
+import { MessageId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type ComposerImageAttachment, useComposerDraftStore } from "./composerDraftStore";
@@ -151,6 +151,35 @@ describe("composerDraftStore clearComposerContent", () => {
     const draft = useComposerDraftStore.getState().draftsByThreadId[threadId];
     expect(draft).toBeUndefined();
     expect(revokeSpy).not.toHaveBeenCalledWith("blob:optimistic");
+  });
+
+  it("preserves hidden bootstrap transcript state", () => {
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(threadId, "draft prompt");
+    store.setBootstrapMessages(threadId, [
+      {
+        id: MessageId.makeUnsafe("msg-bootstrap"),
+        role: "user",
+        text: "Earlier context",
+        createdAt: "2026-02-09T00:00:00.000Z",
+        streaming: false,
+      },
+    ]);
+
+    store.clearComposerContent(threadId);
+
+    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]).toMatchObject({
+      prompt: "",
+      bootstrapMessages: [
+        {
+          id: "msg-bootstrap",
+          role: "user",
+          text: "Earlier context",
+          createdAt: "2026-02-09T00:00:00.000Z",
+          streaming: false,
+        },
+      ],
+    });
   });
 });
 

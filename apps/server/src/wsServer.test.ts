@@ -1144,6 +1144,70 @@ describe("WebSocket Server", () => {
     expect(response.error?.message).toContain("exceeds current turn count");
   });
 
+  it("returns seeded thread messages in snapshots after thread creation", async () => {
+    server = await createTestServer({ cwd: "/test" });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const ws = await connectWs(port);
+    connections.push(ws);
+    await waitForMessage(ws);
+
+    const createdAt = new Date().toISOString();
+    const createProjectResponse = await sendRequest(ws, ORCHESTRATION_WS_METHODS.dispatchCommand, {
+      type: "project.create",
+      commandId: "cmd-seed-project-create",
+      projectId: "project-seed",
+      title: "Seed Project",
+      workspaceRoot: "/tmp/ws-seed-project",
+      defaultModel: "gpt-5-codex",
+      createdAt,
+    });
+    expect(createProjectResponse.error).toBeUndefined();
+
+    const createThreadResponse = await sendRequest(ws, ORCHESTRATION_WS_METHODS.dispatchCommand, {
+      type: "thread.create",
+      commandId: "cmd-seed-thread-create",
+      threadId: "thread-seed",
+      projectId: "project-seed",
+      title: "Seed Thread",
+      model: "gpt-5-codex",
+      branch: null,
+      worktreePath: null,
+      seedMessages: [
+        {
+          messageId: "msg-seed-1",
+          role: "user",
+          text: "seeded question",
+          attachments: [],
+          createdAt: "2026-02-01T00:00:00.000Z",
+          updatedAt: "2026-02-01T00:00:00.000Z",
+        },
+        {
+          messageId: "msg-seed-2",
+          role: "assistant",
+          text: "seeded answer",
+          attachments: [],
+          createdAt: "2026-02-01T00:00:01.000Z",
+          updatedAt: "2026-02-01T00:00:01.000Z",
+        },
+      ],
+      createdAt,
+    });
+    expect(createThreadResponse.error).toBeUndefined();
+
+    const snapshotResponse = await sendRequest(ws, ORCHESTRATION_WS_METHODS.getSnapshot);
+    expect(snapshotResponse.error).toBeUndefined();
+    const snapshot = snapshotResponse.result as {
+      threads: Array<{ id: string; messages: Array<{ text: string }> }>;
+    };
+    const thread = snapshot.threads.find((entry) => entry.id === "thread-seed");
+    expect(thread?.messages.map((message) => message.text)).toEqual([
+      "seeded question",
+      "seeded answer",
+    ]);
+  });
+
   it("keeps orchestration domain push behavior for provider runtime events", async () => {
     const runtimeEventPubSub = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
     const sessionId = asProviderSessionId("sess-test");

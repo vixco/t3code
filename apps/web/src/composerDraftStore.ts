@@ -1,12 +1,13 @@
 import {
   DEFAULT_REASONING,
+  MessageId,
   ProjectId,
   REASONING_OPTIONS,
   ThreadId,
   normalizeModelSlug,
   type ReasoningEffort,
 } from "@t3tools/contracts";
-import type { ChatImageAttachment } from "./types";
+import type { ChatImageAttachment, ChatMessage } from "./types";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -29,6 +30,7 @@ export interface ComposerImageAttachment extends Omit<ChatImageAttachment, "prev
 interface PersistedComposerThreadDraftState {
   prompt: string;
   attachments: PersistedComposerImageAttachment[];
+  bootstrapMessages?: ChatMessage[];
   model?: string | null;
   effort?: ReasoningEffort | null;
 }
@@ -52,6 +54,7 @@ interface ComposerThreadDraftState {
   images: ComposerImageAttachment[];
   nonPersistedImageIds: string[];
   persistedAttachments: PersistedComposerImageAttachment[];
+  bootstrapMessages: ChatMessage[];
   model: string | null;
   effort: ReasoningEffort | null;
 }
@@ -98,6 +101,8 @@ interface ComposerDraftStoreState {
   clearProjectDraftThreadById: (projectId: ProjectId, threadId: ThreadId) => void;
   clearDraftThread: (threadId: ThreadId) => void;
   setPrompt: (threadId: ThreadId, prompt: string) => void;
+  setBootstrapMessages: (threadId: ThreadId, messages: ChatMessage[]) => void;
+  clearBootstrapMessages: (threadId: ThreadId) => void;
   setModel: (threadId: ThreadId, model: string | null | undefined) => void;
   setEffort: (threadId: ThreadId, effort: ReasoningEffort | null | undefined) => void;
   addImage: (threadId: ThreadId, image: ComposerImageAttachment) => void;
@@ -121,14 +126,17 @@ const EMPTY_PERSISTED_DRAFT_STORE_STATE: PersistedComposerDraftStoreState = {
 const EMPTY_IMAGES: ComposerImageAttachment[] = [];
 const EMPTY_IDS: string[] = [];
 const EMPTY_PERSISTED_ATTACHMENTS: PersistedComposerImageAttachment[] = [];
+const EMPTY_BOOTSTRAP_MESSAGES: ChatMessage[] = [];
 Object.freeze(EMPTY_IMAGES);
 Object.freeze(EMPTY_IDS);
 Object.freeze(EMPTY_PERSISTED_ATTACHMENTS);
+Object.freeze(EMPTY_BOOTSTRAP_MESSAGES);
 const EMPTY_THREAD_DRAFT = Object.freeze({
   prompt: "",
   images: EMPTY_IMAGES,
   nonPersistedImageIds: EMPTY_IDS,
   persistedAttachments: EMPTY_PERSISTED_ATTACHMENTS,
+  bootstrapMessages: EMPTY_BOOTSTRAP_MESSAGES,
   model: null,
   effort: null,
 }) as ComposerThreadDraftState;
@@ -141,6 +149,7 @@ function createEmptyThreadDraft(): ComposerThreadDraftState {
     images: [],
     nonPersistedImageIds: [],
     persistedAttachments: [],
+    bootstrapMessages: [],
     model: null,
     effort: null,
   };
@@ -157,6 +166,7 @@ function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
     draft.prompt.length === 0 &&
     draft.images.length === 0 &&
     draft.persistedAttachments.length === 0 &&
+    draft.bootstrapMessages.length === 0 &&
     draft.model === null &&
     draft.effort === null
   );
@@ -200,6 +210,81 @@ function normalizePersistedAttachment(value: unknown): PersistedComposerImageAtt
     mimeType,
     sizeBytes,
     dataUrl,
+  };
+}
+
+function normalizeBootstrapAttachment(
+  value: unknown,
+): Omit<ChatImageAttachment, "previewUrl"> | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as Record<string, unknown>;
+  const id = candidate.id;
+  const name = candidate.name;
+  const mimeType = candidate.mimeType;
+  const sizeBytes = candidate.sizeBytes;
+  if (
+    typeof id !== "string" ||
+    id.length === 0 ||
+    typeof name !== "string" ||
+    name.length === 0 ||
+    typeof mimeType !== "string" ||
+    mimeType.length === 0 ||
+    typeof sizeBytes !== "number" ||
+    !Number.isFinite(sizeBytes)
+  ) {
+    return null;
+  }
+  return {
+    type: "image",
+    id,
+    name,
+    mimeType,
+    sizeBytes,
+  };
+}
+
+function normalizeBootstrapMessage(value: unknown): ChatMessage | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as Record<string, unknown>;
+  const id = candidate.id;
+  const role = candidate.role;
+  const text = candidate.text;
+  const createdAt = candidate.createdAt;
+  const streaming = candidate.streaming;
+  const completedAt = candidate.completedAt;
+  if (
+    typeof id !== "string" ||
+    id.length === 0 ||
+    (role !== "user" && role !== "assistant" && role !== "system") ||
+    typeof text !== "string" ||
+    typeof createdAt !== "string" ||
+    createdAt.length === 0 ||
+    typeof streaming !== "boolean"
+  ) {
+    return null;
+  }
+  const attachments = Array.isArray(candidate.attachments)
+    ? candidate.attachments.flatMap((entry) => {
+        const normalized = normalizeBootstrapAttachment(entry);
+        if (!normalized) {
+          return [];
+        }
+        return [normalized];
+      })
+    : undefined;
+
+  return {
+    id: MessageId.makeUnsafe(id),
+    role,
+    text,
+    createdAt,
+    streaming,
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
+    ...(typeof completedAt === "string" && completedAt.length > 0 ? { completedAt } : {}),
   };
 }
 
@@ -305,6 +390,12 @@ function normalizePersistedComposerDraftState(value: unknown): PersistedComposer
           return normalized ? [normalized] : [];
         })
       : [];
+    const bootstrapMessages = Array.isArray(draftCandidate.bootstrapMessages)
+      ? draftCandidate.bootstrapMessages.flatMap((entry) => {
+          const normalized = normalizeBootstrapMessage(entry);
+          return normalized ? [normalized] : [];
+        })
+      : [];
     const model =
       typeof draftCandidate.model === "string" ? normalizeModelSlug(draftCandidate.model) : null;
     const effortCandidate =
@@ -313,12 +404,19 @@ function normalizePersistedComposerDraftState(value: unknown): PersistedComposer
       effortCandidate && REASONING_EFFORT_VALUES.has(effortCandidate as ReasoningEffort)
         ? (effortCandidate as ReasoningEffort)
         : null;
-    if (prompt.length === 0 && attachments.length === 0 && !model && !effort) {
+    if (
+      prompt.length === 0 &&
+      attachments.length === 0 &&
+      bootstrapMessages.length === 0 &&
+      !model &&
+      !effort
+    ) {
       continue;
     }
     nextDraftsByThreadId[threadId as ThreadId] = {
       prompt,
       attachments,
+      ...(bootstrapMessages.length > 0 ? { bootstrapMessages } : {}),
       ...(model ? { model } : {}),
       ...(effort ? { effort } : {}),
     };
@@ -422,6 +520,7 @@ function toHydratedThreadDraft(
     images: hydrateImagesFromPersisted(persistedDraft.attachments),
     nonPersistedImageIds: [],
     persistedAttachments: persistedDraft.attachments,
+    bootstrapMessages: persistedDraft.bootstrapMessages ?? [],
     model: persistedDraft.model ?? null,
     effort: persistedDraft.effort ?? null,
   };
@@ -664,6 +763,47 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
           const nextDraft: ComposerThreadDraftState = {
             ...existing,
             prompt,
+          };
+          const nextDraftsByThreadId = { ...state.draftsByThreadId };
+          if (shouldRemoveDraft(nextDraft)) {
+            delete nextDraftsByThreadId[threadId];
+          } else {
+            nextDraftsByThreadId[threadId] = nextDraft;
+          }
+          return { draftsByThreadId: nextDraftsByThreadId };
+        });
+      },
+      setBootstrapMessages: (threadId, messages) => {
+        if (threadId.length === 0) {
+          return;
+        }
+        set((state) => {
+          const existing = state.draftsByThreadId[threadId] ?? createEmptyThreadDraft();
+          const nextDraft: ComposerThreadDraftState = {
+            ...existing,
+            bootstrapMessages: [...messages],
+          };
+          const nextDraftsByThreadId = { ...state.draftsByThreadId };
+          if (shouldRemoveDraft(nextDraft)) {
+            delete nextDraftsByThreadId[threadId];
+          } else {
+            nextDraftsByThreadId[threadId] = nextDraft;
+          }
+          return { draftsByThreadId: nextDraftsByThreadId };
+        });
+      },
+      clearBootstrapMessages: (threadId) => {
+        if (threadId.length === 0) {
+          return;
+        }
+        set((state) => {
+          const current = state.draftsByThreadId[threadId];
+          if (!current) {
+            return state;
+          }
+          const nextDraft: ComposerThreadDraftState = {
+            ...current,
+            bootstrapMessages: [],
           };
           const nextDraftsByThreadId = { ...state.draftsByThreadId };
           if (shouldRemoveDraft(nextDraft)) {
@@ -963,6 +1103,7 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
           if (
             draft.prompt.length === 0 &&
             draft.persistedAttachments.length === 0 &&
+            draft.bootstrapMessages.length === 0 &&
             draft.model === null &&
             draft.effort === null
           ) {
@@ -972,6 +1113,22 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
             prompt: draft.prompt,
             attachments: draft.persistedAttachments,
           };
+          if (draft.bootstrapMessages.length > 0) {
+            persistedDraft.bootstrapMessages = draft.bootstrapMessages.map((message) => ({
+              ...message,
+              ...(message.attachments
+                ? {
+                    attachments: message.attachments.map((attachment) => ({
+                      type: attachment.type,
+                      id: attachment.id,
+                      name: attachment.name,
+                      mimeType: attachment.mimeType,
+                      sizeBytes: attachment.sizeBytes,
+                    })),
+                  }
+                : {}),
+            }));
+          }
           if (draft.model) {
             persistedDraft.model = draft.model;
           }

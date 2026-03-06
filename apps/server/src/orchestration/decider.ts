@@ -144,7 +144,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
-      return {
+      const threadCreatedEvent: Omit<OrchestrationEvent, "sequence"> = {
         ...withEventBase({
           aggregateKind: "thread",
           aggregateId: command.threadId,
@@ -163,6 +163,32 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           updatedAt: command.createdAt,
         },
       };
+
+      const seedMessageEvents: ReadonlyArray<Omit<OrchestrationEvent, "sequence">> =
+        command.seedMessages?.map((message) => ({
+          ...withEventBase({
+            aggregateKind: "thread",
+            aggregateId: command.threadId,
+            occurredAt: command.createdAt,
+            commandId: command.commandId,
+          }),
+          type: "thread.message-sent" as const,
+          payload: {
+            threadId: command.threadId,
+            messageId: message.messageId,
+            role: message.role,
+            text: message.text,
+            attachments: message.attachments,
+            turnId: null,
+            streaming: false,
+            createdAt: message.createdAt,
+            updatedAt: message.updatedAt,
+          },
+        })) ?? [];
+
+      return seedMessageEvents.length > 0
+        ? [threadCreatedEvent, ...seedMessageEvents]
+        : threadCreatedEvent;
     }
 
     case "thread.delete": {

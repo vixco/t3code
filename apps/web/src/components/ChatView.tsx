@@ -10,6 +10,7 @@ import {
   type ProjectEntry,
   type ProjectScript,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+  PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   REASONING_OPTIONS,
   type ReasoningEffort,
@@ -69,6 +70,8 @@ import {
 import { basenameOfPath, getVscodeIconUrlForEntry } from "../vscode-icons";
 import { useTheme } from "../hooks/useTheme";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
+import { buildBootstrapInput, resolveTurnBootstrapMessages } from "../historyBootstrap";
+import { buildTemporaryWorktreeBranchName } from "../worktreeBranches";
 import {
   buildTurnDiffTree,
   summarizeTurnDiffStats,
@@ -94,6 +97,7 @@ import {
   FolderIcon,
   DiffIcon,
   FolderClosedIcon,
+  GitBranchIcon,
   InfoIcon,
   LockIcon,
   LockOpenIcon,
@@ -114,6 +118,12 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { Command, CommandItem, CommandList } from "./ui/command";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "./ProjectScriptsControl";
+import {
+  branchConversationThread,
+  createBranchedThreadWorktree,
+  selectBranchedMessages,
+} from "./threadBranching";
+import { toastManager } from "./ui/toast";
 import {
   commandForProjectScript,
   nextProjectScriptId,
@@ -160,7 +170,6 @@ const EMPTY_PROVIDER_STATUSES: ServerProviderStatus[] = [];
 const COMPOSER_PATH_QUERY_DEBOUNCE_MS = 120;
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
-const WORKTREE_BRANCH_PREFIX = "t3code";
 
 function readLastInvokedScriptByProjectFromStorage(): Record<string, string> {
   const stored = localStorage.getItem(LAST_INVOKED_SCRIPT_BY_PROJECT_KEY);
@@ -316,12 +325,6 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-function buildTemporaryWorktreeBranchName(): string {
-  // Keep the 8-hex suffix shape for backend temporary-branch detection.
-  const token = crypto.randomUUID().slice(0, 8).toLowerCase();
-  return `${WORKTREE_BRANCH_PREFIX}/${token}`;
-}
-
 function cloneComposerImageForRetry(image: ComposerImageAttachment): ComposerImageAttachment {
   if (typeof URL === "undefined" || !image.previewUrl.startsWith("blob:")) {
     return image;
@@ -466,6 +469,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const setStoreThreadError = useStore((store) => store.setError);
   const setStoreRuntimeMode = useStore((store) => store.setRuntimeMode);
   const setStoreThreadBranch = useStore((store) => store.setThreadBranch);
+  const syncServerReadModel = useStore((store) => store.syncServerReadModel);
   const { settings } = useAppSettings();
   const navigate = useNavigate();
   const rawSearch = useSearch({
@@ -478,10 +482,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const composerDraft = useComposerThreadDraft(threadId);
   const prompt = composerDraft.prompt;
   const composerImages = composerDraft.images;
+  const bootstrapMessages = composerDraft.bootstrapMessages;
   const nonPersistedComposerImageIds = composerDraft.nonPersistedImageIds;
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const setComposerDraftModel = useComposerDraftStore((store) => store.setModel);
   const setComposerDraftEffort = useComposerDraftStore((store) => store.setEffort);
+  const setBootstrapMessages = useComposerDraftStore((store) => store.setBootstrapMessages);
   const addComposerDraftImage = useComposerDraftStore((store) => store.addImage);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
   const removeComposerDraftImage = useComposerDraftStore((store) => store.removeImage);
@@ -637,6 +643,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const selectedModel = resolveModelSlug(composerDraft.model ?? baseThreadModel);
   const selectedEffort = composerDraft.effort ?? DEFAULT_REASONING;
+  const turnBootstrapMessages = resolveTurnBootstrapMessages({
+    draftBootstrapMessages: bootstrapMessages,
+    threadMessages: activeThread?.messages ?? [],
+    providerThreadId: activeThread?.codexThreadId ?? null,
+  });
   const modelOptions = useMemo(
     () => getAppModelOptions(settings.customCodexModels, selectedModel),
     [selectedModel, settings.customCodexModels],
@@ -728,8 +739,17 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }, ATTACHMENT_PREVIEW_HANDOFF_TTL_MS);
   }, []);
   const serverMessages = activeThread?.messages;
+  const displayMessages = useMemo(() => {
+    if (serverMessages && serverMessages.length > 0) {
+      return serverMessages;
+    }
+    if (bootstrapMessages.length > 0 && (activeThread?.codexThreadId ?? null) === null) {
+      return bootstrapMessages;
+    }
+    return serverMessages ?? [];
+  }, [activeThread?.codexThreadId, bootstrapMessages, serverMessages]);
   const timelineMessages = useMemo(() => {
-    const messages = serverMessages ?? [];
+    const messages = displayMessages;
     const serverMessagesWithPreviewHandoff =
       Object.keys(attachmentPreviewHandoffByMessageId).length === 0
         ? messages
@@ -780,7 +800,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       return serverMessagesWithPreviewHandoff;
     }
     return [...serverMessagesWithPreviewHandoff, ...pendingMessages];
-  }, [serverMessages, attachmentPreviewHandoffByMessageId, optimisticUserMessages]);
+  }, [displayMessages, attachmentPreviewHandoffByMessageId, optimisticUserMessages]);
   const timelineEntries = useMemo(
     () => deriveTimelineEntries(timelineMessages, workLogEntries),
     [timelineMessages, workLogEntries],
@@ -995,7 +1015,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
   const envLocked = Boolean(
     activeThread &&
-    (activeThread.messages.length > 0 ||
+    (displayMessages.length > 0 ||
       (activeThread.session !== null && activeThread.session.status !== "closed")),
   );
   const hasReachedTerminalLimit = terminalState.terminalIds.length >= MAX_THREAD_TERMINAL_COUNT;
@@ -2053,6 +2073,14 @@ export default function ChatView({ threadId }: ChatViewProps) {
         }
       }
       const title = truncateTitle(titleSeed);
+      const promptTextForSend =
+        turnBootstrapMessages.length > 0 && (activeThread?.codexThreadId ?? null) === null
+          ? buildBootstrapInput(
+              turnBootstrapMessages,
+              trimmed || IMAGE_ONLY_BOOTSTRAP_PROMPT,
+              PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
+            ).text
+          : (trimmed || IMAGE_ONLY_BOOTSTRAP_PROMPT);
       let threadCreateModel = selectedModel;
       if (!threadCreateModel) {
         threadCreateModel = activeProject.model;
@@ -2123,7 +2151,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         message: {
           messageId: messageIdForSend,
           role: "user",
-          text: trimmed || IMAGE_ONLY_BOOTSTRAP_PROMPT,
+          text: promptTextForSend,
           attachments: turnAttachments,
         },
         model: selectedModel || undefined,
@@ -2454,6 +2482,50 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
     void onRevertToTurnCount(targetTurnCount);
   };
+  const onBranchAssistantMessage = useCallback(
+    (messageId: MessageId) => {
+      const api = readNativeApi();
+      if (!api || !activeThread) return;
+
+      void branchConversationThread({
+        api,
+        thread: activeThread,
+        seedMessages: selectBranchedMessages({
+          messages: displayMessages,
+          targetMessageId: messageId,
+        }),
+        projectCwd: activeProject?.cwd ?? null,
+        createWorktree: ({ cwd, branch }) =>
+          createBranchedThreadWorktree({
+            createWorktree: (args) => createWorktreeMutation.mutateAsync(args),
+            cwd,
+            branch,
+          }),
+        syncServerReadModel,
+        setBootstrapMessages,
+        navigateToThread: (threadId) =>
+          navigate({
+            to: "/$threadId",
+            params: { threadId },
+          }),
+      }).catch((error) => {
+        toastManager.add({
+          type: "error",
+          title: "Failed to branch conversation",
+          description: error instanceof Error ? error.message : "An error occurred.",
+        });
+      });
+    },
+    [
+      activeProject?.cwd,
+      activeThread,
+      createWorktreeMutation,
+      displayMessages,
+      navigate,
+      setBootstrapMessages,
+      syncServerReadModel,
+    ],
+  );
 
   // Empty state: no active thread
   if (!activeThread) {
@@ -2552,6 +2624,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           onOpenTurnDiff={onOpenTurnDiff}
           revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
           onRevertUserMessage={onRevertUserMessage}
+          onBranchAssistantMessage={onBranchAssistantMessage}
           isRevertingCheckpoint={isRevertingCheckpoint}
           onImageExpand={onExpandTimelineImage}
           markdownCwd={gitCwd ?? undefined}
@@ -3301,6 +3374,7 @@ interface MessagesTimelineProps {
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   revertTurnCountByUserMessageId: Map<MessageId, number>;
   onRevertUserMessage: (messageId: MessageId) => void;
+  onBranchAssistantMessage: (messageId: MessageId) => void;
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   markdownCwd: string | undefined;
@@ -3342,6 +3416,7 @@ const MessagesTimeline = memo(function MessagesTimeline({
   onOpenTurnDiff,
   revertTurnCountByUserMessageId,
   onRevertUserMessage,
+  onBranchAssistantMessage,
   isRevertingCheckpoint,
   onImageExpand,
   markdownCwd,
@@ -3678,6 +3753,7 @@ const MessagesTimeline = memo(function MessagesTimeline({
         row.message.role === "assistant" &&
         (() => {
           const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
+          const canBranchFromAssistantMessage = !row.message.streaming;
           return (
             <>
               {row.showCompletionDivider && (
@@ -3689,7 +3765,7 @@ const MessagesTimeline = memo(function MessagesTimeline({
                   <span className="h-px flex-1 bg-border" />
                 </div>
               )}
-              <div className="min-w-0 px-1 py-0.5">
+              <div className="group min-w-0 px-1 py-0.5">
                 <ChatMarkdown
                   text={messageText}
                   cwd={markdownCwd}
@@ -3751,14 +3827,30 @@ const MessagesTimeline = memo(function MessagesTimeline({
                     </div>
                   );
                 })()}
-                <p className="mt-1.5 text-[10px] text-muted-foreground/30">
-                  {formatMessageMeta(
-                    row.message.createdAt,
-                    row.message.streaming
-                      ? formatElapsed(row.message.createdAt, nowIso)
-                      : formatElapsed(row.message.createdAt, row.message.completedAt),
-                  )}
-                </p>
+                <div className="mt-1.5 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
+                    {row.message.text && <MessageCopyButton text={row.message.text} />}
+                    {canBranchFromAssistantMessage && (
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        onClick={() => onBranchAssistantMessage(row.message.id)}
+                        title="Branch from this response"
+                      >
+                        <GitBranchIcon className="size-3" />
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground/30">
+                    {formatMessageMeta(
+                      row.message.createdAt,
+                      row.message.streaming
+                        ? formatElapsed(row.message.createdAt, nowIso)
+                        : formatElapsed(row.message.createdAt, row.message.completedAt),
+                    )}
+                  </p>
+                </div>
               </div>
             </>
           );

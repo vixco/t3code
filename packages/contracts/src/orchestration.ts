@@ -288,6 +288,18 @@ export const ThreadCreateCommand = Schema.Struct({
   model: TrimmedNonEmptyString,
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  seedMessages: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        messageId: MessageId,
+        role: OrchestrationMessageRole,
+        text: Schema.String,
+        attachments: Schema.Array(ChatAttachment),
+        createdAt: IsoDateTime,
+        updatedAt: IsoDateTime,
+      }),
+    ),
+  ),
   createdAt: IsoDateTime,
 });
 

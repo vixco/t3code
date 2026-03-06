@@ -25,7 +25,11 @@ import { useStore } from "../store";
 import { isChatNewLocalShortcut, isChatNewShortcut, shortcutLabelForCommand } from "../keybindings";
 import { type Thread } from "../types";
 import { derivePendingApprovals } from "../session-logic";
-import { gitRemoveWorktreeMutationOptions, gitStatusQueryOptions } from "../lib/gitReactQuery";
+import {
+  gitCreateWorktreeMutationOptions,
+  gitRemoveWorktreeMutationOptions,
+  gitStatusQueryOptions,
+} from "../lib/gitReactQuery";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { readNativeApi } from "../nativeApi";
 import { type DraftThreadEnvMode, useComposerDraftStore } from "../composerDraftStore";
@@ -59,6 +63,7 @@ import {
 } from "./ui/sidebar";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 import { isNonEmpty as isNonEmptyString } from "effect/String";
+import { branchConversationThread, createBranchedThreadWorktree } from "./threadBranching";
 
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 const THREAD_PREVIEW_LIMIT = 6;
@@ -259,6 +264,7 @@ function ProjectFavicon({ cwd }: { cwd: string }) {
 export default function Sidebar() {
   const projects = useStore((store) => store.projects);
   const threads = useStore((store) => store.threads);
+  const syncServerReadModel = useStore((store) => store.syncServerReadModel);
   const markThreadUnread = useStore((store) => store.markThreadUnread);
   const toggleProject = useStore((store) => store.toggleProject);
   const clearComposerDraftForThread = useComposerDraftStore((store) => store.clearThreadDraft);
@@ -266,6 +272,7 @@ export default function Sidebar() {
     (store) => store.getDraftThreadByProjectId,
   );
   const getDraftThread = useComposerDraftStore((store) => store.getDraftThread);
+  const setBootstrapMessages = useComposerDraftStore((store) => store.setBootstrapMessages);
   const terminalStateByThreadId = useTerminalStateStore((state) => state.terminalStateByThreadId);
   const clearTerminalState = useTerminalStateStore((state) => state.clearTerminalState);
   const setProjectDraftThreadId = useComposerDraftStore((store) => store.setProjectDraftThreadId);
@@ -287,6 +294,7 @@ export default function Sidebar() {
     select: (config) => config.keybindings,
   });
   const queryClient = useQueryClient();
+  const createWorktreeMutation = useMutation(gitCreateWorktreeMutationOptions({ queryClient }));
   const removeWorktreeMutation = useMutation(gitRemoveWorktreeMutationOptions({ queryClient }));
   const [addingProject, setAddingProject] = useState(false);
   const [newCwd, setNewCwd] = useState("");
@@ -586,12 +594,40 @@ export default function Sidebar() {
     [],
   );
 
+  const branchConversation = useCallback(
+    async (thread: Thread) => {
+      const api = readNativeApi();
+      if (!api) return;
+      await branchConversationThread({
+        api,
+        thread,
+        seedMessages: thread.messages,
+        projectCwd: projectCwdById.get(thread.projectId) ?? null,
+        createWorktree: ({ cwd, branch }) =>
+          createBranchedThreadWorktree({
+            createWorktree: (args) => createWorktreeMutation.mutateAsync(args),
+            cwd,
+            branch,
+          }),
+        syncServerReadModel,
+        setBootstrapMessages,
+        navigateToThread: (threadId) =>
+          navigate({
+            to: "/$threadId",
+            params: { threadId },
+          }),
+      });
+    },
+    [createWorktreeMutation, navigate, projectCwdById, setBootstrapMessages, syncServerReadModel],
+  );
+
   const handleThreadContextMenu = useCallback(
     async (threadId: ThreadId, position: { x: number; y: number }) => {
       const api = readNativeApi();
       if (!api) return;
       const clicked = await api.contextMenu.show(
         [
+          { id: "branch", label: "Branch conversation" },
           { id: "rename", label: "Rename thread" },
           { id: "mark-unread", label: "Mark unread" },
           { id: "copy-thread-id", label: "Copy Thread ID" },
@@ -601,6 +637,19 @@ export default function Sidebar() {
       );
       const thread = threads.find((t) => t.id === threadId);
       if (!thread) return;
+
+      if (clicked === "branch") {
+        try {
+          await branchConversation(thread);
+        } catch (error) {
+          toastManager.add({
+            type: "error",
+            title: "Failed to branch conversation",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          });
+        }
+        return;
+      }
 
       if (clicked === "rename") {
         setRenamingThreadId(threadId);
@@ -731,6 +780,7 @@ export default function Sidebar() {
       clearComposerDraftForThread,
       clearProjectDraftThreadById,
       clearTerminalState,
+      branchConversation,
       markThreadUnread,
       navigate,
       projects,
