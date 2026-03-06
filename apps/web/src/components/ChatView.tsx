@@ -5280,6 +5280,7 @@ const MessagesTimeline = memo(function MessagesTimeline({
 
 const AVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter((option) => option.available);
 const COMING_SOON_PROVIDER_OPTIONS = [
+  { id: "claudeCode", label: "Claude Code", icon: ClaudeAI },
   { id: "opencode", label: "OpenCode", icon: OpenCodeIcon },
   { id: "gemini", label: "Gemini", icon: Gemini },
 ] as const;

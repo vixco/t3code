@@ -752,6 +752,7 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
             const title = trackedTool?.title ?? titleForItemType(itemType);
             const stamp = yield* makeEventStamp();
             const eventType = update.status === "completed" ? "item.completed" : "item.updated";
+            const toolSummary = summarizeToolOutput(update.rawOutput);
             yield* offerRuntimeEvent({
               ...base,
               type: eventType,
@@ -763,9 +764,7 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
                 itemType,
                 status,
                 title,
-                ...(summarizeToolOutput(update.rawOutput)
-                  ? { detail: summarizeToolOutput(update.rawOutput) }
-                  : {}),
+                ...(toolSummary ? { detail: toolSummary } : {}),
                 ...(update.rawOutput !== undefined ? { data: update.rawOutput } : {}),
               },
             });
@@ -1351,9 +1350,6 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
 
         context.session = {
           ...context.session,
-          status: "ready",
-          activeTurnId: undefined,
-          updatedAt: yield* nowIso,
           resumeCursor: {
             acpSessionId: context.acpSessionId,
           },
