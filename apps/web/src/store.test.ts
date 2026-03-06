@@ -1,8 +1,19 @@
-import { ProjectId, ThreadId, TurnId } from "@t3tools/contracts";
+import { ProjectId, ThreadId, TurnId, type OrchestrationReadModel } from "@t3tools/contracts";
 import { describe, expect, it } from "vitest";
 
-import { markThreadUnread, type AppState } from "./store";
-import type { Thread } from "./types";
+import { markThreadUnread, reorderProjects, syncServerReadModel, type AppState } from "./store";
+import type { Project, Thread } from "./types";
+
+function makeProject(id: string, cwd = `/tmp/${id}`): Project {
+  return {
+    id: ProjectId.makeUnsafe(id),
+    name: id,
+    cwd,
+    model: "gpt-5-codex",
+    expanded: true,
+    scripts: [],
+  };
+}
 
 function makeThread(overrides: Partial<Thread> = {}): Thread {
   return {
@@ -24,25 +35,72 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
   };
 }
 
-function makeState(thread: Thread): AppState {
+function makeState(thread: Thread, projects: Project[] = [makeProject("project-1")]): AppState {
   return {
-    projects: [
-      {
-        id: ProjectId.makeUnsafe("project-1"),
-        name: "Project",
-        cwd: "/tmp/project",
-        model: "gpt-5-codex",
-        expanded: true,
-        scripts: [],
-      },
-    ],
+    projects,
     threads: [thread],
     threadsHydrated: true,
     runtimeMode: "full-access",
   };
 }
 
+function makeReadModel(projects: Array<{ id: string; cwd?: string }>): OrchestrationReadModel {
+  return {
+    snapshotSequence: 1,
+    projects: projects.map((project) => ({
+      id: ProjectId.makeUnsafe(project.id),
+      title: project.id,
+      workspaceRoot: project.cwd ?? `/tmp/${project.id}`,
+      defaultModel: "gpt-5-codex",
+      scripts: [],
+      createdAt: "2026-02-25T12:00:00.000Z",
+      updatedAt: "2026-02-25T12:00:00.000Z",
+      deletedAt: null,
+    })),
+    threads: [],
+    updatedAt: "2026-02-25T12:00:00.000Z",
+  };
+}
+
 describe("store pure functions", () => {
+  it("reorderProjects moves a project to the end insertion slot", () => {
+    const initialState = makeState(makeThread(), [
+      makeProject("project-1"),
+      makeProject("project-2"),
+      makeProject("project-3"),
+    ]);
+
+    const next = reorderProjects(initialState, ProjectId.makeUnsafe("project-1"), 3);
+
+    expect(next.projects.map((project) => project.id)).toEqual([
+      ProjectId.makeUnsafe("project-2"),
+      ProjectId.makeUnsafe("project-3"),
+      ProjectId.makeUnsafe("project-1"),
+    ]);
+  });
+
+  it("syncServerReadModel keeps the existing local project order and appends new projects", () => {
+    const initialState = makeState(makeThread(), [
+      makeProject("project-b", "/tmp/project-b"),
+      makeProject("project-a", "/tmp/project-a"),
+    ]);
+
+    const next = syncServerReadModel(
+      initialState,
+      makeReadModel([
+        { id: "project-a", cwd: "/tmp/project-a" },
+        { id: "project-b", cwd: "/tmp/project-b" },
+        { id: "project-c", cwd: "/tmp/project-c" },
+      ]),
+    );
+
+    expect(next.projects.map((project) => project.cwd)).toEqual([
+      "/tmp/project-b",
+      "/tmp/project-a",
+      "/tmp/project-c",
+    ]);
+  });
+
   it("markThreadUnread moves lastVisitedAt before completion for a completed thread", () => {
     const latestTurnCompletedAt = "2026-02-25T12:30:00.000Z";
     const initialState = makeState(

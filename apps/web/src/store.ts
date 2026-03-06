@@ -44,22 +44,30 @@ const initialState: AppState = {
   runtimeMode: DEFAULT_RUNTIME_MODE,
 };
 const persistedExpandedProjectCwds = new Set<string>();
+const persistedProjectOrderCwds: string[] = [];
 
 // ── Persist helpers ──────────────────────────────────────────────────
 
 function readPersistedState(): AppState {
   if (typeof window === "undefined") return initialState;
   try {
+    persistedExpandedProjectCwds.clear();
+    persistedProjectOrderCwds.length = 0;
     const raw = window.localStorage.getItem(PERSISTED_STATE_KEY);
     if (!raw) return initialState;
     const parsed = JSON.parse(raw) as {
       runtimeMode?: RuntimeMode;
       expandedProjectCwds?: string[];
+      projectOrderCwds?: string[];
     };
-    persistedExpandedProjectCwds.clear();
     for (const cwd of parsed.expandedProjectCwds ?? []) {
       if (typeof cwd === "string" && cwd.length > 0) {
         persistedExpandedProjectCwds.add(cwd);
+      }
+    }
+    for (const cwd of parsed.projectOrderCwds ?? []) {
+      if (typeof cwd === "string" && cwd.length > 0) {
+        persistedProjectOrderCwds.push(cwd);
       }
     }
     return {
@@ -84,6 +92,7 @@ function persistState(state: AppState): void {
         expandedProjectCwds: state.projects
           .filter((project) => project.expanded)
           .map((project) => project.cwd),
+        projectOrderCwds: state.projects.map((project) => project.cwd),
       }),
     );
     for (const legacyKey of LEGACY_PERSISTED_STATE_KEYS) {
@@ -115,7 +124,7 @@ function mapProjectsFromReadModel(
   incoming: OrchestrationReadModel["projects"],
   previous: Project[],
 ): Project[] {
-  return incoming.map((project) => {
+  const mappedProjects = incoming.map((project) => {
     const existing =
       previous.find((entry) => entry.id === project.id) ??
       previous.find((entry) => entry.cwd === project.workspaceRoot);
@@ -132,6 +141,25 @@ function mapProjectsFromReadModel(
       scripts: project.scripts.map((script) => ({ ...script })),
     };
   });
+  const preferredProjectOrderCwds =
+    previous.length > 0 ? previous.map((project) => project.cwd) : persistedProjectOrderCwds;
+  if (preferredProjectOrderCwds.length === 0 || mappedProjects.length <= 1) {
+    return mappedProjects;
+  }
+  const orderByCwd = new Map(
+    preferredProjectOrderCwds.map((cwd, index) => [cwd, index] as const),
+  );
+  const orderedProjects = mappedProjects.toSorted((left, right) => {
+    const leftIndex = orderByCwd.get(left.cwd);
+    const rightIndex = orderByCwd.get(right.cwd);
+    if (leftIndex === undefined && rightIndex === undefined) return 0;
+    if (leftIndex === undefined) return 1;
+    if (rightIndex === undefined) return -1;
+    return leftIndex - rightIndex;
+  });
+  return orderedProjects.every((project, index) => project === mappedProjects[index])
+    ? mappedProjects
+    : orderedProjects;
 }
 
 function toLegacySessionStatus(
@@ -333,6 +361,24 @@ export function setProjectExpanded(
   return changed ? { ...state, projects } : state;
 }
 
+export function reorderProjects(
+  state: AppState,
+  sourceProjectId: Project["id"],
+  destinationIndex: number,
+): AppState {
+  const sourceIndex = state.projects.findIndex((project) => project.id === sourceProjectId);
+  if (sourceIndex === -1) return state;
+  const boundedDestinationIndex = Math.max(0, Math.min(destinationIndex, state.projects.length));
+  const normalizedDestinationIndex =
+    sourceIndex < boundedDestinationIndex ? boundedDestinationIndex - 1 : boundedDestinationIndex;
+  if (normalizedDestinationIndex === sourceIndex) return state;
+  const projects = [...state.projects];
+  const [movedProject] = projects.splice(sourceIndex, 1);
+  if (!movedProject) return state;
+  projects.splice(normalizedDestinationIndex, 0, movedProject);
+  return { ...state, projects };
+}
+
 export function setError(state: AppState, threadId: ThreadId, error: string | null): AppState {
   const threads = updateThread(state.threads, threadId, (t) => {
     if (t.error === error) return t;
@@ -373,6 +419,7 @@ interface AppStore extends AppState {
   markThreadUnread: (threadId: ThreadId) => void;
   toggleProject: (projectId: Project["id"]) => void;
   setProjectExpanded: (projectId: Project["id"], expanded: boolean) => void;
+  reorderProjects: (sourceProjectId: Project["id"], destinationIndex: number) => void;
   setError: (threadId: ThreadId, error: string | null) => void;
   setThreadBranch: (
     threadId: ThreadId,
@@ -394,6 +441,8 @@ export const useStore = create<AppStore>((set) => ({
     set((state) => toggleProject(state, projectId)),
   setProjectExpanded: (projectId, expanded) =>
     set((state) => setProjectExpanded(state, projectId, expanded)),
+  reorderProjects: (sourceProjectId, destinationIndex) =>
+    set((state) => reorderProjects(state, sourceProjectId, destinationIndex)),
   setError: (threadId, error) =>
     set((state) => setError(state, threadId, error)),
   setThreadBranch: (threadId, branch, worktreePath) =>
@@ -402,7 +451,7 @@ export const useStore = create<AppStore>((set) => ({
     set((state) => setRuntimeMode(state, mode)),
 }));
 
-// Persist on every state change (only runtimeMode + expandedProjectCwds)
+// Persist on every state change (runtimeMode + sidebar project UI state)
 useStore.subscribe((state) => persistState(state));
 
 export function StoreProvider({ children }: { children: ReactNode }) {
