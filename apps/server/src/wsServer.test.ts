@@ -1171,6 +1171,8 @@ describe("WebSocket Server", () => {
       projectId: "project-seed",
       title: "Seed Thread",
       model: "gpt-5-codex",
+      runtimeMode: "full-access",
+      interactionMode: "default",
       branch: null,
       worktreePath: null,
       seedMessages: [
