@@ -62,6 +62,8 @@ export async function branchConversationThread(input: {
     projectId: input.thread.projectId,
     title: plan.title,
     model: input.thread.model,
+    runtimeMode: input.thread.runtimeMode,
+    interactionMode: input.thread.interactionMode,
     branch: branchedThreadBranch,
     worktreePath: branchedThreadWorktreePath,
     seedMessages: input.seedMessages.map((message) => ({

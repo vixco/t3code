@@ -13,11 +13,12 @@
  */
 import type {
   ProviderInterruptTurnInput,
+  ProviderKind,
   ProviderRespondToRequestInput,
+  ProviderRespondToUserInputInput,
   ProviderRuntimeEvent,
   ProviderSendTurnInput,
   ProviderSession,
-  ProviderSessionId,
   ProviderSessionStartInput,
   ProviderStopSessionInput,
   ThreadId,
@@ -27,6 +28,7 @@ import { ServiceMap } from "effect";
 import type { Effect, Stream } from "effect";
 
 import type { ProviderServiceError } from "../Errors.ts";
+import type { ProviderAdapterCapabilities } from "./ProviderAdapter.ts";
 
 /**
  * ProviderServiceShape - Service API for provider session and turn orchestration.
@@ -62,6 +64,13 @@ export interface ProviderServiceShape {
   ) => Effect.Effect<void, ProviderServiceError>;
 
   /**
+   * Respond to a provider structured user-input request.
+   */
+  readonly respondToUserInput: (
+    input: ProviderRespondToUserInputInput,
+  ) => Effect.Effect<void, ProviderServiceError>;
+
+  /**
    * Stop a provider session.
    */
   readonly stopSession: (
@@ -76,22 +85,19 @@ export interface ProviderServiceShape {
   readonly listSessions: () => Effect.Effect<ReadonlyArray<ProviderSession>>;
 
   /**
+   * Read static capabilities for a provider adapter.
+   */
+  readonly getCapabilities: (
+    provider: ProviderKind,
+  ) => Effect.Effect<ProviderAdapterCapabilities, ProviderServiceError>;
+
+  /**
    * Roll back provider conversation state by a number of turns.
    */
   readonly rollbackConversation: (input: {
-    readonly sessionId: ProviderSessionId;
+    readonly threadId: ThreadId;
     readonly numTurns: number;
   }) => Effect.Effect<void, ProviderServiceError>;
-
-  /**
-   * Stop all active provider sessions.
-   *
-   * Persisted session bindings remain so stale sessions can be resumed after
-   * process restart.
-   *
-   * Runtime alias mappings are cleared as part of shutdown.
-   */
-  readonly stopAll: () => Effect.Effect<void, ProviderServiceError>;
 
   /**
    * Canonical provider runtime event stream.
